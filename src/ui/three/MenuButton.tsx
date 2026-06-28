@@ -97,6 +97,8 @@ export function MenuButton({ x, y, size, color, icon, power, onPress, resume }: 
 
   const bodyColor = power ? color : dim(color);
   const iconColor = power ? '#ffffff' : dim('#ffffff', 0.4);
+  const dishWall = new THREE.Color(bodyColor).multiplyScalar(0.72).getStyle();
+  const dishFloor = new THREE.Color(bodyColor).multiplyScalar(0.6).getStyle();
 
   return (
     <group position={[x, y, FRONT_Z]}>
@@ -108,12 +110,24 @@ export function MenuButton({ x, y, size, color, icon, power, onPress, resume }: 
         onPointerCancel={release}
         onPointerLeave={release}
       >
-        {/* flat-topped rounded square (no concave finger dish) */}
+        {/* rounded square keycap (face at local z = 0.24) */}
         <RoundedBox args={[size, size, 0.26]} radius={0.07} smoothness={4} position={[0, 0, 0.11]}>
           <meshStandardMaterial color={bodyColor} metalness={0.22} roughness={0.45} />
         </RoundedBox>
-        {/* glyph scales with the button so it stays proportionate on big buttons */}
-        <group position={[0, 0, 0.27]} scale={size / 0.44}>
+
+        {/* concave finger dish carved into the face: a funnel wall (inner surface)
+            + a floor, so the button cups a fingertip */}
+        <mesh position={[0, 0, 0.21]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[size * 0.36, size * 0.2, 0.06, 40, 1, true]} />
+          <meshStandardMaterial color={dishWall} metalness={0.2} roughness={0.5} side={THREE.BackSide} />
+        </mesh>
+        <mesh position={[0, 0, 0.185]}>
+          <circleGeometry args={[size * 0.2, 28]} />
+          <meshStandardMaterial color={dishFloor} metalness={0.2} roughness={0.55} />
+        </mesh>
+
+        {/* glyph floating just above the dish so it stays clearly readable */}
+        <group position={[0, 0, 0.26]} scale={size / 0.46}>
           <Icon icon={icon} color={iconColor} />
         </group>
       </group>

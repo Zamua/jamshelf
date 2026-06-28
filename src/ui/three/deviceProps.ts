@@ -25,6 +25,7 @@ export interface DeviceHandlers {
   onVolume(delta: number): void;
   onInspectToggle(): void;
   onHelpToggle(): void;
+  onSwapColor(): void; // cycle the shell-color edition
 }
 
 export interface DeviceProps {

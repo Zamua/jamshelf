@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
 import { BODY, BODY_RADIUS, FLOOR_Z, SCREEN, WELL, WELL_DEPTH } from './layout';
-import { PALETTE, powerColor } from './palette';
+import { powerColor, type BodyTheme } from './palette';
 
 // Append a rounded-rectangle outline (centered at cx,cy) to a Shape or Path.
 function roundRect(p: THREE.Shape | THREE.Path, cx: number, cy: number, w: number, h: number, r: number) {
@@ -25,9 +25,9 @@ function roundRect(p: THREE.Shape | THREE.Path, cx: number, cy: number, w: numbe
 // (sculpted) around the screen pocket so they read as two separate recesses
 // joined by a thin blue divider. Recesses are real geometry (extruded face with
 // holes) so the inner walls catch light and read as truly sunken.
-export function Chassis({ power }: { power: boolean }) {
-  const body = powerColor(PALETTE.bodyBlue, power);
-  const floor = powerColor(PALETTE.wellFloor, power);
+export function Chassis({ power, theme }: { power: boolean; theme: BodyTheme }) {
+  const body = powerColor(theme.body, power);
+  const floor = powerColor(theme.floor, power);
 
   const landGeo = useMemo(() => {
     const shape = new THREE.Shape();
@@ -39,8 +39,8 @@ export function Chassis({ power }: { power: boolean }) {
     const Rx = WELL.x + WELL.w / 2;
     const Ty = WELL.y + WELL.h / 2;
     const By = WELL.y - WELL.h / 2;
-    const nRx = SCREEN.x + SCREEN.w / 2 + 0.07; // notch right edge (right of screen)
-    const nBy = SCREEN.y - SCREEN.h / 2 - 0.07; // notch bottom edge (below screen)
+    const nRx = SCREEN.x + SCREEN.w / 2 + 0.03; // notch right edge (the column gap)
+    const nBy = SCREEN.y - SCREEN.h / 2 - 0.03; // notch bottom edge (below screen)
     const well = new THREE.Path();
     well.moveTo(Lx, By);
     well.lineTo(Rx, By);

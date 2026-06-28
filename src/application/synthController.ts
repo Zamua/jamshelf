@@ -29,6 +29,7 @@ export class SynthController {
   private inspect = false;
   private menuOpen = false;
   private menuField: MenuField = 'KEY';
+  private themeIndex = 0;
 
   private held = new Map<string, Degree>(); // voiceId -> degree
   private flashText = '';
@@ -173,6 +174,13 @@ export class SynthController {
     this.flash('VOL ' + Math.round(this.volume * 8));
   }
 
+  // Cycle the shell-color edition. Unbounded counter; the UI maps it modulo the
+  // number of editions, so no presentation detail leaks into the app layer.
+  swapColor(): void {
+    this.themeIndex += 1;
+    this.publish();
+  }
+
   setInspect(on: boolean): void {
     if (this.inspect === on) return;
     this.inspect = on;
@@ -230,6 +238,7 @@ export class SynthController {
       volume: this.volume,
       power: this.power,
       inspect: this.inspect,
+      themeIndex: this.themeIndex,
       menuOpen: this.menuOpen,
       menuField: this.menuField,
       litPads: [...this.held.values()],

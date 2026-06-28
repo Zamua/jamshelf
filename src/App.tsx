@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { useSynth } from './ui/hooks/useSynth';
 import { Device } from './ui/three/Device';
+import { BODY_THEMES } from './ui/three/palette';
 import { Manual } from './ui/components/Manual';
 import { KeyMenuHint } from './ui/components/KeyMenuHint';
 import './App.css';
@@ -61,6 +62,13 @@ export default function App() {
 
       {/* Meta controls, parked in the top-right corner so they clear the device. */}
       <div className="tools">
+        <button
+          className="tool-btn tool-swatch"
+          onClick={deviceHandlers.onSwapColor}
+          aria-label="Swap the device color"
+          title={BODY_THEMES[vm.themeIndex % BODY_THEMES.length].name}
+          style={{ background: BODY_THEMES[vm.themeIndex % BODY_THEMES.length].body }}
+        />
         <button
           className={'tool-btn' + (manualOpen ? ' is-active' : '')}
           onClick={deviceHandlers.onHelpToggle}

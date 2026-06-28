@@ -16,6 +16,9 @@ export interface ViewModel {
   readonly volume: number; // 0..1
   readonly power: boolean;
   readonly inspect: boolean;
+  // index into the shell-color editions (the UI maps it to actual colors); the
+  // controller just cycles it, keeping presentation colors out of the app layer.
+  readonly themeIndex: number;
   readonly menuOpen: boolean;
   readonly menuField: MenuField;
   // pads currently held/lit (by degree), for visual press state.

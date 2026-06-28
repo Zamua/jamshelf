@@ -16,7 +16,7 @@ import {
   SPEAKER,
   padSpecs,
 } from './layout';
-import { PALETTE, powerColor } from './palette';
+import { BODY_THEMES, PALETTE, powerColor } from './palette';
 import { OLED_FONT } from './font';
 import { Chassis } from './Chassis';
 import { Pad } from './Pad';
@@ -42,16 +42,18 @@ export function Device({ vm, handlers }: DeviceProps) {
   const scale = Math.min(1, (visW * 0.94) / BODY.w, (visH * 0.94) / BODY.h);
 
   const labelColor = vm.power ? '#9fb0e8' : '#3a3d44';
+  const theme = BODY_THEMES[vm.themeIndex % BODY_THEMES.length];
+  const holeColor = powerColor(theme.floor, vm.power);
 
-  // 8 decorative dots ringing the joystick.
+  // 8 decorative dots ringing the joystick at the cardinals + diagonals.
   const joyDots = Array.from({ length: JOY_DOTS.count }, (_, i) => {
-    const a = (i / JOY_DOTS.count) * Math.PI * 2 + Math.PI / 8;
+    const a = (i / JOY_DOTS.count) * Math.PI * 2; // 0,45,90,... -> N/S/E/W + diagonals
     return [KNOB.x + Math.cos(a) * JOY_DOTS.r, KNOB.y + Math.sin(a) * JOY_DOTS.r] as const;
   });
 
   return (
     <group scale={scale}>
-      <Chassis power={vm.power} />
+      <Chassis power={vm.power} theme={theme} />
 
       {pads.map((p) => (
         <Pad
@@ -81,17 +83,25 @@ export function Device({ vm, handlers }: DeviceProps) {
         h={SCREEN.h}
       />
 
-      <Knob x={KNOB.x} y={KNOB.y} z={KNOB.z} power={vm.power} handlers={handlers} />
+      <Knob
+        x={KNOB.x}
+        y={KNOB.y}
+        z={KNOB.z}
+        power={vm.power}
+        rim={theme.deep}
+        basin={theme.floor}
+        handlers={handlers}
+      />
 
       {/* ring of 8 dots around the joystick */}
       {joyDots.map(([dx, dy], i) => (
         <mesh key={i} position={[dx, dy, FRONT_Z + 0.012]}>
           <circleGeometry args={[JOY_DOTS.dot, 14]} />
-          <meshStandardMaterial color={powerColor(PALETTE.speakerDot, vm.power)} metalness={0.15} roughness={0.7} />
+          <meshStandardMaterial color={holeColor} metalness={0.15} roughness={0.7} />
         </mesh>
       ))}
 
-      <Speaker x={SPEAKER.x} y={SPEAKER.y} z={SPEAKER.z} r={SPEAKER.r} power={vm.power} />
+      <Speaker x={SPEAKER.x} y={SPEAKER.y} z={SPEAKER.z} r={SPEAKER.r} hole={holeColor} />
 
       {/* mic pinhole + label, below the joystick */}
       <mesh position={[MIC.x, MIC.y, FRONT_Z + 0.012]}>

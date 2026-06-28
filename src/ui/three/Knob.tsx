@@ -9,6 +9,8 @@ interface KnobProps {
   y: number;
   z: number;
   power: boolean;
+  rim: string; // theme deep shade (dish rim)
+  basin: string; // theme darkest shade (dish basin)
   handlers: DeviceHandlers;
 }
 
@@ -21,7 +23,7 @@ const TILT = 0.45; // how far the cap tilts (radians) at full deflection
 // releasing springs the cap back to center and fires onJoyEnd. While dragging,
 // a large invisible plane in front of the device tracks the pointer so the drag
 // keeps following even when it slides off the small cap.
-export function Knob({ x, y, z, power, handlers }: KnobProps) {
+export function Knob({ x, y, z, power, rim, basin, handlers }: KnobProps) {
   const group = useRef<THREE.Group>(null);
   const pivot = useRef<THREE.Group>(null);
   const target = useRef(new THREE.Vector2(0, 0));
@@ -76,12 +78,12 @@ export function Knob({ x, y, z, power, handlers }: KnobProps) {
       {/* shallow dark dish basin (the cap sits slightly down inside it) */}
       <mesh position={[0, 0, 0.035]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[RADIUS, RADIUS * 0.96, 0.07, 44]} />
-        <meshStandardMaterial color={powerColor(PALETTE.keyWell, power)} metalness={0.3} roughness={0.55} />
+        <meshStandardMaterial color={powerColor(basin, power)} metalness={0.3} roughness={0.55} />
       </mesh>
       {/* thin rim around the dish */}
       <mesh position={[0, 0, 0.06]}>
         <torusGeometry args={[RADIUS * 0.97, 0.032, 14, 44]} />
-        <meshStandardMaterial color={powerColor(PALETTE.bodyDeep, power)} metalness={0.45} roughness={0.4} />
+        <meshStandardMaterial color={powerColor(rim, power)} metalness={0.45} roughness={0.4} />
       </mesh>
 
       {/* tiltable cap rising out of the dish. Handlers live on the pivot group so

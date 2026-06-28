@@ -67,13 +67,15 @@ The device is modeled to match the real HiChord closely (the user's bar). Key
 structural facts, learned by iterating against the official photos in
 `scratchpad/ref/` (front-black.jpg is the cleanest unoccluded reference):
 
-- ONE large recessed **well** holds the screen + 3 menu buttons + 7 keys. The
-  speaker, mic and joystick sit on the raised blue land to its LEFT.
+- ONE large recessed **well** (`KEY_WELL`) holds the WHOLE right cluster - the
+  OLED + 3 menu buttons + 7 keys - all rising FLUSH from its floor (there are NO
+  separate per-button cutouts). The well hugs the cluster with a small margin. The
+  speaker, mic and joystick sit on the raised land to its LEFT.
 - The well is **real cut geometry**, not a painted-on dark rectangle: `Chassis.tsx`
-  builds the blue face as an `ExtrudeGeometry` of a rounded-rect with a rounded-rect
+  builds the body face as an `ExtrudeGeometry` of a rounded-rect with a rounded-rect
   HOLE at the well, extruded forward by `WELL_DEPTH`. The hole's inner walls catch
   the scene lighting so it reads as a true sunken panel. A darker floor plane sits
-  at the bottom; a full blue `RoundedBox` behind provides sides/back/top-edge.
+  at the bottom; a full `RoundedBox` behind provides sides/back/top-edge.
   GOTCHA: a solid slab front face would OCCLUDE any recess behind it - you must cut
   the hole. Also: surface-mounted bits (speaker dots, mic) sit at `FRONT_Z + ~0.012`;
   if you re-enable an extrude bevel the land front creeps proud and hides them.
@@ -81,26 +83,32 @@ structural facts, learned by iterating against the official photos in
   share the column centers + width (`COLS`, `KEY_W`) of the 4 bottom keys, so they
   line up vertically. The 3 sharp (top) keys sit at the gaps BETWEEN columns; each
   sharp's square platform is offset to the inside, over its bottom-key gap (piano
-  interleave). The OLED is column 0, its own recess; the well notches around it.
-- Menu buttons are **INSET** (recessed below the case face - only the joystick
-  protrudes). Each is a rounded-square tile whose FACE is an `ExtrudeGeometry`
-  frame with a CIRCULAR HOLE, so the **concave finger dish** below it is not
-  occluded (a solid flat top would hide the dish - same recess gotcha as the well;
-  this bit us through several iterations where the buttons looked like proud
-  cushions). The dish is a real concave bowl: a `LatheGeometry` of a spherical-cap
-  arc (`buildBowl` in `MenuButton.tsx`), rim at the frame, dipping below. The icon
-  is **painted flat** on the dish floor (thin coplanar rings/bars, NOT 3D objects).
-  Icon ink is contrast-aware via `isLightBody`: dark glyph on the light gray/yellow
-  buttons, white on red. Speaker is a FILLED octagon dot field (grid clipped to the
-  octagon). Body edges are steep (`BODY_RADIUS` ~0.1).
+  interleave). Tighten everything via `BLOCK.gap`.
+- Keys + menu buttons all sit **FLUSH** with the case face (only the joystick
+  protrudes): `PAD.restZ` is set so the keycap top is level with `FRONT_Z` and the
+  lower body hides behind the well floor.
+- Each menu button is a rounded-square tile (≈ a key footprint) with a **concave
+  finger dish** scooped into its flush top. The tile FACE is an `ExtrudeGeometry`
+  frame with a CIRCULAR HOLE so the dish below is not occluded (a solid flat top
+  would hide it - same recess gotcha as the well; this bit us for several iterations
+  where the buttons read as proud cushions). The dish is a real concave bowl: a
+  `LatheGeometry` of a spherical-cap arc (`buildBowl` in `MenuButton.tsx`), rim at
+  the face dipping below. The icon is **painted flat** on the dish (thin coplanar
+  rings/bars, NOT 3D objects); ink is contrast-aware via `isLightBody` (dark glyph
+  on the light gray/yellow buttons, white on red). Speaker is a FILLED octagon dot
+  field (grid clipped to the octagon). Body edges are steep (`BODY_RADIUS` ~0.1);
+  body material is mildly metallic + low roughness for an anodized sheen.
+- Top-edge hardware (`TopEdge.tsx`: PWR slider, VOL wheel, 3.5mm jack, USB-C) is
+  shifted back (`group z -0.12`) to sit centered on the top face depth.
 - **Swappable shell color**: `BODY_THEMES` in `palette.ts` lists the editions
   (body / deep / floor shades). The controller holds an unbounded `themeIndex`
   (cycled by `swapColor()`, exposed on the ViewModel); the UI maps it modulo the
   theme count - NO hex colors leak into the application layer. Chassis/Speaker/Knob
   + the joystick dots take their colors from the resolved theme; cream keys, accent
   buttons and the screen are fixed. A round swatch button in `App.tsx` cycles it.
-- All geometry lives in `layout.ts` (`WELL`, `SCREEN`, `MENU`, `SPEAKER`, `MIC`,
-  `KNOB`, `COLS`, `KEY_W`, `BRAND`, `JOY_DOTS`, `padSpecs()`). Tune there.
+- All geometry lives in `layout.ts` (`KEY_WELL`, `SCREEN`, `MENU`, `SPEAKER`,
+  `MIC`, `KNOB`, `COLS`, `KEY_W`, `BLOCK.gap`, `BRAND`, `JOY_DOTS`, `PAD`,
+  `padSpecs()`). Tune there.
 
 Render loop for look-matching: `npm run build`, `npx vite preview --port 4231`,
 then Playwright (software WebGL: `--use-gl=angle --use-angle=swiftshader`) via the

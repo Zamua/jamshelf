@@ -51,8 +51,11 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
   const labelColor = power ? '#9fb0e8' : '#3a3d44';
   const dark = '#0a0c14';
 
+  // The slab's top face spans the full body depth; its center is behind the front
+  // face. Shift the whole hardware row back so it sits centered on the top edge
+  // (depth-wise) rather than hugging the front.
   return (
-    <group>
+    <group position={[0, 0, -0.12]}>
       {/* POWER SLIDER (red) */}
       <group position={[-1.7, TOP_Y + 0.01, 0.02]} onPointerDown={togglePower}>
         {/* recessed slot */}

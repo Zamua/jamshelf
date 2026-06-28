@@ -42,8 +42,8 @@ export default function App() {
         gl={{ antialias: true, alpha: true }}
         onPointerMissed={() => deviceHandlers.onJoyEnd()}
       >
-        <ambientLight intensity={0.65} />
-        <directionalLight position={[3, 5, 6]} intensity={1.15} />
+        <ambientLight intensity={0.68} />
+        <directionalLight position={[3, 5, 6]} intensity={1.3} />
         <directionalLight position={[-4, -2, 3]} intensity={0.35} />
         {/* cool back rim, lifts the anodized edges off the dark backdrop */}
         <directionalLight position={[0, 3, -4]} intensity={0.4} color="#9fb4ff" />

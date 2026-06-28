@@ -107,12 +107,11 @@ function Icon({ icon, color }: { icon: MenuIcon; color: string }) {
   );
 }
 
-// An INSET colored menu button. The case has a square pocket cut for it (Chassis).
-// The button is a flat rounded-square tile whose top sits BELOW the case face (so
-// it does not protrude - only the joystick does), with a wide concave finger dish
-// scooped into it and a flat painted icon on the dish. The tile FACE is an
-// extruded frame with a CIRCULAR HOLE so the dish below it is not occluded (the
-// same recess trick the key well uses).
+// A colored menu button that sits in the shared key well (no separate cutout),
+// FLUSH with the keys/case. It is a rounded-square tile rising from the well floor
+// to the case face, with a wide concave finger dish scooped into its top and a
+// flat painted icon on the dish. The tile FACE is an extruded frame with a
+// CIRCULAR HOLE so the dish below it is not occluded (the well's recess trick).
 export function MenuButton({ x, y, size, color, icon, power, onPress, resume }: MenuButtonProps) {
   const pressGroup = useRef<THREE.Group>(null);
   const [pressed, setPressed] = useState(false);
@@ -141,9 +140,9 @@ export function MenuButton({ x, y, size, color, icon, power, onPress, resume }: 
   const iconColor = power ? inkColor : dim(inkColor, 0.4);
 
   // Geometry, in the group's local z (group sits at FRONT_Z = the case face, z=0).
-  const tile = size - 0.035; // leaves a sliver of case wall framing the tile
-  const topZ = -0.045; // tile face, set below the case face -> inset, not proud
-  const floorZ = -WELL_DEPTH; // pocket floor
+  const tile = size - 0.01; // fills the cell like a key (well floor shows in gaps)
+  const topZ = 0; // tile face flush with the case / the flush keycaps
+  const floorZ = -WELL_DEPTH; // well floor
   const dishR = tile * 0.42; // wide finger dish
   const dishDepth = 0.05;
   const dishFloorZ = topZ - dishDepth;

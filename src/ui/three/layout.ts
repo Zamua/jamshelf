@@ -34,18 +34,17 @@ export interface PadSpec {
   platDx: number;
 }
 
-// THE KEY WELL: a recessed rounded panel holding ONLY the 7 keys (which rise as
-// keycaps from its floor). The top strip (OLED + 3 menu buttons) is NOT in here:
-// each of those 4 cells is its own snug square pocket cut into the case face, so
-// the buttons read as INSET (recessed), not protruding. Speaker + joystick + mic
-// live on the raised land to the left.
-export const KEY_WELL = { x: 0.6, y: -0.375, w: 3.24, h: 2.11 } as const;
+// THE KEY WELL: ONE recessed rounded panel holding the WHOLE right cluster - the
+// OLED, the 3 menu buttons AND the 7 keys - all rising flush from its floor (no
+// separate per-button cutouts). It hugs the cluster tightly (small margin).
+// Speaker + joystick + mic live on the raised land to the left.
+export const KEY_WELL = { x: 0.6, y: 0.036, w: 3.14, h: 2.89 } as const;
 
 // The 4-column grid. The 4 bottom keys, AND the 4 top cells (screen + 3 buttons)
 // share these column centers + this width, so the top cells line up vertically
 // with the bottom keys (just squares instead of tall rects). The 3 sharp keys
 // sit at the gaps BETWEEN the columns (piano interleave).
-const BLOCK = { cx: 0.6, w: 3.06, gap: 0.06 } as const;
+const BLOCK = { cx: 0.6, w: 3.06, gap: 0.04 } as const;
 const BLOCK_LEFT = BLOCK.cx - BLOCK.w / 2;
 const BOT_W = BLOCK.w / 4;
 export const KEY_W = BOT_W - BLOCK.gap; // shared cell width (square side for the top row)
@@ -57,12 +56,13 @@ const GAPS = [
   (COLS[2] + COLS[3]) / 2,
 ];
 
-// Keycap depth + travel (z is keycap-group CENTER). Lowered so the keys are
-// low-profile in the well rather than towering; the joystick is the proud part.
+// Keycap depth + travel (z is keycap-group CENTER). restZ is set so the keycap
+// top sits FLUSH with the case face (it does not protrude - only the joystick
+// does); the lower body is hidden behind the well floor. Pressing dips it down.
 export const PAD = {
   d: 0.22,
-  restZ: FRONT_Z + 0.0,
-  pressZ: FRONT_Z - 0.05,
+  restZ: FRONT_Z - 0.15,
+  pressZ: FRONT_Z - 0.2,
 } as const;
 
 const TOP_Y = 0.33; // sharp (top) keys row

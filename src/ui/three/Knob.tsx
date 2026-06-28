@@ -88,7 +88,7 @@ export function Knob({ x, y, z, power, rim, basin, handlers }: KnobProps) {
 
       {/* tiltable cap rising out of the dish. Handlers live on the pivot group so
           the whole cap face (including the proud thumb-dish circles) is grabbable. */}
-      <group ref={pivot} position={[0, 0, 0.11]} onPointerDown={start} onPointerUp={end} onPointerCancel={end}>
+      <group ref={pivot} position={[0, 0, 0.15]} onPointerDown={start} onPointerUp={end} onPointerCancel={end}>
         <mesh rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[0.23, 0.25, 0.11, 36]} />
           <meshStandardMaterial color={creamCap} metalness={0.08} roughness={0.4} />

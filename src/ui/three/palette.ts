@@ -28,7 +28,7 @@ export interface BodyTheme {
   floor: string;
 }
 export const BODY_THEMES: readonly BodyTheme[] = [
-  { name: 'Aluminum', body: '#cdd0d6', deep: '#9aa0a8', floor: '#5e636b' },
+  { name: 'Aluminum', body: '#e9ecf1', deep: '#b9bdc6', floor: '#5b606a' },
   { name: 'Cosmic Blue', body: '#1f41d6', deep: '#18329f', floor: '#0c1d5e' },
   { name: 'Stealth', body: '#272b33', deep: '#171a20', floor: '#0a0c10' },
   { name: 'Coral', body: '#e8553f', deep: '#bd3c2b', floor: '#6f2018' },

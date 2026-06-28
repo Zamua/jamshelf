@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
-import { BODY, BODY_RADIUS, COLS, FLOOR_Z, KEY_W, KEY_WELL, SCREEN, WELL_DEPTH } from './layout';
+import { BODY, BODY_RADIUS, FLOOR_Z, KEY_WELL, WELL_DEPTH } from './layout';
 import { powerColor, type BodyTheme } from './palette';
 
 // Append a rounded-rectangle outline (centered at cx,cy) to a Shape or Path.
@@ -19,11 +19,10 @@ function roundRect(p: THREE.Shape | THREE.Path, cx: number, cy: number, w: numbe
   p.quadraticCurveTo(x, y, x + r, y);
 }
 
-// The body: a steep-edged anodized slab with recesses cut into the face: ONE key
-// well (the 7 keycaps rise from its floor) plus 4 snug square pockets across the
-// top (the OLED + the 3 inset menu buttons). All are real cut geometry (extruded
-// face with holes) so the inner walls catch light and read as truly sunken; a
-// darker floor sits at the bottom of the key well.
+// The body: a steep-edged anodized slab with ONE recess cut into the face - the
+// key well, holding the OLED + 3 menu buttons + 7 keys (they all rise flush from
+// its floor). It is real cut geometry (extruded face with a hole) so the inner
+// walls catch light and read as truly sunken; a darker floor sits at the bottom.
 export function Chassis({ power, theme }: { power: boolean; theme: BodyTheme }) {
   const body = powerColor(theme.body, power);
   const floor = powerColor(theme.floor, power);
@@ -32,17 +31,10 @@ export function Chassis({ power, theme }: { power: boolean; theme: BodyTheme }) 
     const shape = new THREE.Shape();
     roundRect(shape, 0, 0, BODY.w, BODY.h, BODY_RADIUS);
 
-    // key well
+    // the one key well
     const kw = new THREE.Path();
-    roundRect(kw, KEY_WELL.x, KEY_WELL.y, KEY_WELL.w, KEY_WELL.h, 0.12);
+    roundRect(kw, KEY_WELL.x, KEY_WELL.y, KEY_WELL.w, KEY_WELL.h, 0.13);
     shape.holes.push(kw);
-
-    // 4 top-strip pockets: OLED (col 0) + the 3 menu buttons (cols 1..3)
-    for (const cx of COLS) {
-      const pocket = new THREE.Path();
-      roundRect(pocket, cx, SCREEN.y, KEY_W, KEY_W, 0.06);
-      shape.holes.push(pocket);
-    }
 
     return new THREE.ExtrudeGeometry(shape, { depth: WELL_DEPTH, bevelEnabled: false });
   }, []);
@@ -57,12 +49,12 @@ export function Chassis({ power, theme }: { power: boolean; theme: BodyTheme }) 
         smoothness={6}
         position={[0, 0, FLOOR_Z - BODY.d / 2]}
       >
-        <meshStandardMaterial color={body} metalness={0.4} roughness={0.35} />
+        <meshStandardMaterial color={body} metalness={0.5} roughness={0.24} />
       </RoundedBox>
 
       {/* raised land (face) with the well + pockets cut out */}
       <mesh geometry={landGeo} position={[0, 0, FLOOR_Z]}>
-        <meshStandardMaterial color={body} metalness={0.4} roughness={0.35} />
+        <meshStandardMaterial color={body} metalness={0.5} roughness={0.24} />
       </mesh>
 
       {/* darker floor at the bottom of the key well */}

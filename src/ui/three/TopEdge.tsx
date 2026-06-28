@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import type { DeviceHandlers } from './deviceProps';
 import { BODY } from './layout';
 import { PALETTE, powerColor } from './palette';
+import { OLED_FONT } from './font';
 
 interface TopEdgeProps {
   power: boolean;
@@ -74,6 +75,7 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
       <Text
         position={[-1.7, TOP_Y + 0.03, 0.16]}
         rotation={[-Math.PI / 2, 0, 0]}
+        font={OLED_FONT}
         fontSize={0.07}
         color={labelColor}
         anchorX="center"
@@ -103,6 +105,7 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
       <Text
         position={[-0.75, TOP_Y + 0.03, 0.18]}
         rotation={[-Math.PI / 2, 0, 0]}
+        font={OLED_FONT}
         fontSize={0.07}
         color={labelColor}
         anchorX="center"
@@ -135,6 +138,7 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
       <Text
         position={[1.7, TOP_Y + 0.03, 0.16]}
         rotation={[-Math.PI / 2, 0, 0]}
+        font={OLED_FONT}
         fontSize={0.06}
         color={labelColor}
         anchorX="center"

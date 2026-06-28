@@ -1,5 +1,6 @@
 import { Text, RoundedBox } from '@react-three/drei';
 import { PALETTE } from './palette';
+import { OLED_FONT } from './font';
 
 interface ScreenProps {
   big: string;
@@ -41,6 +42,7 @@ export function Screen({ big, small, power, x, y, z, w, h }: ScreenProps) {
       </mesh>
 
       <Text
+        font={OLED_FONT}
         position={[0, gh * 0.16, 0.11]}
         fontSize={h * 0.4}
         color={amberBig}
@@ -52,6 +54,7 @@ export function Screen({ big, small, power, x, y, z, w, h }: ScreenProps) {
         {big}
       </Text>
       <Text
+        font={OLED_FONT}
         position={[0, -gh * 0.28, 0.11]}
         fontSize={h * 0.19}
         color={amberSmall}

@@ -27,20 +27,21 @@ export interface PadSpec {
 // Keycap depth + travel (z is keycap CENTER, above the well floor). Width/height
 // are per-pad (top row = wide-short horizontal rects, bottom = tall-narrow).
 export const PAD = {
-  d: 0.24,
-  restZ: FRONT_Z + 0.12,
-  pressZ: FRONT_Z + 0.04,
+  d: 0.22,
+  restZ: FRONT_Z + 0.1,
+  pressZ: FRONT_Z + 0.03,
 } as const;
 
-// The pad block (the recessed key area on the right). Top 3 wide-short pads over
-// bottom 4 tall-narrow pads, sharing the block width. Reading the 7 by x-position
-// gives bottom, top, bottom, top ... = degrees 1..7 (the real interleave).
-const BLOCK = { cx: 0.66, w: 3.18, gap: 0.1 } as const;
+// The pad block: a large, tightly-packed brick of 7 keycaps filling most of the
+// right side (small gaps, like the real device). Top 3 wide-short horizontal
+// pads over bottom 4 tall-narrow pads, sharing the block width. Reading the 7 by
+// x-position gives bottom, top, bottom, top ... = degrees 1..7 (the interleave).
+const BLOCK = { cx: 0.5, w: 3.16, gap: 0.07 } as const;
 const BLOCK_LEFT = BLOCK.cx - BLOCK.w / 2;
-const TOP_Y = 0.3;
-const BOT_Y = -0.78;
-const TOP_H = 0.58; // horizontal: short
-const BOT_H = 1.04; // vertical: tall
+const TOP_Y = 0.42;
+const BOT_Y = -0.66;
+const TOP_H = 0.74; // horizontal: short
+const BOT_H = 1.3; // vertical: tall
 
 export function padSpecs(): PadSpec[] {
   const items: PadSpec[] = [];
@@ -69,16 +70,17 @@ export function padSpecs(): PadSpec[] {
   return items;
 }
 
-// Recessed key well that frames the pad cluster.
-export const KEY_WELL = { x: BLOCK.cx, y: -0.36, w: BLOCK.w + 0.34, h: 2.05 } as const;
+// Recessed key well framing the pad cluster. Kept fully inside the body so no
+// rim juts past the slab edge (a thin rim, set in Chassis).
+export const KEY_WELL = { x: BLOCK.cx, y: -0.16, w: BLOCK.w + 0.18, h: 2.2 } as const;
 
 // Top strip (above the pads): OLED on the left, the 3 colored menu buttons to its
-// right. Both sit above the pad block, clear of the well rim.
-export const SCREEN = { x: -0.3, y: 1.24, z: FRONT_Z, w: 1.46, h: 0.62 } as const;
-export const MENU = { y: 1.24, gray: 0.86, yellow: 1.42, red: 1.98, size: 0.46 } as const;
+// right. Both sit above the pad block, clear of the thin well rim.
+export const SCREEN = { x: -0.34, y: 1.22, z: FRONT_Z, w: 1.4, h: 0.58 } as const;
+export const MENU = { y: 1.22, gray: 0.86, yellow: 1.4, red: 1.94, size: 0.44 } as const;
 
-// Left column: octagon speaker (upper), mic pinhole (just above the joystick),
-// joystick/wheel (lower).
-export const SPEAKER = { x: -1.74, y: 0.5, z: FRONT_Z, r: 0.5 } as const;
-export const MIC = { x: -1.74, y: -0.28, z: FRONT_Z, r: 0.035 } as const;
-export const KNOB = { x: -1.74, y: -0.92, z: FRONT_Z } as const;
+// Left column (narrow): octagon speaker (upper), mic pinhole (above the joystick),
+// the joystick/wheel (lower).
+export const SPEAKER = { x: -1.82, y: 0.56, z: FRONT_Z, r: 0.46 } as const;
+export const MIC = { x: -1.82, y: -0.14, z: FRONT_Z, r: 0.033 } as const;
+export const KNOB = { x: -1.82, y: -0.82, z: FRONT_Z } as const;

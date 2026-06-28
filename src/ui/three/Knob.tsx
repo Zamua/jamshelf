@@ -12,9 +12,9 @@ interface KnobProps {
   handlers: DeviceHandlers;
 }
 
-const RADIUS = 0.5; // normalization radius: dragging this far == full deflection
-const TRAVEL = 0.16; // how far the cap visually shifts at full deflection
-const TILT = 0.5; // how far the cap tilts (radians) at full deflection
+const RADIUS = 0.36; // normalization radius: dragging this far == full deflection
+const TRAVEL = 0.1; // how far the cap visually shifts at full deflection
+const TILT = 0.45; // how far the cap tilts (radians) at full deflection
 
 // The joystick: a cream cap in a recessed dish. Dragging emits a normalized
 // vector (x = right+, y = up+, clamped to the unit circle) via onJoyMove;
@@ -73,31 +73,31 @@ export function Knob({ x, y, z, power, handlers }: KnobProps) {
 
   return (
     <group ref={group} position={[x, y, z]}>
-      {/* raised dark dish basin (the cap sits down inside it) */}
-      <mesh position={[0, 0, 0.06]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[RADIUS, RADIUS * 0.96, 0.12, 44]} />
+      {/* shallow dark dish basin (the cap sits slightly down inside it) */}
+      <mesh position={[0, 0, 0.035]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[RADIUS, RADIUS * 0.96, 0.07, 44]} />
         <meshStandardMaterial color={powerColor(PALETTE.keyWell, power)} metalness={0.3} roughness={0.55} />
       </mesh>
-      {/* raised rim around the dish */}
-      <mesh position={[0, 0, 0.11]}>
-        <torusGeometry args={[RADIUS * 0.97, 0.05, 14, 44]} />
+      {/* thin rim around the dish */}
+      <mesh position={[0, 0, 0.06]}>
+        <torusGeometry args={[RADIUS * 0.97, 0.032, 14, 44]} />
         <meshStandardMaterial color={powerColor(PALETTE.bodyDeep, power)} metalness={0.45} roughness={0.4} />
       </mesh>
 
       {/* tiltable cap rising out of the dish. Handlers live on the pivot group so
           the whole cap face (including the proud thumb-dish circles) is grabbable. */}
-      <group ref={pivot} position={[0, 0, 0.18]} onPointerDown={start} onPointerUp={end} onPointerCancel={end}>
+      <group ref={pivot} position={[0, 0, 0.11]} onPointerDown={start} onPointerUp={end} onPointerCancel={end}>
         <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.3, 0.33, 0.16, 36]} />
+          <cylinderGeometry args={[0.23, 0.25, 0.11, 36]} />
           <meshStandardMaterial color={creamCap} metalness={0.08} roughness={0.4} />
         </mesh>
         {/* concave thumb dish on the cap face */}
-        <mesh position={[0, 0, 0.085]}>
-          <circleGeometry args={[0.17, 28]} />
+        <mesh position={[0, 0, 0.06]}>
+          <circleGeometry args={[0.13, 28]} />
           <meshStandardMaterial color={creamHi} metalness={0.08} roughness={0.35} />
         </mesh>
-        <mesh position={[0, 0, 0.088]}>
-          <circleGeometry args={[0.05, 20]} />
+        <mesh position={[0, 0, 0.063]}>
+          <circleGeometry args={[0.042, 20]} />
           <meshStandardMaterial color={creamShadow} metalness={0.05} roughness={0.5} />
         </mesh>
       </group>

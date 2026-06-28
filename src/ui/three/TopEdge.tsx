@@ -53,7 +53,7 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
   return (
     <group>
       {/* POWER SLIDER (red) */}
-      <group position={[-2.7, TOP_Y + 0.01, 0.02]} onPointerDown={togglePower}>
+      <group position={[-1.7, TOP_Y + 0.01, 0.02]} onPointerDown={togglePower}>
         {/* recessed slot */}
         <mesh>
           <boxGeometry args={[0.34, 0.05, 0.16]} />
@@ -72,7 +72,7 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
         </mesh>
       </group>
       <Text
-        position={[-2.7, TOP_Y + 0.03, 0.16]}
+        position={[-1.7, TOP_Y + 0.03, 0.16]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.07}
         color={labelColor}
@@ -83,7 +83,7 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
       </Text>
 
       {/* VOLUME WHEEL (ridged, draggable) */}
-      <group position={[-1.85, TOP_Y - 0.04, 0]} rotation={[0, 0, Math.PI / 2]}>
+      <group position={[-0.75, TOP_Y - 0.07, 0]} rotation={[0, 0, Math.PI / 2]}>
         <mesh
           ref={wheel}
           onPointerDown={startVol}
@@ -91,7 +91,7 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
           onPointerCancel={endVol}
         >
           {/* low radial segment count + flatShading reads as a knurled wheel */}
-          <cylinderGeometry args={[0.18, 0.18, 0.5, 16, 1]} />
+          <cylinderGeometry args={[0.13, 0.13, 0.42, 16, 1]} />
           <meshStandardMaterial
             color={powerColor('#9aa0a8', power)}
             metalness={0.55}
@@ -101,7 +101,7 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
         </mesh>
       </group>
       <Text
-        position={[-1.85, TOP_Y + 0.03, 0.18]}
+        position={[-0.75, TOP_Y + 0.03, 0.18]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.07}
         color={labelColor}
@@ -112,7 +112,7 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
       </Text>
 
       {/* 3.5mm JACK (bored hole) */}
-      <group position={[1.2, TOP_Y, 0]}>
+      <group position={[0.7, TOP_Y, 0]}>
         <mesh rotation={[0, 0, 0]}>
           <cylinderGeometry args={[0.1, 0.1, 0.08, 20]} />
           <meshStandardMaterial color={powerColor('#1a1d24', power)} metalness={0.5} roughness={0.4} />
@@ -128,12 +128,12 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
         args={[0.28, 0.06, 0.12]}
         radius={0.028}
         smoothness={3}
-        position={[2.1, TOP_Y + 0.005, 0]}
+        position={[1.7, TOP_Y + 0.005, 0]}
       >
         <meshStandardMaterial color={powerColor('#15181f', power)} metalness={0.5} roughness={0.45} />
       </RoundedBox>
       <Text
-        position={[2.1, TOP_Y + 0.03, 0.16]}
+        position={[1.7, TOP_Y + 0.03, 0.16]}
         rotation={[-Math.PI / 2, 0, 0]}
         fontSize={0.06}
         color={labelColor}

@@ -95,7 +95,7 @@ export function MenuButton({ x, y, color, icon, power, onPress, resume }: MenuBu
   };
 
   const bodyColor = power ? color : dim(color);
-  const iconColor = power ? '#15171b' : dim('#15171b', 0.4);
+  const iconColor = power ? '#ffffff' : dim('#ffffff', 0.4);
 
   return (
     <group position={[x, y, FRONT_Z]}>

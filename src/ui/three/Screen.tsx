@@ -8,25 +8,29 @@ interface ScreenProps {
   x: number;
   y: number;
   z: number;
+  w: number;
+  h: number;
 }
 
 // The OLED: a near-black recessed glass panel with amber text. screenBig is the
 // large line (key + scale, or a flashed chord/quality name); screenSmall is the
 // small line (patch + bpm). Goes dark when the device is powered off.
-export function Screen({ big, small, power, x, y, z }: ScreenProps) {
+export function Screen({ big, small, power, x, y, z, w, h }: ScreenProps) {
   const amberBig = power ? PALETTE.amber : '#1c1f25';
   const amberSmall = power ? '#d59433' : '#181b21';
+  const gw = w - 0.14;
+  const gh = h - 0.12;
 
   return (
     <group position={[x, y, z]}>
       {/* raised black bezel (proud of the slab so the frame is visible) */}
-      <RoundedBox args={[1.78, 0.74, 0.12]} radius={0.04} smoothness={4} position={[0, 0, 0.03]}>
+      <RoundedBox args={[w, h, 0.12]} radius={0.04} smoothness={4} position={[0, 0, 0.03]}>
         <meshStandardMaterial color="#05060a" metalness={0.3} roughness={0.6} />
       </RoundedBox>
 
       {/* emissive glass */}
       <mesh position={[0, 0, 0.095]}>
-        <planeGeometry args={[1.62, 0.6]} />
+        <planeGeometry args={[gw, gh]} />
         <meshStandardMaterial
           color={PALETTE.oled}
           emissive={power ? '#0c1a44' : '#020306'}
@@ -37,23 +41,23 @@ export function Screen({ big, small, power, x, y, z }: ScreenProps) {
       </mesh>
 
       <Text
-        position={[0, 0.09, 0.11]}
-        fontSize={0.26}
+        position={[0, gh * 0.16, 0.11]}
+        fontSize={h * 0.4}
         color={amberBig}
         anchorX="center"
         anchorY="middle"
-        maxWidth={1.5}
+        maxWidth={gw}
         letterSpacing={0.04}
       >
         {big}
       </Text>
       <Text
-        position={[0, -0.17, 0.11]}
-        fontSize={0.12}
+        position={[0, -gh * 0.28, 0.11]}
+        fontSize={h * 0.19}
         color={amberSmall}
         anchorX="center"
         anchorY="middle"
-        maxWidth={1.5}
+        maxWidth={gw}
         letterSpacing={0.03}
       >
         {small}

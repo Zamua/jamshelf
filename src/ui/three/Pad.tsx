@@ -11,6 +11,8 @@ interface PadProps {
   degree: Degree;
   x: number;
   y: number;
+  w: number;
+  h: number;
   lit: boolean;
   power: boolean;
   handlers: DeviceHandlers;
@@ -19,7 +21,7 @@ interface PadProps {
 // A single cream keycap. The visual state (depress + emissive glow) is driven by
 // `lit` (the controller decides which pads are held), so press, multi-touch and
 // glissando all light correctly. The mesh fires raw, semantic-free input.
-export function Pad({ degree, x, y, lit, power, handlers }: PadProps) {
+export function Pad({ degree, x, y, w, h, lit, power, handlers }: PadProps) {
   const mesh = useRef<THREE.Mesh>(null);
   const mat = useRef<THREE.MeshStandardMaterial>(null);
 
@@ -54,8 +56,8 @@ export function Pad({ degree, x, y, lit, power, handlers }: PadProps) {
   return (
     <RoundedBox
       ref={mesh}
-      args={[PAD.w, PAD.h, PAD.d]}
-      radius={0.08}
+      args={[w, h, PAD.d]}
+      radius={0.07}
       smoothness={4}
       position={[x, y, PAD.restZ]}
       onPointerDown={down}

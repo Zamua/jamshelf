@@ -4,8 +4,10 @@ import {
   BODY,
   CAM_DIST,
   CAM_FOV,
+  FRONT_Z,
   KNOB,
   MENU,
+  MIC,
   SCREEN,
   SPEAKER,
   padSpecs,
@@ -46,17 +48,34 @@ export function Device({ vm, handlers }: DeviceProps) {
           degree={p.degree}
           x={p.x}
           y={p.y}
+          w={p.w}
+          h={p.h}
           lit={vm.litPads.includes(p.degree)}
           power={vm.power}
           handlers={handlers}
         />
       ))}
 
-      <Screen big={vm.screenBig} small={vm.screenSmall} power={vm.power} x={SCREEN.x} y={SCREEN.y} z={SCREEN.z} />
+      <Screen
+        big={vm.screenBig}
+        small={vm.screenSmall}
+        power={vm.power}
+        x={SCREEN.x}
+        y={SCREEN.y}
+        z={SCREEN.z}
+        w={SCREEN.w}
+        h={SCREEN.h}
+      />
 
       <Knob x={KNOB.x} y={KNOB.y} z={KNOB.z} power={vm.power} handlers={handlers} />
 
       <Speaker x={SPEAKER.x} y={SPEAKER.y} z={SPEAKER.z} r={SPEAKER.r} power={vm.power} />
+
+      {/* mic pinhole, just above the joystick */}
+      <mesh position={[MIC.x, MIC.y, FRONT_Z + 0.004]}>
+        <circleGeometry args={[MIC.r, 16]} />
+        <meshStandardMaterial color={'#0a1130'} metalness={0.3} roughness={0.6} />
+      </mesh>
 
       <MenuButton
         x={MENU.gray}

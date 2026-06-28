@@ -3,6 +3,8 @@
   height: 100%;
   position: relative;
   touch-action: none;
+  background:
+    radial-gradient(120% 90% at 50% 36%, #1a2138 0%, #0c0f1a 52%, #06070c 100%);
 }
 
 .stage canvas {

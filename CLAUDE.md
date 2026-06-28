@@ -82,10 +82,17 @@ structural facts, learned by iterating against the official photos in
   line up vertically. The 3 sharp (top) keys sit at the gaps BETWEEN columns; each
   sharp's square platform is offset to the inside, over its bottom-key gap (piano
   interleave). The OLED is column 0, its own recess; the well notches around it.
-- Menu buttons are flat-topped squares with a **concave finger-cup dish** (a
-  BackSide funnel + floor); the icon glyph floats just above the dish so it stays
-  readable. Speaker is a FILLED octagon dot field (grid clipped to the octagon).
-  Body edges are steep (`BODY_RADIUS` ~0.1).
+- Menu buttons are **INSET** (recessed below the case face - only the joystick
+  protrudes). Each is a rounded-square tile whose FACE is an `ExtrudeGeometry`
+  frame with a CIRCULAR HOLE, so the **concave finger dish** below it is not
+  occluded (a solid flat top would hide the dish - same recess gotcha as the well;
+  this bit us through several iterations where the buttons looked like proud
+  cushions). The dish is a real concave bowl: a `LatheGeometry` of a spherical-cap
+  arc (`buildBowl` in `MenuButton.tsx`), rim at the frame, dipping below. The icon
+  is **painted flat** on the dish floor (thin coplanar rings/bars, NOT 3D objects).
+  Icon ink is contrast-aware via `isLightBody`: dark glyph on the light gray/yellow
+  buttons, white on red. Speaker is a FILLED octagon dot field (grid clipped to the
+  octagon). Body edges are steep (`BODY_RADIUS` ~0.1).
 - **Swappable shell color**: `BODY_THEMES` in `palette.ts` lists the editions
   (body / deep / floor shades). The controller holds an unbounded `themeIndex`
   (cycled by `swapColor()`, exposed on the ViewModel); the UI maps it modulo the

@@ -16,8 +16,9 @@ import {
   SPEAKER,
   padSpecs,
 } from './layout';
-import { BODY_THEMES, PALETTE, powerColor } from './palette';
+import { BODY_THEMES, PALETTE, isLightBody, powerColor } from './palette';
 import { OLED_FONT } from './font';
+import { BRAND_FONT } from './brandFont';
 import { Chassis } from './Chassis';
 import { Pad } from './Pad';
 import { Screen } from './Screen';
@@ -41,9 +42,12 @@ export function Device({ vm, handlers }: DeviceProps) {
   const visW = visH * aspect;
   const scale = Math.min(1, (visW * 0.94) / BODY.w, (visH * 0.94) / BODY.h);
 
-  const labelColor = vm.power ? '#9fb0e8' : '#3a3d44';
   const theme = BODY_THEMES[vm.themeIndex % BODY_THEMES.length];
   const holeColor = powerColor(theme.floor, vm.power);
+  // labels/wordmark flip to dark ink on a light shell (Aluminum) for contrast.
+  const lightBody = isLightBody(theme.body);
+  const labelColor = vm.power ? (lightBody ? '#33363d' : '#9fb0e8') : '#3a3d44';
+  const brandColor = vm.power ? (lightBody ? '#23262d' : '#eef1f8') : '#4a4d54';
 
   // 8 decorative dots ringing the joystick at the cardinals + diagonals.
   const joyDots = Array.from({ length: JOY_DOTS.count }, (_, i) => {
@@ -120,15 +124,15 @@ export function Device({ vm, handlers }: DeviceProps) {
         mic
       </Text>
 
-      {/* HiClone branding, top-left */}
+      {/* HiClone branding, top-left (rounded wordmark font) */}
       <Text
-        font={OLED_FONT}
+        font={BRAND_FONT}
         position={[BRAND.x, BRAND.y, FRONT_Z + 0.01]}
-        fontSize={0.22}
-        color={vm.power ? '#e8edff' : '#4a4d54'}
+        fontSize={0.26}
+        color={brandColor}
         anchorX="center"
         anchorY="middle"
-        letterSpacing={0.01}
+        letterSpacing={0.005}
       >
         {BRAND.text}
       </Text>

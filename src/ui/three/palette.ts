@@ -28,12 +28,23 @@ export interface BodyTheme {
   floor: string;
 }
 export const BODY_THEMES: readonly BodyTheme[] = [
+  { name: 'Aluminum', body: '#cdd0d6', deep: '#9aa0a8', floor: '#5e636b' },
   { name: 'Cosmic Blue', body: '#1f41d6', deep: '#18329f', floor: '#0c1d5e' },
   { name: 'Stealth', body: '#272b33', deep: '#171a20', floor: '#0a0c10' },
   { name: 'Coral', body: '#e8553f', deep: '#bd3c2b', floor: '#6f2018' },
   { name: 'Seafoam', body: '#2bb98f', deep: '#1d8568', floor: '#0e4839' },
   { name: 'Grape', body: '#7b46d6', deep: '#5a2fa3', floor: '#311a5e' },
 ];
+
+// True if the shell color is light enough to need dark text/labels over it (the
+// Aluminum edition). Drives the wordmark + label contrast.
+export function isLightBody(hex: string): boolean {
+  const c = parseInt(hex.slice(1), 16);
+  const r = (c >> 16) & 255;
+  const g = (c >> 8) & 255;
+  const b = c & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150;
+}
 
 // Neutral the device drifts toward when powered off (desaturate + darken).
 const OFF_GRAY = new Color('#34373d');

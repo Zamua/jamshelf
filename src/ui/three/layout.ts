@@ -34,12 +34,12 @@ export interface PadSpec {
   platDx: number;
 }
 
-// THE WELL: one large recessed rounded panel on the right ~2/3 of the face. It
-// holds the 3 menu buttons (top strip) AND the 7 keys. The OLED is NOT in this
-// well: it sits in its OWN square recess (the top-left column) and the well is
-// sculpted (notched) around it. Speaker + joystick + mic live on the raised blue
-// land to the well's left.
-export const WELL = { x: 0.6, y: 0.0, w: 3.3, h: 2.9 } as const;
+// THE KEY WELL: a recessed rounded panel holding ONLY the 7 keys (which rise as
+// keycaps from its floor). The top strip (OLED + 3 menu buttons) is NOT in here:
+// each of those 4 cells is its own snug square pocket cut into the case face, so
+// the buttons read as INSET (recessed), not protruding. Speaker + joystick + mic
+// live on the raised land to the left.
+export const KEY_WELL = { x: 0.6, y: -0.375, w: 3.24, h: 2.11 } as const;
 
 // The 4-column grid. The 4 bottom keys, AND the 4 top cells (screen + 3 buttons)
 // share these column centers + this width, so the top cells line up vertically
@@ -57,11 +57,12 @@ const GAPS = [
   (COLS[2] + COLS[3]) / 2,
 ];
 
-// Keycap depth + travel (z is keycap-group CENTER, above the well floor).
+// Keycap depth + travel (z is keycap-group CENTER). Lowered so the keys are
+// low-profile in the well rather than towering; the joystick is the proud part.
 export const PAD = {
   d: 0.22,
-  restZ: FRONT_Z + 0.1,
-  pressZ: FRONT_Z + 0.03,
+  restZ: FRONT_Z + 0.0,
+  pressZ: FRONT_Z - 0.05,
 } as const;
 
 const TOP_Y = 0.33; // sharp (top) keys row
@@ -124,9 +125,11 @@ export const MENU = { y: STRIP_Y, size: KEY_W, gray: COLS[1], yellow: COLS[2], r
 
 // Left column (outside the well): branding, the octagon dot-speaker, the
 // joystick (with a ring of 8 dots at the cardinals + diagonals), and a mic hole
-// + label below it.
-export const BRAND = { x: -1.62, y: 1.34, text: 'HiClone' } as const;
-export const SPEAKER = { x: -1.6, y: 0.52, z: FRONT_Z, r: 0.46 } as const;
-export const KNOB = { x: -1.6, y: -0.8, z: FRONT_Z } as const;
+// + label below it. The column x is centered between the device's left edge
+// (-BODY.w/2 = -2.36) and the key well's left edge (KEY_WELL.x - KEY_WELL.w/2).
+const LEFT_X = (-BODY.w / 2 + (KEY_WELL.x - KEY_WELL.w / 2)) / 2; // ~ -1.69
+export const BRAND = { x: LEFT_X, y: 1.34, text: 'HiClone' } as const;
+export const SPEAKER = { x: LEFT_X, y: 0.52, z: FRONT_Z, r: 0.5 } as const;
+export const KNOB = { x: LEFT_X, y: -0.8, z: FRONT_Z } as const;
 export const JOY_DOTS = { count: 8, r: 0.46, dot: 0.022 } as const;
-export const MIC = { x: -1.6, y: -1.4, z: FRONT_Z, r: 0.03, labelY: -1.55 } as const;
+export const MIC = { x: LEFT_X, y: -1.4, z: FRONT_Z, r: 0.03, labelY: -1.55 } as const;

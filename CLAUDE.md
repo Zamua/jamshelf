@@ -61,6 +61,38 @@ src/
 - Build -> deploy `dist/` as a hostthis **static site**: `tar czf - dist/ | ssh hostthis.dev` (returns a `<slug>.hostthis.dev` URL; SPA fallback serves index.html for client routes). Re-deploy in place with `... ssh hostthis.dev <slug>`.
 - Tailnet dev preview for the iPad: TBD (pm2 + caddy + tailscale serve, per the macmini app pattern).
 
+## The 3D device (look-matching notes)
+
+The device is modeled to match the real HiChord closely (the user's bar). Key
+structural facts, learned by iterating against the official photos in
+`scratchpad/ref/` (front-black.jpg is the cleanest unoccluded reference):
+
+- ONE large recessed **well** holds the screen + 3 menu buttons + 7 keys. The
+  speaker, mic and joystick sit on the raised blue land to its LEFT.
+- The well is **real cut geometry**, not a painted-on dark rectangle: `Chassis.tsx`
+  builds the blue face as an `ExtrudeGeometry` of a rounded-rect with a rounded-rect
+  HOLE at the well, extruded forward by `WELL_DEPTH`. The hole's inner walls catch
+  the scene lighting so it reads as a true sunken panel. A darker floor plane sits
+  at the bottom; a full blue `RoundedBox` behind provides sides/back/top-edge.
+  GOTCHA: a solid slab front face would OCCLUDE any recess behind it - you must cut
+  the hole. Also: surface-mounted bits (speaker dots, mic) sit at `FRONT_Z + ~0.012`;
+  if you re-enable an extrude bevel the land front creeps proud and hides them.
+- Screen is **square** (not a wide rectangle). Menu buttons are big with tight,
+  even gaps, spaced across the well's top strip with the screen. Speaker is a
+  FLUSH octagonal field of round holes (no basin, no raised ring). Body edges are
+  steep (`BODY_RADIUS` small, ~0.1).
+- All geometry lives in `layout.ts` (`WELL`, `SCREEN`, `MENU`, `SPEAKER`, `MIC`,
+  `KNOB`, `padSpecs()`). Tune there; components read it.
+
+Render loop for look-matching: `npm run build`, `npx vite preview --port 4231`,
+then Playwright (software WebGL: `--use-gl=angle --use-angle=swiftshader`) via the
+screenshot-harness venv -> PIL side-by-side vs `scratchpad/ref/front-black.jpg`.
+Live preview deploy: `https://4jzmz9uv.hostthis.dev` (re-deploy in place).
+
 ## Current state
 
-Scaffold complete: DDD skeleton, working build + 6 passing domain tests + a rendering R3F placeholder device (crude boxes). The real work (real Web Audio engine, the modeled+assembled 3D device, the full UI/controls/overlays, glissando + multi-touch input) is being built out across parallel workflow lanes against the contracts above. See `README.md` for the human-facing overview.
+DDD skeleton + real Web Audio engine + the modeled/assembled 3D device (recessed
+well, 7 interleaved cream keycaps, octagon speaker, joystick morph, 3 menu
+buttons, top-edge hardware, 3D inspect mode) are all built and deployed. Domain
+is fully unit-tested. Active work is iterative look-matching against the photos.
+See `README.md` for the human-facing overview.

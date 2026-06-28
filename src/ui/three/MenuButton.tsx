@@ -10,6 +10,7 @@ export type MenuIcon = 'key' | 'wave' | 'clock';
 interface MenuButtonProps {
   x: number;
   y: number;
+  size: number;
   color: string;
   icon: MenuIcon;
   power: boolean;
@@ -72,7 +73,7 @@ function Icon({ icon, color }: { icon: MenuIcon; color: string }) {
 }
 
 // A colored rounded-cube menu button. Depresses on press and fires its handler.
-export function MenuButton({ x, y, color, icon, power, onPress, resume }: MenuButtonProps) {
+export function MenuButton({ x, y, size, color, icon, power, onPress, resume }: MenuButtonProps) {
   const pressGroup = useRef<THREE.Group>(null);
   const [pressed, setPressed] = useState(false);
 
@@ -107,10 +108,11 @@ export function MenuButton({ x, y, color, icon, power, onPress, resume }: MenuBu
         onPointerCancel={release}
         onPointerLeave={release}
       >
-        <RoundedBox args={[0.44, 0.44, 0.26]} radius={0.07} smoothness={4} position={[0, 0, 0.11]}>
+        <RoundedBox args={[size, size, 0.28]} radius={0.1} smoothness={4} position={[0, 0, 0.12]}>
           <meshStandardMaterial color={bodyColor} metalness={0.22} roughness={0.45} />
         </RoundedBox>
-        <group position={[0, 0, 0.25]}>
+        {/* glyph scales with the button so it stays proportionate on big buttons */}
+        <group position={[0, 0, 0.27]} scale={size / 0.44}>
           <Icon icon={icon} color={iconColor} />
         </group>
       </group>

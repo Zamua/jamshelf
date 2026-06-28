@@ -43,25 +43,26 @@ export function Screen({ big, small, power, x, y, z, w, h }: ScreenProps) {
 
       <Text
         font={OLED_FONT}
-        position={[0, gh * 0.16, 0.11]}
-        fontSize={h * 0.4}
+        position={[0, gh * 0.2, 0.11]}
+        fontSize={h * 0.22}
         color={amberBig}
         anchorX="center"
         anchorY="middle"
         maxWidth={gw}
-        letterSpacing={0.04}
+        lineHeight={1}
+        letterSpacing={0.02}
       >
         {big}
       </Text>
       <Text
         font={OLED_FONT}
-        position={[0, -gh * 0.28, 0.11]}
-        fontSize={h * 0.19}
+        position={[0, -gh * 0.32, 0.11]}
+        fontSize={h * 0.14}
         color={amberSmall}
         anchorX="center"
         anchorY="middle"
         maxWidth={gw}
-        letterSpacing={0.03}
+        letterSpacing={0.02}
       >
         {small}
       </Text>

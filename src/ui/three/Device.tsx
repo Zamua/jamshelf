@@ -72,7 +72,7 @@ export function Device({ vm, handlers }: DeviceProps) {
       <Speaker x={SPEAKER.x} y={SPEAKER.y} z={SPEAKER.z} r={SPEAKER.r} power={vm.power} />
 
       {/* mic pinhole, just above the joystick */}
-      <mesh position={[MIC.x, MIC.y, FRONT_Z + 0.004]}>
+      <mesh position={[MIC.x, MIC.y, FRONT_Z + 0.012]}>
         <circleGeometry args={[MIC.r, 16]} />
         <meshStandardMaterial color={'#0a1130'} metalness={0.3} roughness={0.6} />
       </mesh>
@@ -80,6 +80,7 @@ export function Device({ vm, handlers }: DeviceProps) {
       <MenuButton
         x={MENU.gray}
         y={MENU.y}
+        size={MENU.size}
         color={PALETTE.gray}
         icon="key"
         power={vm.power}
@@ -89,6 +90,7 @@ export function Device({ vm, handlers }: DeviceProps) {
       <MenuButton
         x={MENU.yellow}
         y={MENU.y}
+        size={MENU.size}
         color={PALETTE.yellow}
         icon="wave"
         power={vm.power}
@@ -98,6 +100,7 @@ export function Device({ vm, handlers }: DeviceProps) {
       <MenuButton
         x={MENU.red}
         y={MENU.y}
+        size={MENU.size}
         color={PALETTE.red}
         icon="clock"
         power={vm.power}

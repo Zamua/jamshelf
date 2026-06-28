@@ -6,6 +6,7 @@ export const PALETTE = {
   rimHi: '#5e7dff',
   bodyDeep: '#18329f',
   keyWell: '#122a86',
+  wellFloor: '#0c1d5e',
   cream: '#ece4cf',
   creamHi: '#f7f1e2',
   creamShadow: '#cabf9f',

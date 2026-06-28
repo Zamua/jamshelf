@@ -1,0 +1,141 @@
+.manual-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  background: rgba(4, 6, 12, 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  touch-action: none;
+}
+
+.manual-card {
+  position: relative;
+  width: 100%;
+  max-width: 430px;
+  max-height: 86vh;
+  max-height: 86dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding: 24px 22px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(180deg, #141826 0%, #0e111b 100%);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  color: #f4efe6;
+}
+
+.manual-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #f4efe6;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.manual-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.manual-eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #ffd24a;
+}
+
+.manual-title {
+  margin: 4px 0 2px;
+  font-size: 26px;
+  font-weight: 700;
+  font-style: italic;
+}
+
+.manual-lede {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: rgba(244, 239, 230, 0.7);
+}
+
+.manual-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.manual-item {
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.manual-item:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.manual-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.manual-item-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.manual-item-body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: rgba(244, 239, 230, 0.78);
+}
+
+.manual-chip {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.manual-chip-gray {
+  background: #9aa0ad;
+  color: #14161f;
+}
+
+.manual-chip-yellow {
+  background: #ffd24a;
+  color: #2a2300;
+}
+
+.manual-chip-red {
+  background: #ff5a5a;
+  color: #2a0606;
+}
+
+.manual-foot {
+  margin: 18px 0 0;
+  font-size: 12px;
+  text-align: center;
+  color: rgba(244, 239, 230, 0.45);
+}

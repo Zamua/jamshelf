@@ -2,6 +2,7 @@
   width: 100%;
   height: 100%;
   position: relative;
+  touch-action: none;
 }
 
 .stage canvas {
@@ -9,25 +10,39 @@
   touch-action: none;
 }
 
-/* meta controls (help / 3D inspect); the UI lane restyles these */
+/* Meta controls (help / 3D inspect): small, corner-parked, out of the way. */
 .tools {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: calc(14px + env(safe-area-inset-top));
+  right: calc(14px + env(safe-area-inset-right));
   display: flex;
   gap: 8px;
-  z-index: 10;
+  z-index: 30;
 }
 
-.tools button {
+.tool-btn {
   min-width: 40px;
   height: 40px;
+  padding: 0 10px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(20, 26, 60, 0.7);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
   color: #f4efe6;
   font:
     600 14px system-ui,
     sans-serif;
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tool-btn:hover {
+  background: rgba(28, 36, 78, 0.82);
+}
+
+.tool-btn.is-active {
+  border-color: #ffd24a;
+  background: rgba(255, 210, 74, 0.18);
+  color: #ffd24a;
 }

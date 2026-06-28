@@ -78,21 +78,24 @@ function nameQuality(intervalSet: Set<number>): string {
     base = '';
   }
 
+  // Augmented: a major third with a raised fifth (#5) and no perfect fifth.
+  // Surfaces the III+ triads of harmonic/melodic minor (e.g. Eb-G-B).
+  const hasAug5 = third === 'maj' && h(8) && !h(7);
+
   if (h(11)) {
-    return base === 'm'
-      ? h(2)
-        ? 'm(maj9)'
-        : 'm(maj7)'
-      : h(2)
-        ? 'maj9'
-        : 'maj7';
+    if (base === 'm') return h(2) ? 'm(maj9)' : 'm(maj7)';
+    const maj7 = h(2) ? 'maj9' : 'maj7';
+    return hasAug5 ? maj7 + '#5' : maj7;
   }
   if (h(10)) {
     if (base === 'dim') return 'm7b5';
     if (base === 'm') return h(2) ? 'm9' : 'm7';
     return h(2) ? '9' : '7';
   }
-  if (base === 'dim') return 'dim';
+  // A diminished triad carrying a diminished seventh (bb7 = 9 semitones) is a
+  // full dim7 (e.g. harmonic-minor vii); a bare dim triad has no such tone.
+  if (base === 'dim') return h(9) ? 'dim7' : 'dim';
+  if (hasAug5) return 'aug';
 
   if (h(9)) return base === 'm' ? 'm6' : '6';
   if (h(2)) return base === 'm' ? 'm(add9)' : 'add9';

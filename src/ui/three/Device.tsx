@@ -1,70 +1,102 @@
-import { useMemo } from 'react';
-import { Text } from '@react-three/drei';
-import type { ThreeEvent } from '@react-three/fiber';
-import { PAD_LAYOUT, type Degree } from '../../domain/music';
+import { useThree } from '@react-three/fiber';
 import type { DeviceProps } from './deviceProps';
+import {
+  BODY,
+  CAM_DIST,
+  CAM_FOV,
+  KNOB,
+  MENU,
+  SCREEN,
+  SPEAKER,
+  padSpecs,
+} from './layout';
+import { PALETTE } from './palette';
+import { Chassis } from './Chassis';
+import { Pad } from './Pad';
+import { Screen } from './Screen';
+import { Knob } from './Knob';
+import { Speaker } from './Speaker';
+import { MenuButton } from './MenuButton';
+import { TopEdge } from './TopEdge';
 
-// PLACEHOLDER device. The 3D lane replaces this with the real modeled +
-// assembled HiChord-style device (chassis, pads that depress, a turning knob,
-// the OLED, octagon speaker, menu buttons, top-edge hardware) matched to the
-// Cosmic Blue photos. This stub renders just enough to be playable end-to-end:
-// a body, the 7 pads in the bottom=1,3,5,7 / top=2,4,6 interleaved layout, and
-// the OLED text. Pads are interactive via the handlers.
+// The real modeled HiChord-style device, assembled from component meshes in a
+// landscape group: a beveled anodized-blue chassis with a recessed key well, 7
+// interleaved cream pads, the joystick, the OLED, the octagon speaker, the 3
+// colored menu buttons, and the top-edge hardware. Purely presentational: it
+// renders the ViewModel and fires raw input through the handlers.
 export function Device({ vm, handlers }: DeviceProps) {
-  const pads = useMemo(() => {
-    const padW = 0.9;
-    const gap = 0.12;
-    const items: { degree: Degree; x: number; y: number }[] = [];
-    // bottom row: 4 pads
-    PAD_LAYOUT.bottom.forEach((degree, i) => {
-      items.push({ degree, x: (i - 1.5) * (padW + gap), y: -0.7 });
-    });
-    // top row: 3 pads, offset to sit between the bottom pads
-    PAD_LAYOUT.top.forEach((degree, i) => {
-      items.push({ degree, x: (i - 1) * (padW + gap), y: 0.55 });
-    });
-    return items;
-  }, []);
+  const pads = padSpecs();
 
-  const press = (e: ThreeEvent<PointerEvent>, degree: Degree) => {
-    e.stopPropagation();
-    handlers.resume();
-    handlers.onPadDown(String(e.pointerId), degree);
-  };
-  const release = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    handlers.onPadUp(String(e.pointerId));
-  };
+  // Fit-scale the device to the viewport. We derive the visible extent from the
+  // fixed App camera (CAM_DIST/CAM_FOV) and the DOM pixel size, NOT the live
+  // OrbitControls dolly, so inspect-mode zoom is not fought by a rescale.
+  const size = useThree((s) => s.size);
+  const aspect = size.width / Math.max(1, size.height);
+  const visH = 2 * CAM_DIST * Math.tan((CAM_FOV * Math.PI) / 180 / 2);
+  const visW = visH * aspect;
+  const scale = Math.min(1, (visW * 0.94) / BODY.w, (visH * 0.94) / BODY.h);
 
   return (
-    <group>
-      {/* body */}
-      <mesh position={[0, 0, -0.2]}>
-        <boxGeometry args={[5.2, 3.4, 0.5]} />
-        <meshStandardMaterial color={vm.power ? '#1f41d6' : '#16205e'} roughness={0.5} />
-      </mesh>
+    <group scale={scale}>
+      <Chassis power={vm.power} />
 
-      {/* OLED text */}
-      <Text position={[-1.4, 1.25, 0.12]} fontSize={0.32} color="#ffb638" anchorX="center">
-        {vm.screenBig}
-      </Text>
+      {pads.map((p) => (
+        <Pad
+          key={p.degree}
+          degree={p.degree}
+          x={p.x}
+          y={p.y}
+          lit={vm.litPads.includes(p.degree)}
+          power={vm.power}
+          handlers={handlers}
+        />
+      ))}
 
-      {/* pads */}
-      {pads.map(({ degree, x, y }) => {
-        const lit = vm.litPads.includes(degree);
-        return (
-          <mesh
-            key={degree}
-            position={[x + 0.7, y, lit ? 0.05 : 0.12]}
-            onPointerDown={(e) => press(e, degree)}
-            onPointerUp={release}
-            onPointerCancel={release}
-          >
-            <boxGeometry args={[0.84, 1.0, 0.18]} />
-            <meshStandardMaterial color={lit ? '#fff4d0' : '#ece4cf'} roughness={0.4} />
-          </mesh>
-        );
-      })}
+      <Screen big={vm.screenBig} small={vm.screenSmall} power={vm.power} x={SCREEN.x} y={SCREEN.y} z={SCREEN.z} />
+
+      <Knob x={KNOB.x} y={KNOB.y} z={KNOB.z} power={vm.power} handlers={handlers} />
+
+      <Speaker x={SPEAKER.x} y={SPEAKER.y} z={SPEAKER.z} r={SPEAKER.r} power={vm.power} />
+
+      <MenuButton
+        x={MENU.gray}
+        y={MENU.y}
+        color={PALETTE.gray}
+        icon="key"
+        power={vm.power}
+        onPress={handlers.onKey}
+        resume={handlers.resume}
+      />
+      <MenuButton
+        x={MENU.yellow}
+        y={MENU.y}
+        color={PALETTE.yellow}
+        icon="wave"
+        power={vm.power}
+        onPress={handlers.onSound}
+        resume={handlers.resume}
+      />
+      <MenuButton
+        x={MENU.red}
+        y={MENU.y}
+        color={PALETTE.red}
+        icon="clock"
+        power={vm.power}
+        onPress={handlers.onTempo}
+        resume={handlers.resume}
+      />
+
+      <TopEdge power={vm.power} handlers={handlers} />
     </group>
   );
 }
+
+export { Chassis } from './Chassis';
+export { Pad } from './Pad';
+export { Screen } from './Screen';
+export { Knob } from './Knob';
+export { Speaker } from './Speaker';
+export { MenuButton } from './MenuButton';
+export { TopEdge } from './TopEdge';
+
+export default Device;

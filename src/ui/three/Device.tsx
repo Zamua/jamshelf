@@ -1,10 +1,14 @@
 import { useThree } from '@react-three/fiber';
+import { Text } from '@react-three/drei';
 import type { DeviceProps } from './deviceProps';
 import {
   BODY,
+  BRAND,
   CAM_DIST,
   CAM_FOV,
+  FLOOR_Z,
   FRONT_Z,
+  JOY_DOTS,
   KNOB,
   MENU,
   MIC,
@@ -12,7 +16,8 @@ import {
   SPEAKER,
   padSpecs,
 } from './layout';
-import { PALETTE } from './palette';
+import { PALETTE, powerColor } from './palette';
+import { OLED_FONT } from './font';
 import { Chassis } from './Chassis';
 import { Pad } from './Pad';
 import { Screen } from './Screen';
@@ -22,10 +27,8 @@ import { MenuButton } from './MenuButton';
 import { TopEdge } from './TopEdge';
 
 // The real modeled HiChord-style device, assembled from component meshes in a
-// landscape group: a beveled anodized-blue chassis with a recessed key well, 7
-// interleaved cream pads, the joystick, the OLED, the octagon speaker, the 3
-// colored menu buttons, and the top-edge hardware. Purely presentational: it
-// renders the ViewModel and fires raw input through the handlers.
+// landscape group. Purely presentational: it renders the ViewModel and fires raw
+// input through the handlers.
 export function Device({ vm, handlers }: DeviceProps) {
   const pads = padSpecs();
 
@@ -37,6 +40,14 @@ export function Device({ vm, handlers }: DeviceProps) {
   const visH = 2 * CAM_DIST * Math.tan((CAM_FOV * Math.PI) / 180 / 2);
   const visW = visH * aspect;
   const scale = Math.min(1, (visW * 0.94) / BODY.w, (visH * 0.94) / BODY.h);
+
+  const labelColor = vm.power ? '#9fb0e8' : '#3a3d44';
+
+  // 8 decorative dots ringing the joystick.
+  const joyDots = Array.from({ length: JOY_DOTS.count }, (_, i) => {
+    const a = (i / JOY_DOTS.count) * Math.PI * 2 + Math.PI / 8;
+    return [KNOB.x + Math.cos(a) * JOY_DOTS.r, KNOB.y + Math.sin(a) * JOY_DOTS.r] as const;
+  });
 
   return (
     <group scale={scale}>
@@ -50,6 +61,9 @@ export function Device({ vm, handlers }: DeviceProps) {
           y={p.y}
           w={p.w}
           h={p.h}
+          platW={p.platW}
+          platH={p.platH}
+          platDx={p.platDx}
           lit={vm.litPads.includes(p.degree)}
           power={vm.power}
           handlers={handlers}
@@ -62,20 +76,52 @@ export function Device({ vm, handlers }: DeviceProps) {
         power={vm.power}
         x={SCREEN.x}
         y={SCREEN.y}
-        z={SCREEN.z}
+        z={FLOOR_Z}
         w={SCREEN.w}
         h={SCREEN.h}
       />
 
       <Knob x={KNOB.x} y={KNOB.y} z={KNOB.z} power={vm.power} handlers={handlers} />
 
+      {/* ring of 8 dots around the joystick */}
+      {joyDots.map(([dx, dy], i) => (
+        <mesh key={i} position={[dx, dy, FRONT_Z + 0.012]}>
+          <circleGeometry args={[JOY_DOTS.dot, 14]} />
+          <meshStandardMaterial color={powerColor(PALETTE.speakerDot, vm.power)} metalness={0.15} roughness={0.7} />
+        </mesh>
+      ))}
+
       <Speaker x={SPEAKER.x} y={SPEAKER.y} z={SPEAKER.z} r={SPEAKER.r} power={vm.power} />
 
-      {/* mic pinhole, just above the joystick */}
+      {/* mic pinhole + label, below the joystick */}
       <mesh position={[MIC.x, MIC.y, FRONT_Z + 0.012]}>
         <circleGeometry args={[MIC.r, 16]} />
         <meshStandardMaterial color={'#0a1130'} metalness={0.3} roughness={0.6} />
       </mesh>
+      <Text
+        font={OLED_FONT}
+        position={[MIC.x, MIC.labelY, FRONT_Z + 0.01]}
+        fontSize={0.13}
+        color={labelColor}
+        anchorX="center"
+        anchorY="middle"
+        letterSpacing={0.06}
+      >
+        mic
+      </Text>
+
+      {/* HiClone branding, top-left */}
+      <Text
+        font={OLED_FONT}
+        position={[BRAND.x, BRAND.y, FRONT_Z + 0.01]}
+        fontSize={0.22}
+        color={vm.power ? '#e8edff' : '#4a4d54'}
+        anchorX="center"
+        anchorY="middle"
+        letterSpacing={0.01}
+      >
+        {BRAND.text}
+      </Text>
 
       <MenuButton
         x={MENU.gray}

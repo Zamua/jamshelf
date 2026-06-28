@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
-import { BODY, BODY_RADIUS, FRONT_Z, WELL } from './layout';
+import { BODY, BODY_RADIUS, FLOOR_Z, SCREEN, WELL, WELL_DEPTH } from './layout';
 import { PALETTE, powerColor } from './palette';
 
 // Append a rounded-rectangle outline (centered at cx,cy) to a Shape or Path.
@@ -19,43 +19,50 @@ function roundRect(p: THREE.Shape | THREE.Path, cx: number, cy: number, w: numbe
   p.quadraticCurveTo(x, y, x + r, y);
 }
 
-const WELL_DEPTH = 0.12; // how deep the recessed panel is sunk below the face
-const FLOOR_Z = FRONT_Z - WELL_DEPTH;
-
-// The body of the device: a steep-edged anodized-blue slab with ONE large
-// recessed well cut into the right ~2/3 of the face. The screen, the 3 menu
-// buttons and the 7 cream keycaps all sit DOWN INSIDE that single well (the real
-// device's defining feature). The speaker + mic + joystick sit on the raised
-// blue land to the left of the well.
-//
-// The recess is real geometry, not a painted-on rectangle: the front face is an
-// extruded rounded-rect with a rounded-rect HOLE at the well, so the hole's
-// inner walls catch the scene lighting and read as a true sunken panel. A darker
-// floor plane sits at the bottom of the well; a full blue slab behind provides
-// the sides, back and top edge.
+// The body: a steep-edged anodized-blue slab. Two recesses are CUT into the
+// face: (1) a single large L-shaped well holding the 3 menu buttons + 7 keys,
+// and (2) a small square pocket for the OLED, top-left. The well is notched
+// (sculpted) around the screen pocket so they read as two separate recesses
+// joined by a thin blue divider. Recesses are real geometry (extruded face with
+// holes) so the inner walls catch light and read as truly sunken.
 export function Chassis({ power }: { power: boolean }) {
   const body = powerColor(PALETTE.bodyBlue, power);
   const floor = powerColor(PALETTE.wellFloor, power);
 
-  // The raised blue land: body silhouette with the well punched out, extruded
-  // forward by WELL_DEPTH so the hole becomes a recess with real walls.
   const landGeo = useMemo(() => {
     const shape = new THREE.Shape();
     roundRect(shape, 0, 0, BODY.w, BODY.h, BODY_RADIUS);
-    const hole = new THREE.Path();
-    roundRect(hole, WELL.x, WELL.y, WELL.w, WELL.h, 0.12);
-    shape.holes.push(hole);
-    return new THREE.ExtrudeGeometry(shape, {
-      depth: WELL_DEPTH,
-      bevelEnabled: false,
-    });
+
+    // L-shaped well: full well rect with the top-left corner notched out to make
+    // room for the screen pocket (the well sculpts around the screen).
+    const Lx = WELL.x - WELL.w / 2;
+    const Rx = WELL.x + WELL.w / 2;
+    const Ty = WELL.y + WELL.h / 2;
+    const By = WELL.y - WELL.h / 2;
+    const nRx = SCREEN.x + SCREEN.w / 2 + 0.07; // notch right edge (right of screen)
+    const nBy = SCREEN.y - SCREEN.h / 2 - 0.07; // notch bottom edge (below screen)
+    const well = new THREE.Path();
+    well.moveTo(Lx, By);
+    well.lineTo(Rx, By);
+    well.lineTo(Rx, Ty);
+    well.lineTo(nRx, Ty);
+    well.lineTo(nRx, nBy);
+    well.lineTo(Lx, nBy);
+    well.closePath();
+    shape.holes.push(well);
+
+    // square screen pocket
+    const screen = new THREE.Path();
+    roundRect(screen, SCREEN.x, SCREEN.y, SCREEN.w, SCREEN.h, 0.05);
+    shape.holes.push(screen);
+
+    return new THREE.ExtrudeGeometry(shape, { depth: WELL_DEPTH, bevelEnabled: false });
   }, []);
 
   return (
     <group>
-      {/* full blue slab behind: provides sides, back, and the top edge that
-          carries the ports (visible when orbiting). Its front face sits at the
-          well floor so it never covers the recess opening. */}
+      {/* full blue slab behind: sides, back, top edge (the ports). Front face at
+          the well floor so it never covers a recess opening. */}
       <RoundedBox
         args={[BODY.w, BODY.h, BODY.d]}
         radius={BODY_RADIUS}
@@ -65,12 +72,13 @@ export function Chassis({ power }: { power: boolean }) {
         <meshStandardMaterial color={body} metalness={0.4} roughness={0.35} />
       </RoundedBox>
 
-      {/* raised blue land (face) with the well cut out: extrudes FLOOR_Z -> FRONT_Z */}
+      {/* raised blue land (face) with the two recesses cut out */}
       <mesh geometry={landGeo} position={[0, 0, FLOOR_Z]}>
         <meshStandardMaterial color={body} metalness={0.4} roughness={0.35} />
       </mesh>
 
-      {/* darker well floor at the bottom of the recess */}
+      {/* darker floor at the bottom of the well recess (covered by the land where
+          the notch/screen are, so navy only shows through the actual openings) */}
       <mesh position={[WELL.x, WELL.y, FLOOR_Z + 0.004]}>
         <planeGeometry args={[WELL.w - 0.02, WELL.h - 0.02]} />
         <meshStandardMaterial color={floor} metalness={0.35} roughness={0.5} />

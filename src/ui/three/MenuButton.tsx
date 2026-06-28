@@ -108,7 +108,8 @@ export function MenuButton({ x, y, size, color, icon, power, onPress, resume }: 
         onPointerCancel={release}
         onPointerLeave={release}
       >
-        <RoundedBox args={[size, size, 0.28]} radius={0.1} smoothness={4} position={[0, 0, 0.12]}>
+        {/* flat-topped rounded square (no concave finger dish) */}
+        <RoundedBox args={[size, size, 0.26]} radius={0.07} smoothness={4} position={[0, 0, 0.11]}>
           <meshStandardMaterial color={bodyColor} metalness={0.22} roughness={0.45} />
         </RoundedBox>
         {/* glyph scales with the button so it stays proportionate on big buttons */}

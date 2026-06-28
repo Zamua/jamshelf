@@ -13,27 +13,32 @@ interface PadProps {
   y: number;
   w: number;
   h: number;
+  platW: number;
+  platH: number;
+  platDx: number;
   lit: boolean;
   power: boolean;
   handlers: DeviceHandlers;
 }
 
-// A single cream keycap. The visual state (depress + emissive glow) is driven by
-// `lit` (the controller decides which pads are held), so press, multi-touch and
-// glissando all light correctly. The mesh fires raw, semantic-free input.
-export function Pad({ degree, x, y, w, h, lit, power, handlers }: PadProps) {
-  const mesh = useRef<THREE.Mesh>(null);
-  const mat = useRef<THREE.MeshStandardMaterial>(null);
+// A single cream keycap with a slightly-raised platform layered on its face. For
+// the top (sharp) keys the platform is an inset square offset to the inside, so
+// it reads like a piano sharp between the bottom keys. The visual state (depress
+// + emissive glow) is driven by `lit` (the controller decides which pads are
+// held), so press, multi-touch and glissando all light correctly.
+export function Pad({ degree, x, y, w, h, platW, platH, platDx, lit, power, handlers }: PadProps) {
+  const group = useRef<THREE.Group>(null);
+  const mats = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
 
   useFrame((_, delta) => {
     const k = Math.min(1, delta * 18); // frame-rate independent smoothing
-    if (mesh.current) {
+    if (group.current) {
       const targetZ = lit ? PAD.pressZ : PAD.restZ;
-      mesh.current.position.z += (targetZ - mesh.current.position.z) * k;
+      group.current.position.z += (targetZ - group.current.position.z) * k;
     }
-    if (mat.current) {
-      const targetE = lit && power ? 0.95 : 0;
-      mat.current.emissiveIntensity += (targetE - mat.current.emissiveIntensity) * k;
+    const targetE = lit && power ? 0.95 : 0;
+    for (const m of mats.current) {
+      if (m) m.emissiveIntensity += (targetE - m.emissiveIntensity) * k;
     }
   });
 
@@ -53,26 +58,50 @@ export function Pad({ degree, x, y, w, h, lit, power, handlers }: PadProps) {
     handlers.onPadUp(String(e.pointerId));
   };
 
+  const base = power ? PALETTE.cream : dim(PALETTE.cream);
+  const top = power ? PALETTE.creamHi : dim(PALETTE.creamHi);
+
   return (
-    <RoundedBox
-      ref={mesh}
-      args={[w, h, PAD.d]}
-      radius={0.07}
-      smoothness={4}
+    <group
+      ref={group}
       position={[x, y, PAD.restZ]}
       onPointerDown={down}
       onPointerEnter={enter}
       onPointerUp={up}
       onPointerCancel={up}
     >
-      <meshStandardMaterial
-        ref={mat}
-        color={power ? PALETTE.cream : dim(PALETTE.cream)}
-        emissive={'#ffe6a8'}
-        emissiveIntensity={0}
-        metalness={0.05}
-        roughness={0.42}
-      />
-    </RoundedBox>
+      {/* keycap base */}
+      <RoundedBox args={[w, h, PAD.d]} radius={0.07} smoothness={4}>
+        <meshStandardMaterial
+          ref={(el) => {
+            mats.current[0] = el;
+          }}
+          color={base}
+          emissive={'#ffe6a8'}
+          emissiveIntensity={0}
+          metalness={0.05}
+          roughness={0.45}
+        />
+      </RoundedBox>
+
+      {/* slightly-raised platform on the keycap face */}
+      <RoundedBox
+        args={[platW, platH, 0.07]}
+        radius={0.035}
+        smoothness={4}
+        position={[platDx, 0, PAD.d / 2]}
+      >
+        <meshStandardMaterial
+          ref={(el) => {
+            mats.current[1] = el;
+          }}
+          color={top}
+          emissive={'#ffe6a8'}
+          emissiveIntensity={0}
+          metalness={0.05}
+          roughness={0.4}
+        />
+      </RoundedBox>
+    </group>
   );
 }

@@ -77,12 +77,23 @@ structural facts, learned by iterating against the official photos in
   GOTCHA: a solid slab front face would OCCLUDE any recess behind it - you must cut
   the hole. Also: surface-mounted bits (speaker dots, mic) sit at `FRONT_Z + ~0.012`;
   if you re-enable an extrude bevel the land front creeps proud and hides them.
-- Screen is **square** (not a wide rectangle). Menu buttons are big with tight,
-  even gaps, spaced across the well's top strip with the screen. Speaker is a
-  FLUSH octagonal field of round holes (no basin, no raised ring). Body edges are
-  steep (`BODY_RADIUS` small, ~0.1).
+- **4-column grid**: the 4 top cells (OLED + 3 menu buttons) are SQUARES that
+  share the column centers + width (`COLS`, `KEY_W`) of the 4 bottom keys, so they
+  line up vertically. The 3 sharp (top) keys sit at the gaps BETWEEN columns; each
+  sharp's square platform is offset to the inside, over its bottom-key gap (piano
+  interleave). The OLED is column 0, its own recess; the well notches around it.
+- Menu buttons are flat-topped squares with a **concave finger-cup dish** (a
+  BackSide funnel + floor); the icon glyph floats just above the dish so it stays
+  readable. Speaker is a FILLED octagon dot field (grid clipped to the octagon).
+  Body edges are steep (`BODY_RADIUS` ~0.1).
+- **Swappable shell color**: `BODY_THEMES` in `palette.ts` lists the editions
+  (body / deep / floor shades). The controller holds an unbounded `themeIndex`
+  (cycled by `swapColor()`, exposed on the ViewModel); the UI maps it modulo the
+  theme count - NO hex colors leak into the application layer. Chassis/Speaker/Knob
+  + the joystick dots take their colors from the resolved theme; cream keys, accent
+  buttons and the screen are fixed. A round swatch button in `App.tsx` cycles it.
 - All geometry lives in `layout.ts` (`WELL`, `SCREEN`, `MENU`, `SPEAKER`, `MIC`,
-  `KNOB`, `padSpecs()`). Tune there; components read it.
+  `KNOB`, `COLS`, `KEY_W`, `BRAND`, `JOY_DOTS`, `padSpecs()`). Tune there.
 
 Render loop for look-matching: `npm run build`, `npx vite preview --port 4231`,
 then Playwright (software WebGL: `--use-gl=angle --use-angle=swiftshader`) via the

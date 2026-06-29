@@ -45,10 +45,10 @@ export class WebAudioLooper implements AudioLooper {
   private selected = 0; // the layer the clear/redo cursor is on (during play)
   private bpm = 120;
 
-  // master capture (growable list of input blocks)
+  // capture: a growable list of input blocks (used for the master AND each overdub,
+  // both recorded contiguously from their start point).
   private masterChunks: [Float32Array[], Float32Array[]] = [[], []];
-  // overdub capture (fixed loop length, written phase-aligned)
-  private overdub: [Float32Array, Float32Array] | null = null;
+  private capturedSamples = 0; // total samples captured this take (caps overdubs at 1 loop)
   private capturing = false; // copy input blocks this audio frame?
 
   private loopLenSamples = 0; // master loop length (defines every layer)
@@ -155,6 +155,7 @@ export class WebAudioLooper implements AudioLooper {
       this.mode = 'rec';
       this.recTrack = 0;
       this.masterChunks = [[], []];
+      this.capturedSamples = 0;
       this.capturing = true;
       this.anchorTime = this.ctx.currentTime;
       this.lastActivity = this.anchorTime;
@@ -209,7 +210,7 @@ export class WebAudioLooper implements AudioLooper {
     this.recTrack = -1;
     this.selected = 0;
     this.capturing = false;
-    this.overdub = null;
+    this.capturedSamples = 0;
     this.masterChunks = [[], []];
     this.loopLenSamples = 0;
     this.loopBeats = 0;
@@ -273,6 +274,7 @@ export class WebAudioLooper implements AudioLooper {
     this.selected = this.tracks.length - 1;
     this.recTrack = -1;
     this.mode = 'play';
+    this.stopped = false;
     this.stopMetronome();
     this.startDisplayTimer();
   }
@@ -284,8 +286,8 @@ export class WebAudioLooper implements AudioLooper {
     const ctx = this.ctx!;
     this.stopAllSources(); // layers go silent during the count-in
     this.stopMetronome();
+    this.stopped = false; // recording an overdub clears any prior stop state
     this.recTrack = this.tracks.length;
-    this.overdub = [new Float32Array(this.loopLenSamples), new Float32Array(this.loopLenSamples)];
     this.capturing = false; // not yet - wait out the count-in
     this.mode = 'rec';
     this.countdown = BEATS_PER_BAR;
@@ -305,6 +307,9 @@ export class WebAudioLooper implements AudioLooper {
     this.restartTracks(downbeat); // existing layers replay from the top, in sync
     this.scheduleAt(downbeat, () => {
       this.countdown = 0;
+      this.stopped = false; // layers are audibly playing again from bar 1
+      this.masterChunks = [[], []]; // contiguous capture, starting at phase 0
+      this.capturedSamples = 0;
       this.capturing = true; // recording begins
       this.startMetronome(downbeat);
       this.startDisplayTimer();
@@ -326,8 +331,12 @@ export class WebAudioLooper implements AudioLooper {
     }
   }
   // Re-create every layer's source from its retained buffer and start it at `at`, so
-  // all layers play from bar 1 in lockstep.
+  // all layers play from bar 1 in lockstep. STOPS the current sources first - that is
+  // what prevents "zombie" tracks: replacing t.source without stopping the old one
+  // (e.g. when the `stopped` flag had gone stale) left it playing + untracked, so no
+  // stop/clear could reach it.
   private restartTracks(at: number): void {
+    this.stopAllSources();
     for (const t of this.tracks) {
       const fresh = this.startLoop(t.buffer, at);
       t.source = fresh.source;
@@ -349,16 +358,21 @@ export class WebAudioLooper implements AudioLooper {
 
   private finalizeOverdub(): void {
     this.capturing = false;
+    this.clearPendingTimers();
     const ctx = this.ctx!;
-    const od = this.overdub!;
-    this.overdub = null;
+    // The overdub was captured contiguously from the downbeat (phase 0). Place its
+    // first loop's worth at phase 0 (truncate/pad) - a clean, jitter-free layer.
+    const left = concat(this.masterChunks[0]);
+    const right = concat(this.masterChunks[1]);
+    this.masterChunks = [[], []];
     const buf = ctx.createBuffer(2, this.loopLenSamples, ctx.sampleRate);
-    buf.getChannelData(0).set(od[0]);
-    buf.getChannelData(1).set(od[1]);
+    copyInto(buf.getChannelData(0), left);
+    copyInto(buf.getChannelData(1), right);
     this.tracks.push(this.startLoop(buf, this.nextBoundary()));
     this.selected = this.tracks.length - 1;
     this.recTrack = -1;
     this.mode = 'play';
+    this.stopped = false;
     this.stopMetronome();
   }
 
@@ -437,30 +451,17 @@ export class WebAudioLooper implements AudioLooper {
 
   private process(e: AudioProcessingEvent): void {
     if (!this.capturing) return;
+    // An overdub starts capturing exactly on the loop downbeat (after the count-in),
+    // so it is a plain CONTIGUOUS recording of one loop from phase 0 - no per-block
+    // phase math (which jittered off playbackTime and left discontinuities a sharp
+    // drum hit exposed). Stop once we have a full loop: one clean pass from bar 1.
+    if (this.recTrack > 0 && this.capturedSamples >= this.loopLenSamples) return;
     const inBuf = e.inputBuffer;
     const inL = inBuf.getChannelData(0);
     const inR = inBuf.numberOfChannels > 1 ? inBuf.getChannelData(1) : inL;
-    if (this.recTrack === 0) {
-      // master: accumulate the raw blocks; length defines the loop
-      this.masterChunks[0].push(new Float32Array(inL));
-      this.masterChunks[1].push(new Float32Array(inR));
-      return;
-    }
-    if (!this.overdub || this.loopLenSamples <= 0) return;
-    // overdub: fold the input into the fixed-length buffer at its loop phase, so
-    // the whole layer aligns to the loop boundary (one block of input latency is
-    // backed out so the layer is not played a block late).
-    const sr = this.ctx!.sampleRate;
-    const len = this.loopLenSamples;
-    const startPhase = Math.round((e.playbackTime - this.anchorTime) * sr) - BUFFER_SIZE;
-    const l = this.overdub[0];
-    const r = this.overdub[1];
-    for (let i = 0; i < inL.length; i++) {
-      let p = (startPhase + i) % len;
-      if (p < 0) p += len;
-      l[p] = inL[i];
-      r[p] = inR[i];
-    }
+    this.masterChunks[0].push(new Float32Array(inL));
+    this.masterChunks[1].push(new Float32Array(inR));
+    this.capturedSamples += inL.length;
   }
 
   // --- metronome -----------------------------------------------------------
@@ -549,4 +550,10 @@ function concat(chunks: Float32Array[]): Float32Array {
 function wrapAdd(dst: Float32Array, src: Float32Array, len: number): void {
   if (len <= 0) return;
   for (let i = 0; i < src.length; i++) dst[i % len] += src[i];
+}
+
+// Copy `src` into `dst`, truncating or zero-padding to dst's length (an overdub is one
+// loop captured contiguously from phase 0, so its first loop's worth maps straight in).
+function copyInto(dst: Float32Array, src: Float32Array): void {
+  dst.set(src.length > dst.length ? src.subarray(0, dst.length) : src);
 }

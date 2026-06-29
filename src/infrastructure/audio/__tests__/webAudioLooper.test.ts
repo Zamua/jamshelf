@@ -276,6 +276,21 @@ describe('WebAudioLooper', () => {
     expect(ctx.sources[ctx.sources.length - 1].loop).toBe(true);
   });
 
+  it('never leaves a zombie source: stop is always reachable after stop->overdub', () => {
+    const { looper, ctx } = makeLooper();
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 });
+    looper.toggleStop(); // STOP (sets the stopped flag)
+    expect(looper.view().stopped).toBe(true);
+    // tap to overdub while stopped: the count-in must clear the stale stop flag, and
+    // restarting the layers must stop the old sources (no untracked survivors)
+    recordOverdub(looper, ctx, 0.3, 40);
+    expect(looper.view().stopped).toBe(false);
+    looper.toggleStop(); // STOP again - this must genuinely stop, not resume
+    expect(looper.view().stopped).toBe(true);
+    expect(ctx.sources.every((s) => s.stopped)).toBe(true); // no zombie left playing
+  });
+
   it('clear() stops every loop source and returns to idle', () => {
     const { looper, ctx } = makeLooper();
     recordMaster(looper, ctx, { playBlocks: 20 });

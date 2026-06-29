@@ -213,7 +213,10 @@ export class WebAudioSynth implements SynthPort {
     const ctx = new Ctor();
     this.ctx = ctx;
 
-    // Master gain -> compressor -> destination.
+    // Master gain -> compressor (glue) -> limiter (brickwall) -> destination. The
+    // limiter is what keeps stacked loop layers + live drums from clipping: the comp's
+    // 3ms attack lets sharp drum transients through, so a fast near-0dB limiter catches
+    // the peaks before the output hard-clips (which is what made layered drums crackle).
     const master = ctx.createGain();
     master.gain.value = this.muted ? 0 : this.volume;
     const comp = ctx.createDynamicsCompressor();
@@ -222,7 +225,14 @@ export class WebAudioSynth implements SynthPort {
     comp.ratio.value = 4;
     comp.attack.value = 0.003;
     comp.release.value = 0.12;
-    comp.connect(ctx.destination);
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -1.5;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.0005;
+    limiter.release.value = 0.06;
+    comp.connect(limiter);
+    limiter.connect(ctx.destination);
     this.master = master;
 
     // Two summing buses sit between the live graph and the compressor so the looper
@@ -346,7 +356,7 @@ export class WebAudioSynth implements SynthPort {
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const g = ctx.createGain();
-    g.gain.value = 0.9;
+    g.gain.value = 0.7; // headroom so a drum layer summed over chords does not clip
     src.connect(g);
     g.connect(this.master!);
     src.start();

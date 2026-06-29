@@ -15,7 +15,12 @@ export type PatchName =
   | 'CLARINET'
   | 'BELL'
   | 'ORGAN'
-  | 'PLUCK';
+  | 'PLUCK'
+  | 'SUPER'
+  | 'HUGE'
+  | 'NEON'
+  | 'REESE'
+  | 'NEURO';
 
 export const PATCH_ORDER: readonly PatchName[] = [
   'SAW',
@@ -27,6 +32,11 @@ export const PATCH_ORDER: readonly PatchName[] = [
   'BELL',
   'ORGAN',
   'PLUCK',
+  'SUPER',
+  'HUGE',
+  'NEON',
+  'REESE',
+  'NEURO',
 ];
 
 // A BPM-synced tick source. Timing lives HERE (a port), never in the domain, so

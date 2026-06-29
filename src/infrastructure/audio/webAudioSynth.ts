@@ -35,6 +35,13 @@ interface Patch {
   osc2gain: number; // mix level of the second oscillator
   osc2ratio: number; // osc2 frequency multiplier
   detune: number; // cents of spread between the two oscillators
+  // "huge" voicing: a UNISON stack of osc1 (a detuned, stereo-spread supersaw wall)
+  // plus a SUB sine an octave down. Defaults keep the classic 1-2 osc voices.
+  unison?: number; // detuned copies of osc1 (default 1)
+  unisonDetune?: number; // total detune spread across the unison, cents
+  unisonSpread?: number; // 0..1 stereo pan spread of the unison
+  sub?: number; // gain of a sine one octave below (0 / undefined = none)
+  drive?: number; // soft-clip waveshaper amount before the filter (grit; Reese/neuro bass)
   // FM params (2-op): a modulator at carrier*ratio modulates the carrier frequency,
   // its depth (index) enveloped from peak -> sustain over fmDecay (the "FM pluck").
   carrier: Wave;
@@ -90,7 +97,26 @@ const PATCHES: Record<PatchName, Patch> = {
   BELL: { ...BASE, engine: 'fm', carrier: 'sine', modWave: 'sine', fmRatio: 3.5, fmIndex: 4, fmDecay: 0.9, fmSustain: 0, cutoff: 7000, A: 0.001, D: 0.8, S: 0, R: 1, wet: 0.45 },
   ORGAN: { ...BASE, osc1: 'square', osc2: 'square', osc2gain: 0.5, osc2ratio: 2, cutoff: 4000, q: 0.3, A: 0.005, D: 0.05, S: 0.9, R: 0.12, wet: 0.12 },
   PLUCK: { ...BASE, osc1: 'sawtooth', cutoff: 3200, cutoffFloor: 800, filterEnv: true, q: 1.2, A: 0.002, D: 0.22, S: 0, R: 0.18 },
+  // The "huge" supersaw family: a wide unison wall + sub + lush reverb.
+  SUPER: { ...BASE, osc1: 'sawtooth', unison: 7, unisonDetune: 32, unisonSpread: 0.8, sub: 0.32, cutoff: 4200, q: 0.5, A: 0.02, D: 0.35, S: 0.82, R: 0.6, wet: 0.42 },
+  HUGE: { ...BASE, osc1: 'sawtooth', unison: 7, unisonDetune: 46, unisonSpread: 0.92, sub: 0.42, cutoff: 2200, q: 0.4, A: 0.45, D: 0.6, S: 0.92, R: 1.4, wet: 0.6 },
+  NEON: { ...BASE, osc1: 'sawtooth', unison: 5, unisonDetune: 22, unisonSpread: 0.7, sub: 0.28, cutoff: 5600, cutoffFloor: 1500, filterEnv: true, q: 1.0, A: 0.008, D: 0.4, S: 0.55, R: 0.5, wet: 0.4 },
+  // DnB basses: detuned-saw Reese growl + heavy sub + drive grit. Play them low (drop
+  // the OCTAVE) for the classic enormous bass. NEURO sweeps a resonant filter for movement.
+  REESE: { ...BASE, osc1: 'sawtooth', unison: 4, unisonDetune: 20, unisonSpread: 0.45, sub: 0.5, drive: 3, cutoff: 1500, q: 0.7, A: 0.01, D: 0.3, S: 0.85, R: 0.3, wet: 0.1 },
+  NEURO: { ...BASE, osc1: 'sawtooth', unison: 3, unisonDetune: 26, unisonSpread: 0.4, sub: 0.5, drive: 6, cutoff: 2600, cutoffFloor: 500, filterEnv: true, q: 3.5, A: 0.005, D: 0.35, S: 0.5, R: 0.3, wet: 0.12 },
 };
+
+// A soft-clip (tanh) waveshaper curve for the `drive` grit (amount ~3-8).
+function driveCurve(amount: number): Float32Array<ArrayBuffer> {
+  const n = 1024;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.tanh(amount * x);
+  }
+  return curve;
+}
 
 const PEAK = 0.16; // ADSR peak amplitude (per voice)
 const MAX_VOICES = 32; // global polyphony cap (oldest-steal beyond this)
@@ -513,6 +539,19 @@ export class WebAudioSynth implements SynthPort {
     vca.gain.setValueAtTime(TINY, t0);
     nodes.push(vca);
 
+    // Optional drive: a soft-clip waveshaper feeding the filter, for grit. The
+    // oscillators target this (else the filter directly) so a Reese / neuro bass
+    // saturates before it is filtered.
+    let oscDest: AudioNode = filter;
+    if (patch.drive) {
+      const shaper = ctx.createWaveShaper();
+      shaper.curve = driveCurve(patch.drive);
+      shaper.oversample = '2x';
+      shaper.connect(filter);
+      oscDest = shaper;
+      nodes.push(shaper);
+    }
+
     if (patch.engine === 'fm') {
       // 2-operator FM: modulator (carrier*ratio) -> modGain -> carrier.frequency.
       // The modulation depth (index*freq, in Hz) is enveloped from peak to sustain,
@@ -532,19 +571,42 @@ export class WebAudioSynth implements SynthPort {
       );
       mod.connect(modGain);
       modGain.connect(carrier.frequency);
-      carrier.connect(filter);
+      carrier.connect(oscDest);
       oscs.push(carrier, mod);
       nodes.push(modGain);
     } else {
-      // Subtractive: oscillator 1 (+ optional detuned oscillator 2) -> filter.
-      const osc1 = ctx.createOscillator();
-      osc1.type = patch.osc1;
-      osc1.frequency.setValueAtTime(freq, t0);
-      osc1.detune.setValueAtTime(patch.detune * 0.5, t0); // half the spread, +
-      osc1.connect(filter);
-      oscs.push(osc1);
+      // Subtractive. osc1 can be stacked into a detuned, stereo-spread UNISON (a
+      // supersaw "wall") for the huge presets; a SUB sine an octave down adds weight.
+      // Default (unison 1, no sub) reproduces the classic single / two-osc voices.
+      const unison = patch.unison ?? 1;
+      const spread = patch.unisonDetune ?? 0;
+      const stereo = patch.unisonSpread ?? 0;
+      const uGain = 1 / Math.sqrt(unison); // keep the stacked level sane
+      for (let i = 0; i < unison; i++) {
+        const o = ctx.createOscillator();
+        o.type = patch.osc1;
+        o.frequency.setValueAtTime(freq, t0);
+        // spread the unison across the detune; a lone osc keeps the classic +half-spread
+        const det = unison > 1 ? (i / (unison - 1) - 0.5) * spread : patch.detune * 0.5;
+        o.detune.setValueAtTime(det, t0);
+        oscs.push(o);
+        let tail: AudioNode = o;
+        if (stereo > 0 && unison > 1) {
+          const pan = ctx.createStereoPanner();
+          pan.pan.value = (i / (unison - 1) - 0.5) * 2 * stereo;
+          o.connect(pan);
+          tail = pan;
+          nodes.push(pan);
+        }
+        const g = ctx.createGain();
+        g.gain.value = uGain;
+        tail.connect(g);
+        g.connect(oscDest);
+        nodes.push(g);
+      }
 
-      if (patch.osc2) {
+      // classic detuned second oscillator (only for the non-unison voices)
+      if (patch.osc2 && unison === 1) {
         const osc2 = ctx.createOscillator();
         osc2.type = patch.osc2;
         osc2.frequency.setValueAtTime(freq * patch.osc2ratio, t0);
@@ -552,9 +614,23 @@ export class WebAudioSynth implements SynthPort {
         const og = ctx.createGain();
         og.gain.value = patch.osc2gain;
         osc2.connect(og);
-        og.connect(filter);
+        og.connect(oscDest);
         oscs.push(osc2);
         nodes.push(og);
+      }
+
+      // sub oscillator: a sine one octave below for fullness / weight. It bypasses the
+      // drive (kept clean for a tight low end) and goes straight to the filter.
+      if (patch.sub) {
+        const sub = ctx.createOscillator();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(freq / 2, t0);
+        const sg = ctx.createGain();
+        sg.gain.value = patch.sub;
+        sub.connect(sg);
+        sg.connect(filter);
+        oscs.push(sub);
+        nodes.push(sg);
       }
     }
 

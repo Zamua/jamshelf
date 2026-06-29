@@ -14,7 +14,6 @@ const KIT_TUNE: Record<string, { kickF: number; kickDecay: number; snareN: numbe
 // kit -> folder; kits not listed here are synthesized.
 const SAMPLE_KITS: Partial<Record<DrumKit, string>> = {
   TRAP: 'trap',
-  BOUNCE: 'bounce',
   LOFI: 'lofi',
 };
 

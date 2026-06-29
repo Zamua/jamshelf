@@ -1,8 +1,20 @@
-Drum samples (trap / bounce / lofi kits)
-=========================================
-Source: Boochi44/free-drum-samples (https://github.com/Boochi44/free-drum-samples)
-License: Creative Commons Zero v1.0 Universal (CC0 1.0) - public domain, free to
-use / modify / redistribute, no attribution required.
+chord-synth drum samples - all Creative Commons 0 (CC0 1.0, public domain)
+Free to use, modify and redistribute, no attribution required. From Freesound.org.
 
-Many one-shots are derived from the TR-808 sample set by Edward Loveall
-(tidalcycles, CC0). Converted to mono mp3 (192k) for the web. One sample per pad.
+TRAP
+  kick     "Kick (24)"             by Rippleys_Circus
+  kick2    "808 Altered Beast - A" by 8bitmyketison
+  snare    "Trap Snare 1"          by nbmusic098
+  hat      "HI-HAT closed PO-12"   by jannevse
+  tom      "JH Big Tom 1"          by Johnnie_Holiday
+  ride     "Trap Clap (JH)"        by Johnnie_Holiday
+  openhat  "Dance Open Hat"        by Teyloh
+
+LOFI
+  kick     "lo-fi kick 2"          by reathance
+  kick2    "lo-fi kick 1"          by reathance
+  snare    "Lil Lofi Snare 3"      by deadrobotmusic
+  hat      "LoFi KO HiHat closed"  by Uberproduktion
+  tom      "lofi perc pick"        by deadrobotmusic
+  ride     "lo-fi perc 3"          by reathance
+  openhat  "lo-fi perc 4"          by reathance

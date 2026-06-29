@@ -47,7 +47,7 @@ export class SynthController {
   private scale: ScaleName = 'MAJOR';
   private octave = 0;
   private quality: Quality = 'TRIAD';
-  private patch: PatchName = 'POLY';
+  private patch: PatchName = 'SAW';
   private bpm = 120;
   private volume = 0.8;
   private power = true;

@@ -2,15 +2,29 @@
 // (Web Audio, a test stub, ...) live in infrastructure and implement these.
 // The application/domain never import a vendor SDK or framework directly.
 
-export type PatchName = 'POLY' | 'WARM' | 'PLUCK' | 'ORGAN' | 'BELL' | 'SQUARE';
+// The synth voices, modelled on the real device's instrument set: analog
+// (subtractive) + 2-operator FM. EPIANO / HX7 / BELL are FM; the rest subtractive.
+export type PatchName =
+  | 'SAW'
+  | 'SINE'
+  | 'EPIANO'
+  | 'HX7'
+  | 'STRINGS'
+  | 'CLARINET'
+  | 'BELL'
+  | 'ORGAN'
+  | 'PLUCK';
 
 export const PATCH_ORDER: readonly PatchName[] = [
-  'POLY',
-  'WARM',
-  'PLUCK',
-  'ORGAN',
+  'SAW',
+  'SINE',
+  'EPIANO',
+  'HX7',
+  'STRINGS',
+  'CLARINET',
   'BELL',
-  'SQUARE',
+  'ORGAN',
+  'PLUCK',
 ];
 
 // A BPM-synced tick source. Timing lives HERE (a port), never in the domain, so

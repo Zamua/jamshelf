@@ -41,7 +41,7 @@ export class SpySynth implements SynthPort {
   on: OnCall[] = [];
   off: string[] = [];
   releasedAll = 0;
-  patch: PatchName = 'POLY';
+  patch: PatchName = 'SAW';
   strum = -1;
   vol = -1;
   muted = false;

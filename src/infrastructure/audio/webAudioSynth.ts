@@ -8,13 +8,25 @@ import type { PatchName, SynthPort } from '../../application/ports';
 // surface is free to change; the port itself stays stable.
 
 type Wave = 'sine' | 'square' | 'sawtooth' | 'triangle';
+type Engine = 'sub' | 'fm'; // subtractive (analog) or 2-operator FM
 
 interface Patch {
+  engine: Engine;
+  // subtractive params
   osc1: Wave;
   osc2: Wave | null;
   osc2gain: number; // mix level of the second oscillator
   osc2ratio: number; // osc2 frequency multiplier
   detune: number; // cents of spread between the two oscillators
+  // FM params (2-op): a modulator at carrier*ratio modulates the carrier frequency,
+  // its depth (index) enveloped from peak -> sustain over fmDecay (the "FM pluck").
+  carrier: Wave;
+  modWave: Wave;
+  fmRatio: number;
+  fmIndex: number; // peak modulation index; depth in Hz = index * carrierFreq
+  fmDecay: number; // index envelope time (s)
+  fmSustain: number; // index sustain fraction
+  // shared
   cutoff: number; // lowpass cutoff (Hz)
   cutoffFloor?: number; // filter-envelope target when filterEnv is on
   filterEnv?: boolean; // ramp cutoff -> cutoffFloor over A+D
@@ -26,94 +38,41 @@ interface Patch {
   wet: number; // reverb send level
 }
 
-// The six factory patches. Values mirror the prototype's table exactly.
+// Shared defaults so each patch only states what it changes.
+const BASE: Patch = {
+  engine: 'sub',
+  osc1: 'sawtooth',
+  osc2: null,
+  osc2gain: 0,
+  osc2ratio: 1,
+  detune: 0,
+  carrier: 'sine',
+  modWave: 'sine',
+  fmRatio: 1,
+  fmIndex: 2,
+  fmDecay: 0.4,
+  fmSustain: 0.1,
+  cutoff: 3200,
+  q: 0.6,
+  A: 0.005,
+  D: 0.2,
+  S: 0.6,
+  R: 0.3,
+  wet: 0.25,
+};
+
+// The instrument set, modelled on the real device: analog (SAW/SINE/STRINGS/
+// CLARINET/ORGAN/PLUCK) + 2-operator FM (EPIANO/HX7/BELL).
 const PATCHES: Record<PatchName, Patch> = {
-  POLY: {
-    osc1: 'sawtooth',
-    osc2: 'sawtooth',
-    osc2gain: 1.0,
-    osc2ratio: 1,
-    detune: 7,
-    cutoff: 2600,
-    q: 0.7,
-    A: 0.008,
-    D: 0.18,
-    S: 0.65,
-    R: 0.35,
-    wet: 0.25,
-  },
-  WARM: {
-    osc1: 'triangle',
-    osc2: 'sawtooth',
-    osc2gain: 0.4,
-    osc2ratio: 1,
-    detune: 5,
-    cutoff: 1600,
-    q: 0.6,
-    A: 0.02,
-    D: 0.25,
-    S: 0.7,
-    R: 0.5,
-    wet: 0.25,
-  },
-  PLUCK: {
-    osc1: 'sawtooth',
-    osc2: null,
-    osc2gain: 0,
-    osc2ratio: 1,
-    detune: 0,
-    cutoff: 3200,
-    cutoffFloor: 800,
-    filterEnv: true,
-    q: 1.2,
-    A: 0.002,
-    D: 0.22,
-    S: 0.0,
-    R: 0.18,
-    wet: 0.25,
-  },
-  ORGAN: {
-    osc1: 'square',
-    osc2: 'square',
-    osc2gain: 0.5,
-    osc2ratio: 2,
-    detune: 0,
-    cutoff: 4000,
-    q: 0.3,
-    A: 0.005,
-    D: 0.05,
-    S: 0.9,
-    R: 0.12,
-    wet: 0.12,
-  },
-  BELL: {
-    osc1: 'sine',
-    osc2: 'sine',
-    osc2gain: 0.5,
-    osc2ratio: 2.01,
-    detune: 0,
-    cutoff: 5000,
-    q: 0.5,
-    A: 0.001,
-    D: 0.6,
-    S: 0.0,
-    R: 0.9,
-    wet: 0.4,
-  },
-  SQUARE: {
-    osc1: 'square',
-    osc2: null,
-    osc2gain: 0,
-    osc2ratio: 1,
-    detune: 0,
-    cutoff: 2200,
-    q: 0.5,
-    A: 0.006,
-    D: 0.15,
-    S: 0.6,
-    R: 0.25,
-    wet: 0.25,
-  },
+  SAW: { ...BASE, osc1: 'sawtooth', osc2: 'sawtooth', osc2gain: 1, detune: 7, cutoff: 2600, q: 0.7, A: 0.008, D: 0.18, S: 0.65, R: 0.35 },
+  SINE: { ...BASE, osc1: 'sine', cutoff: 4500, A: 0.01, D: 0.2, S: 0.8, R: 0.4, wet: 0.3 },
+  EPIANO: { ...BASE, engine: 'fm', carrier: 'sine', modWave: 'sine', fmRatio: 1, fmIndex: 3.2, fmDecay: 0.35, fmSustain: 0.08, cutoff: 5500, A: 0.002, D: 0.5, S: 0.45, R: 0.5, wet: 0.3 },
+  HX7: { ...BASE, engine: 'fm', carrier: 'sine', modWave: 'sine', fmRatio: 2, fmIndex: 2.6, fmDecay: 0.5, fmSustain: 0.3, cutoff: 6000, A: 0.004, D: 0.3, S: 0.6, R: 0.4 },
+  STRINGS: { ...BASE, osc1: 'sawtooth', osc2: 'sawtooth', osc2gain: 0.8, detune: 13, cutoff: 2000, q: 0.5, A: 0.18, D: 0.3, S: 0.85, R: 0.7, wet: 0.4 },
+  CLARINET: { ...BASE, osc1: 'square', cutoff: 1700, q: 0.4, A: 0.03, D: 0.1, S: 0.82, R: 0.2, wet: 0.2 },
+  BELL: { ...BASE, engine: 'fm', carrier: 'sine', modWave: 'sine', fmRatio: 3.5, fmIndex: 4, fmDecay: 0.9, fmSustain: 0, cutoff: 7000, A: 0.001, D: 0.8, S: 0, R: 1, wet: 0.45 },
+  ORGAN: { ...BASE, osc1: 'square', osc2: 'square', osc2gain: 0.5, osc2ratio: 2, cutoff: 4000, q: 0.3, A: 0.005, D: 0.05, S: 0.9, R: 0.12, wet: 0.12 },
+  PLUCK: { ...BASE, osc1: 'sawtooth', cutoff: 3200, cutoffFloor: 800, filterEnv: true, q: 1.2, A: 0.002, D: 0.22, S: 0, R: 0.18 },
 };
 
 const PEAK = 0.16; // ADSR peak amplitude (per voice)
@@ -136,7 +95,7 @@ export class WebAudioSynth implements SynthPort {
   private reverbBus: GainNode | null = null;
   private volume = 0.8;
   private muted = false;
-  private patchName: PatchName = 'POLY';
+  private patchName: PatchName = 'SAW';
   private strumMs = 8;
   private groups = new Map<string, Voice[]>();
   private active: Voice[] = []; // insertion-ordered, for oldest-steal
@@ -268,26 +227,49 @@ export class WebAudioSynth implements SynthPort {
     vca.gain.setValueAtTime(TINY, t0);
     nodes.push(vca);
 
-    // Oscillator 1.
-    const osc1 = ctx.createOscillator();
-    osc1.type = patch.osc1;
-    osc1.frequency.setValueAtTime(freq, t0);
-    osc1.detune.setValueAtTime(patch.detune * 0.5, t0); // half the spread, +
-    osc1.connect(filter);
-    oscs.push(osc1);
+    if (patch.engine === 'fm') {
+      // 2-operator FM: modulator (carrier*ratio) -> modGain -> carrier.frequency.
+      // The modulation depth (index*freq, in Hz) is enveloped from peak to sustain,
+      // which gives the bright attack + mellowing decay of FM E.pianos / bells.
+      const carrier = ctx.createOscillator();
+      carrier.type = patch.carrier;
+      carrier.frequency.setValueAtTime(freq, t0);
+      const mod = ctx.createOscillator();
+      mod.type = patch.modWave;
+      mod.frequency.setValueAtTime(freq * patch.fmRatio, t0);
+      const modGain = ctx.createGain();
+      const peak = Math.max(1, patch.fmIndex * freq);
+      modGain.gain.setValueAtTime(peak, t0);
+      modGain.gain.exponentialRampToValueAtTime(
+        Math.max(1, peak * patch.fmSustain),
+        t0 + patch.fmDecay,
+      );
+      mod.connect(modGain);
+      modGain.connect(carrier.frequency);
+      carrier.connect(filter);
+      oscs.push(carrier, mod);
+      nodes.push(modGain);
+    } else {
+      // Subtractive: oscillator 1 (+ optional detuned oscillator 2) -> filter.
+      const osc1 = ctx.createOscillator();
+      osc1.type = patch.osc1;
+      osc1.frequency.setValueAtTime(freq, t0);
+      osc1.detune.setValueAtTime(patch.detune * 0.5, t0); // half the spread, +
+      osc1.connect(filter);
+      oscs.push(osc1);
 
-    // Oscillator 2 (optional), detuned the other way + frequency ratio.
-    if (patch.osc2) {
-      const osc2 = ctx.createOscillator();
-      osc2.type = patch.osc2;
-      osc2.frequency.setValueAtTime(freq * patch.osc2ratio, t0);
-      osc2.detune.setValueAtTime(patch.detune * -0.5, t0); // half the spread, -
-      const og = ctx.createGain();
-      og.gain.value = patch.osc2gain;
-      osc2.connect(og);
-      og.connect(filter);
-      oscs.push(osc2);
-      nodes.push(og);
+      if (patch.osc2) {
+        const osc2 = ctx.createOscillator();
+        osc2.type = patch.osc2;
+        osc2.frequency.setValueAtTime(freq * patch.osc2ratio, t0);
+        osc2.detune.setValueAtTime(patch.detune * -0.5, t0); // half the spread, -
+        const og = ctx.createGain();
+        og.gain.value = patch.osc2gain;
+        osc2.connect(og);
+        og.connect(filter);
+        oscs.push(osc2);
+        nodes.push(og);
+      }
     }
 
     filter.connect(vca);

@@ -152,16 +152,27 @@ down-left=6th, left=DIM, up-left=AUG - with real dim/aug/dom7/flip chord types i
 `chords.ts`; the 7 pads + diatonic 7th/9th stay "no wrong notes", these morphs are
 deliberately chromatic); Bass mode (OFF/ROOT) as a KEY-menu field (`withBass`).
 
-Touch hardening shipped: shared `joyPointer` ref (joystick finger can't hit keys),
-iOS selection/callout/magnifier suppressed (CSS + selectstart/gesturestart + a
-double-tap touchend guard in `main.tsx` + locked viewport), joystick morph has a big
-centre dead-zone with engage/release magnitude hysteresis + angular gaps so it is
-not twitchy, menu nav has latch hysteresis + axis-dominance gating.
+Also shipped: Inversions (`invert`/`voiceChord` in `performance.ts`; yellow cycles
+the voice when idle, or the held chord's root/1st/2nd inversion when a pad is down).
 
-Next, in rough priority: inversions; joystick EXTENDED/CHROMATIC modes; a real sound
-menu + more voices; looper + sequencer (event-based); effects + more scales
-(pentatonic/blues need a pad-mapping tweak) + Web-MIDI; then drums, presets,
-chord-lock, games.
+Touch hardening shipped:
+- shared `joyPointer` ref (joystick finger can't hit keys);
+- the joystick is a FLOATING stick - on touch-down the landing point becomes the
+  centre (origin) and deflection is RELATIVE to it (`Knob.tsx`), so a touch never
+  snaps to a direction; a big invisible grab disc makes it easy to grab. Morph has a
+  large centre dead-zone + engage/release magnitude hysteresis + angular gaps; menu
+  nav has latch hysteresis + axis-dominance gating;
+- the joystick well is a real cut recess (Chassis cuts a `KNOB_WELL_R` circle ~ the
+  cap width, inside the dot ring); only the cap protrudes; aux + USB-C are flush
+  recessed holes (PWR slider + VOL wheel still protrude);
+- iOS magnifier/loupe is a Safari wontfix that CSS canNOT stop; the canonical fix is
+  `preventDefault` on the canvas's raw `touchstart`/`touchmove` (in `App.tsx`
+  `onCreated`) - pads/joystick run on pointer events so they are unaffected. (CSS +
+  selectstart/gesturestart + locked viewport are kept as extra layers.)
+
+Next, in rough priority: joystick EXTENDED/CHROMATIC modes; a real sound menu + more
+voices; looper + sequencer (event-based); effects + more scales (pentatonic/blues
+need a pad-mapping tweak) + Web-MIDI; then drums, presets, chord-lock, games.
 
 ## Current state
 

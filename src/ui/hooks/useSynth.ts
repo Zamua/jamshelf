@@ -88,6 +88,22 @@ export function useSynth() {
 
   useEffect(() => controller.subscribe(setVm), [controller]);
 
+  // Stuck-note guard: a pad's pointer-up is delivered by raycast, so a finger that
+  // lifts off the EDGE of a pad or in a gap (easy when swiping fast) leaves the note
+  // held with no release. The browser always fires a window pointerup/pointercancel
+  // for that pointer, so release the matching voice (id = the pointer id) from there.
+  // Idempotent: a normal release over a pad already cleared it, so this is a no-op;
+  // for non-pad pointers (joystick, buttons) the id isn't a held voice, also a no-op.
+  useEffect(() => {
+    const release = (e: PointerEvent) => controller.releasePad(String(e.pointerId));
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    return () => {
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+    };
+  }, [controller]);
+
   // Desktop play: number keys 1..7 press/release the seven pads. The synthetic
   // voiceId ('k1'..'k7') keeps keyboard voices independent from touch voices, so
   // a chord can be held by keys and fingers at once. First keypress unlocks audio.

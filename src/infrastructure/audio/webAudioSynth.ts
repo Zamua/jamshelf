@@ -146,6 +146,8 @@ export class WebAudioSynth implements SynthPort {
   private muted = false;
   private patchName: PatchName = 'SAW';
   private strumMs = 8;
+  private glideSec = 0; // portamento time; a mono note glides from lastMonoFreq
+  private lastMonoFreq: number | null = null; // for portamento (single-note glide source)
   private groups = new Map<string, Voice[]>();
   private active: Voice[] = []; // insertion-ordered, for oldest-steal
   private noise: AudioBuffer | null = null; // shared white noise for the drum voices
@@ -182,12 +184,20 @@ export class WebAudioSynth implements SynthPort {
     const patch = PATCHES[patchName ?? this.patchName];
     const t0 = this.ctx.currentTime + 0.005;
     const spread = this.strumMs / 1000;
+    // Portamento applies to a single (mono) note: glide from the last mono fundamental.
+    const mono = freqs.length === 1;
+    const glideFrom = this.glideSec > 0 && mono ? this.lastMonoFreq ?? undefined : undefined;
     const voices: Voice[] = freqs.map((f, i) =>
-      this.makeVoice(voiceId, f, t0 + i * spread, patch),
+      this.makeVoice(voiceId, f, t0 + i * spread, patch, glideFrom),
     );
+    if (mono) this.lastMonoFreq = freqs[0];
     this.groups.set(voiceId, voices);
     for (const v of voices) this.active.push(v);
     this.stealIfNeeded();
+  }
+
+  setGlide(seconds: number): void {
+    this.glideSec = Math.max(0, seconds);
   }
 
   noteOff(voiceId: string): void {
@@ -199,6 +209,7 @@ export class WebAudioSynth implements SynthPort {
 
   releaseAll(): void {
     for (const id of [...this.groups.keys()]) this.noteOff(id);
+    this.lastMonoFreq = null; // start the next glide fresh
   }
 
   setPatch(patch: PatchName): void {
@@ -526,7 +537,19 @@ export class WebAudioSynth implements SynthPort {
     return impulse;
   }
 
-  private makeVoice(id: string, freq: number, t0: number, patch: Patch): Voice {
+  // Set an oscillator's frequency at t0, or (portamento) glide it from `from` to the
+  // target over glideSec. Each osc passes its own scaled `from` so unison/sub/FM ride
+  // the slide together. exponentialRamp needs strictly-positive values.
+  private glideFreq(param: AudioParam, target: number, from: number | undefined, t0: number): void {
+    if (from !== undefined && this.glideSec > 0) {
+      param.setValueAtTime(Math.max(1, from), t0);
+      param.exponentialRampToValueAtTime(Math.max(1, target), t0 + this.glideSec);
+    } else {
+      param.setValueAtTime(target, t0);
+    }
+  }
+
+  private makeVoice(id: string, freq: number, t0: number, patch: Patch, glideFrom?: number): Voice {
     const ctx = this.ctx!;
     const oscs: OscillatorNode[] = [];
     const nodes: AudioNode[] = [];
@@ -561,10 +584,10 @@ export class WebAudioSynth implements SynthPort {
       // which gives the bright attack + mellowing decay of FM E.pianos / bells.
       const carrier = ctx.createOscillator();
       carrier.type = patch.carrier;
-      carrier.frequency.setValueAtTime(freq, t0);
+      this.glideFreq(carrier.frequency, freq, glideFrom, t0);
       const mod = ctx.createOscillator();
       mod.type = patch.modWave;
-      mod.frequency.setValueAtTime(freq * patch.fmRatio, t0);
+      this.glideFreq(mod.frequency, freq * patch.fmRatio, glideFrom && glideFrom * patch.fmRatio, t0);
       const modGain = ctx.createGain();
       const peak = Math.max(1, patch.fmIndex * freq);
       modGain.gain.setValueAtTime(peak, t0);
@@ -588,7 +611,7 @@ export class WebAudioSynth implements SynthPort {
       for (let i = 0; i < unison; i++) {
         const o = ctx.createOscillator();
         o.type = patch.osc1;
-        o.frequency.setValueAtTime(freq, t0);
+        this.glideFreq(o.frequency, freq, glideFrom, t0);
         // spread the unison across the detune; a lone osc keeps the classic +half-spread
         const det = unison > 1 ? (i / (unison - 1) - 0.5) * spread : patch.detune * 0.5;
         o.detune.setValueAtTime(det, t0);
@@ -612,7 +635,7 @@ export class WebAudioSynth implements SynthPort {
       if (patch.osc2 && unison === 1) {
         const osc2 = ctx.createOscillator();
         osc2.type = patch.osc2;
-        osc2.frequency.setValueAtTime(freq * patch.osc2ratio, t0);
+        this.glideFreq(osc2.frequency, freq * patch.osc2ratio, glideFrom && glideFrom * patch.osc2ratio, t0);
         osc2.detune.setValueAtTime(patch.detune * -0.5, t0); // half the spread, -
         const og = ctx.createGain();
         og.gain.value = patch.osc2gain;
@@ -627,7 +650,7 @@ export class WebAudioSynth implements SynthPort {
       if (patch.sub) {
         const sub = ctx.createOscillator();
         sub.type = 'sine';
-        sub.frequency.setValueAtTime(freq / 2, t0);
+        this.glideFreq(sub.frequency, freq / 2, glideFrom && glideFrom / 2, t0);
         const sg = ctx.createGain();
         sg.gain.value = patch.sub;
         sub.connect(sg);

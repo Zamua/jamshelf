@@ -19,6 +19,8 @@ import {
   RATES,
   STRUM_SPEEDS,
   BASS_MODES,
+  GLIDE_MODES,
+  glideSeconds,
   DRUM_KITS,
   type Degree,
   type Quality,
@@ -30,13 +32,14 @@ import {
   type Rate,
   type StrumSpeed,
   type BassMode,
+  type GlideMode,
   type DrumKit,
   type FxMode,
 } from '../domain/music';
 import { PATCH_ORDER, type AudioLooper, type Clock, type PatchName, type SynthPort } from './ports';
 import type { Listener, MenuKind, ViewModel } from './state';
 
-const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS', 'FX'] as const;
+const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS', 'FX', 'GLIDE'] as const;
 const PLAY_STRUM_MS = 4; // near-zero spread for the plain PLAY mode
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -69,6 +72,7 @@ export class SynthController {
   private strumSpeed: StrumSpeed = 'MED';
   private bass: BassMode = 'OFF';
   private fx: FxMode = 'OFF';
+  private glide: GlideMode = 'OFF';
   private drumKit: DrumKit = 'TIGHT';
   private inversion = 0; // 0 = root position, 1 = 1st, 2 = 2nd
   private latched: Degree | null = null; // DRONE: the currently-sustained pad
@@ -94,6 +98,7 @@ export class SynthController {
     this.synth.setStrumMs(PLAY_STRUM_MS);
     this.synth.setVolume(this.volume);
     this.applyFx();
+    this.applyGlide();
     this.clock.onTick(() => this.tick());
     this.clock.setBpm(this.bpm);
     this.looper.setBpm(this.bpm);
@@ -433,6 +438,10 @@ export class SynthController {
     } else if (field === 'BASS') {
       const i = BASS_MODES.indexOf(this.bass);
       this.bass = BASS_MODES[(i + delta + BASS_MODES.length) % BASS_MODES.length];
+    } else if (field === 'GLIDE') {
+      const i = GLIDE_MODES.indexOf(this.glide);
+      this.glide = GLIDE_MODES[(i + delta + GLIDE_MODES.length) % GLIDE_MODES.length];
+      this.applyGlide();
     } else {
       // FX
       const i = FX_MODES.indexOf(this.fx);
@@ -444,6 +453,9 @@ export class SynthController {
   private applyFx(): void {
     const delayMs = 30000 / this.bpm; // an eighth note at the current tempo
     this.synth.setFx(fxHasDelay(this.fx), fxHasChorus(this.fx), delayMs);
+  }
+  private applyGlide(): void {
+    this.synth.setGlide(glideSeconds(this.glide));
   }
   private editModeField(field: string, delta: -1 | 1): void {
     if (field === 'MODE') {
@@ -499,6 +511,8 @@ export class SynthController {
         return this.bass;
       case 'FX':
         return this.fx;
+      case 'GLIDE':
+        return this.glide;
       case 'MODE':
         return this.mode;
       case 'PATTERN':

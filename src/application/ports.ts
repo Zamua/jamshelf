@@ -118,6 +118,8 @@ export interface SynthPort {
   setMuted(muted: boolean): void; // power gate
   // Global pitch bend in cents (LEAD mode joystick: X = bend, Y = octave). 0 = none.
   setBend(cents: number): void;
+  // Portamento time in seconds: a mono note glides in pitch from the last one. 0 = off.
+  setGlide(seconds: number): void;
   // Fire a one-shot synthesized drum hit (DRUM mode), tuned for the given kit.
   drum(name: DrumName, kit: DrumKit): void;
   // Toggle the global delay / chorus effects; delayMs is the (tempo-synced) delay.

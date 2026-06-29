@@ -145,6 +145,10 @@ export class SpySynth implements SynthPort {
   setBend(cents: number): void {
     this.bend = cents;
   }
+  glide = -1;
+  setGlide(seconds: number): void {
+    this.glide = seconds;
+  }
   drums: DrumName[] = [];
   drumKits: DrumKit[] = [];
   drum(name: DrumName, kit: DrumKit): void {

@@ -342,6 +342,17 @@ describe('menus', () => {
     expect(walkFields(3)).toEqual(['MODE', 'KIT', 'BPM']);
   });
 
+  it('the KEY menu GLIDE field sets portamento time on the synth', () => {
+    expect(synth.glide).toBe(0); // OFF at construction
+    c.toggleMenu('KEY');
+    for (let i = 0; i < 5; i++) c.cursorField(1); // KEY -> ... -> GLIDE (last field)
+    expect(c.getState().screenBig).toBe('>GLIDE OFF');
+    c.editValue(1); // OFF -> SLOW
+    expect(synth.glide).toBeGreaterThan(0);
+    c.editValue(-1); // back to OFF
+    expect(synth.glide).toBe(0);
+  });
+
   it('the KEY menu FX field toggles delay/chorus on the synth', () => {
     c.toggleMenu('KEY');
     c.cursorField(1); // SCL

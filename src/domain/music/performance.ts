@@ -66,6 +66,24 @@ export const STRUM_SPEEDS: readonly StrumSpeed[] = ['SLOW', 'MED', 'FAST'];
 export type BassMode = 'OFF' | 'ROOT';
 export const BASS_MODES: readonly BassMode[] = ['OFF', 'ROOT'];
 
+// Portamento / glide: a single mono note slides in pitch from the previous note
+// instead of jumping (best in LEAD). OFF, then three speeds (HiChord-style toggle).
+export type GlideMode = 'OFF' | 'SLOW' | 'MED' | 'FAST';
+export const GLIDE_MODES: readonly GlideMode[] = ['OFF', 'SLOW', 'MED', 'FAST'];
+// Glide time in seconds for each mode (0 = off).
+export function glideSeconds(mode: GlideMode): number {
+  switch (mode) {
+    case 'OFF':
+      return 0;
+    case 'SLOW':
+      return 0.3;
+    case 'MED':
+      return 0.12;
+    case 'FAST':
+      return 0.05;
+  }
+}
+
 // Inversions cycle Root / 1st / 2nd (like the real device).
 export const INVERSIONS = 3;
 

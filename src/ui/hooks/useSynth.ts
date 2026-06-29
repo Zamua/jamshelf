@@ -143,19 +143,24 @@ export function useSynth() {
       // else: diagonal/ambiguous - wait for a clearer flick (no latch)
     };
 
-    // Looper layer-select: a left/right flick (same latching as the menu, but only
-    // the horizontal axis acts). Used when a loop is playing and no pad is held, so
-    // the joystick's chord-morph (which only matters with a pad down) is free.
-    const navTrack = (x: number, y: number) => {
+    // Looper control while a loop plays + no pad is held (the joystick's chord-morph
+    // only matters with a pad down, so it is free here). Same latching as the menu:
+    // left/right selects a layer, a DOWN flick stops / restarts the loops.
+    const navLooper = (x: number, y: number) => {
       const mag = Math.hypot(x, y);
       if (mag < MENU_RELEASE) {
         trackLatched.current = false;
         return;
       }
       if (trackLatched.current || mag < MENU_NAV_THRESHOLD) return;
-      if (Math.abs(x) > Math.abs(y) * AXIS_DOMINANCE) {
+      const ax = Math.abs(x);
+      const ay = Math.abs(y);
+      if (ax > ay * AXIS_DOMINANCE) {
         trackLatched.current = true;
         controller.selectLoopTrack(x > 0 ? 1 : -1);
+      } else if (ay > ax * AXIS_DOMINANCE && y < 0) {
+        trackLatched.current = true;
+        controller.looperStop(); // down = stop / restart from the top
       }
     };
 
@@ -169,7 +174,7 @@ export function useSynth() {
         // is sounding -> select a looper layer. Otherwise -> morph the held chord.
         const st = controller.getState();
         if (st.menuOpen) navMenu(x, y);
-        else if (st.looper.mode === 'play' && st.litPads.length === 0) navTrack(x, y);
+        else if (st.looper.mode === 'play' && st.litPads.length === 0) navLooper(x, y);
         else {
           const q = joyQuality(x, y, lastQuality.current);
           lastQuality.current = q;

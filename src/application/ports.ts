@@ -58,6 +58,8 @@ export interface LooperView {
   readonly loopBars: number; // the loop's length in whole bars (0 until set)
   readonly bar: number; // current bar of the playhead, 1-based (0 when not playing)
   readonly beat: number; // current beat within the bar, 1-based (0 when not playing)
+  readonly stopped: boolean; // layers halted by a joystick-down stop
+  readonly countdown: number; // overdub count-in clicks remaining (0 = none)
   readonly posFraction: number; // 0..1 playhead within the loop
 }
 
@@ -69,12 +71,17 @@ export interface AudioLooper {
   // While a loop plays, move the selection cursor over the recorded layers (the
   // joystick left/right when no pad is held). No-op outside play.
   selectTrack(dir: -1 | 1): void;
+  // Joystick down: stop all layers / resume them from the top (bar 1).
+  toggleStop(): void;
   // Long-press: clear the SELECTED layer while playing (the master, layer 0, clears
   // everything since it defines the loop length); otherwise wipe everything.
   clear(): void;
   // The controller calls this on every pad press. While armed it starts the master
   // capture at this instant (the first note = the loop's downbeat); otherwise no-op.
   noteStarted(): void;
+  // The controller calls this on every pad release: while recording the master it
+  // marks where the playing ended, so the loop quantizes on the notes, not the tail.
+  noteEnded(): void;
   // Tempo for the metronome + the beat-snap of the master loop length.
   setBpm(bpm: number): void;
   view(): LooperView;

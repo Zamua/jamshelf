@@ -122,6 +122,36 @@ function pump(ctx: FakeCtx, value: number, count: number): void {
   }
 }
 
+// Record the master: arm, first key (anchor), play `playBlocks`, mark the last note,
+// then optionally let a `tailBlocks` release/reverb tail ring, then stop.
+function recordMaster(
+  looper: WebAudioLooper,
+  ctx: FakeCtx,
+  opts: { value?: number; playBlocks: number; tailBlocks?: number },
+): void {
+  const value = opts.value ?? 0.5;
+  looper.toggle(); // arm
+  looper.noteStarted(); // first key -> rec, anchor here
+  pump(ctx, value, opts.playBlocks); // the playing
+  looper.noteEnded(); // last note lifts -> sets the loop length reference
+  if (opts.tailBlocks) pump(ctx, value * 0.6, opts.tailBlocks); // the ringing tail
+  looper.toggle(); // finalize
+}
+
+// Advance past an overdub's 4-beat count-in so capturing has begun.
+function passCountIn(ctx: FakeCtx): void {
+  ctx.currentTime += 2.3; // 4 beats @ 120bpm + lead, on the audio clock
+  vi.advanceTimersByTime(2300); // fire the scheduled "begin capture" step
+}
+
+// Record an overdub: start (count-in), wait it out, play, stop.
+function recordOverdub(looper: WebAudioLooper, ctx: FakeCtx, value: number, blocks: number): void {
+  looper.toggle(); // play -> rec (count-in begins)
+  passCountIn(ctx);
+  pump(ctx, value, blocks);
+  looper.toggle(); // finalize overdub
+}
+
 describe('WebAudioLooper', () => {
   it('arms without recording, then captures the master starting at the first key', () => {
     const { looper, ctx } = makeLooper();
@@ -135,95 +165,79 @@ describe('WebAudioLooper', () => {
 
     looper.noteStarted(); // first key -> rec
     expect(looper.view().mode).toBe('rec');
-    pump(ctx, 0.5, 20); // ~20 blocks of audio
+    pump(ctx, 0.5, 40); // under a bar, so no tail wraps onto the start
+    looper.noteEnded();
 
     looper.toggle(); // rec -> play (finalize master)
     const v = looper.view();
     expect(v.mode).toBe('play');
     expect(v.trackCount).toBe(1);
 
-    // exactly one looping source, playing a frozen 2-channel buffer through loopOut
+    // one looping source, playing a frozen 2-channel buffer; data[0] being 0.5 (not a
+    // leading zero) proves the pre-key blocks were excluded.
     expect(ctx.sources).toHaveLength(1);
     const src = ctx.sources[0];
     expect(src.loop).toBe(true);
-    expect(src.buffer).not.toBeNull();
-    // the captured audio is the 0.5 constant we fed (frozen). data[0] being 0.5 (not
-    // a leading zero) proves the pre-key blocks were excluded. (The tail past the
-    // recorded length may be beat-snap padding, so we sample inside the take.)
-    const data = src.buffer!.getChannelData(0);
-    expect(data[0]).toBeCloseTo(0.5);
-    expect(data[20000]).toBeCloseTo(0.5);
+    expect(src.buffer!.getChannelData(0)[0]).toBeCloseTo(0.5);
   });
 
-  it('snaps the master to whole BARS - a small tail past the bar line rounds down', () => {
+  it('quantizes the loop on the NOTES, so a long tail does not add a bar', () => {
     const { looper, ctx } = makeLooper();
-    looper.setBpm(120); // beat = 24000, bar = 96000 samples @ 48k
-    looper.toggle();
-    looper.noteStarted();
-    // ~4 bars + a fraction of a beat over the line -> must snap back to 4 bars, not 5
-    const target = 96000 * 4 + 5000;
-    pump(ctx, 0.5, Math.ceil(target / ctx.lastScript!.bufferSize));
-    looper.toggle();
-    expect(looper.view().loopBars).toBe(4);
-    expect(ctx.sources[0].buffer!.length).toBe(96000 * 4);
+    looper.setBpm(120); // bar = 96000 samples @ 48k
+    const twoBars = Math.ceil((96000 * 2) / 2048);
+    const longTail = Math.ceil((96000 * 1.4) / 2048); // ~1.4 bars of ringing tail
+    recordMaster(looper, ctx, { playBlocks: twoBars, tailBlocks: longTail });
+    // length follows the 2 bars you played, NOT the ~3.4 bars of audio captured
+    expect(looper.view().loopBars).toBe(2);
+    expect(ctx.sources[0].buffer!.length).toBe(96000 * 2);
   });
 
   it('snaps a very short take up to a minimum of one bar', () => {
     const { looper, ctx } = makeLooper();
     looper.setBpm(120);
-    looper.toggle();
-    looper.noteStarted();
-    pump(ctx, 0.5, 3); // a few blocks, well under a bar
-    looper.toggle();
+    recordMaster(looper, ctx, { playBlocks: 3 }); // a few blocks, well under a bar
     expect(looper.view().loopBars).toBe(1);
     expect(ctx.sources[0].buffer!.length).toBe(96000);
   });
 
-  it('overdubs a new layer without disturbing the frozen first track', () => {
+  it('overdubs with a count-in, keeping the master audio frozen', () => {
     const { looper, ctx, loopOut } = makeLooper();
     looper.setBpm(120);
-    looper.toggle();
-    looper.noteStarted();
-    pump(ctx, 0.5, 30);
-    looper.toggle(); // play, track 1 recorded
-    const track1Source = ctx.sources[0];
-    const track1Data = track1Source.buffer!.getChannelData(0);
-    const len = track1Source.buffer!.length;
+    recordMaster(looper, ctx, { playBlocks: 40 }); // 1-bar master (no tail wrap)
+    const masterBuf = ctx.sources[0].buffer!;
+    const masterStart = masterBuf.getChannelData(0)[0];
+    expect(masterStart).toBeCloseTo(0.5);
 
-    looper.toggle(); // play -> rec (overdub)
+    looper.toggle(); // play -> rec: the count-in begins
     expect(looper.view().mode).toBe('rec');
     expect(looper.view().recTrack).toBe(1);
-    pump(ctx, 0.3, 30); // play a second layer
+    expect(looper.view().countdown).toBe(4); // 4-beat count-in
+
+    passCountIn(ctx);
+    expect(looper.view().countdown).toBe(0); // count-in done, capturing now
+    pump(ctx, 0.3, 50); // play the new layer
     looper.toggle(); // finalize overdub
 
     const v = looper.view();
     expect(v.mode).toBe('play');
     expect(v.trackCount).toBe(2);
-    // track 1's source object + audio are untouched (frozen)
-    expect(ctx.sources[0]).toBe(track1Source);
-    expect(track1Data[0]).toBeCloseTo(0.5);
-    // the overdub is its own looping source of the SAME loop length, reaching loopOut
-    // through its per-layer gain (source -> gain -> loopOut)
-    const odSource = ctx.sources[1];
-    expect(odSource.loop).toBe(true);
-    expect(odSource.buffer!.length).toBe(len);
-    expect(odSource.connections[0].connections).toContain(loopOut);
-    // the overdub buffer actually holds the captured 0.3 layer somewhere
-    const od = odSource.buffer!.getChannelData(0);
-    expect(od.some((s) => Math.abs(s - 0.3) < 1e-4)).toBe(true);
+    // the master's audio is the SAME buffer, unchanged (frozen) by the overdub
+    expect(masterBuf.getChannelData(0)[0]).toBe(masterStart);
+    // the overdub loops through loopOut (source -> gain -> loopOut) and holds the layer
+    const od = ctx.sources[ctx.sources.length - 1];
+    expect(od.loop).toBe(true);
+    expect(od.connections[0].connections).toContain(loopOut);
+    expect(od.buffer!.getChannelData(0).some((s) => Math.abs(s - 0.3) < 1e-4)).toBe(true);
   });
 
-  it('selects layers, clears a non-master layer alone, and the master wipes all', () => {
+  it('selects layers; clears a non-master layer alone, the master wipes all', () => {
     const { looper, ctx } = makeLooper();
     looper.setBpm(120);
-    looper.toggle(); looper.noteStarted(); pump(ctx, 0.5, 50); looper.toggle(); // master
-    looper.toggle(); pump(ctx, 0.3, 50); looper.toggle();                       // overdub 1
-    looper.toggle(); pump(ctx, 0.2, 50); looper.toggle();                       // overdub 2
+    recordMaster(looper, ctx, { playBlocks: 50 });
+    recordOverdub(looper, ctx, 0.3, 50);
+    recordOverdub(looper, ctx, 0.2, 50);
     expect(looper.view().trackCount).toBe(3);
     expect(looper.view().selected).toBe(2); // newest is selected
-
-    const master = ctx.sources[0];
-    const overdub1 = ctx.sources[1];
 
     // selection wraps over the three layers
     looper.selectTrack(1);
@@ -231,28 +245,40 @@ describe('WebAudioLooper', () => {
     looper.selectTrack(-1);
     expect(looper.view().selected).toBe(2);
 
-    // clear a non-master layer (overdub 1): only it stops; master + the other survive
+    // clear a non-master layer: it goes, the loop keeps playing with the rest
     looper.selectTrack(-1); // -> layer 1
     looper.clear();
     expect(looper.view().mode).toBe('play');
     expect(looper.view().trackCount).toBe(2);
-    expect(overdub1.stopped).toBe(true);
-    expect(master.stopped).toBe(false);
 
     // clearing the master (layer 0) wipes everything
     while (looper.view().selected !== 0) looper.selectTrack(-1);
     looper.clear();
     expect(looper.view().mode).toBe('idle');
     expect(looper.view().trackCount).toBe(0);
-    expect(master.stopped).toBe(true);
+  });
+
+  it('joystick-down stops all layers and restarts them from the top', () => {
+    const { looper, ctx } = makeLooper();
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 50 });
+    const masterSrc = ctx.sources[0];
+    expect(looper.view().stopped).toBe(false);
+
+    looper.toggleStop(); // STOP
+    expect(looper.view().stopped).toBe(true);
+    expect(masterSrc.stopped).toBe(true);
+
+    const before = ctx.sources.length;
+    looper.toggleStop(); // restart from the top
+    expect(looper.view().stopped).toBe(false);
+    expect(ctx.sources.length).toBe(before + 1); // a fresh source for the restart
+    expect(ctx.sources[ctx.sources.length - 1].loop).toBe(true);
   });
 
   it('clear() stops every loop source and returns to idle', () => {
     const { looper, ctx } = makeLooper();
-    looper.toggle();
-    looper.noteStarted();
-    pump(ctx, 0.5, 20);
-    looper.toggle();
+    recordMaster(looper, ctx, { playBlocks: 20 });
     expect(ctx.sources).toHaveLength(1);
     looper.clear();
     expect(looper.view().mode).toBe('idle');

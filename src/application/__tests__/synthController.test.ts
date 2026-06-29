@@ -99,6 +99,37 @@ describe('looper wiring', () => {
     c.selectLoopTrack(1);
     expect(looper.selectDirs).toEqual([1, -1]); // ignored while powered off
   });
+
+  it('forwards joystick-down stop to the looper, gated by power/inspect', () => {
+    c.looperStop();
+    expect(looper.stops).toBe(1);
+    c.togglePower(); // off
+    c.looperStop();
+    expect(looper.stops).toBe(1); // ignored while powered off
+  });
+
+  it('signals note-ended to the looper on every pad release', () => {
+    c.pressPad('p1', 1);
+    c.releasePad('p1');
+    expect(looper.ended).toBe(1);
+  });
+
+  it('the OLED shows the count-in countdown and the stopped state', () => {
+    looper.mode = 'rec';
+    looper.recTrack = 1;
+    looper.countdown = 3;
+    looper.emit();
+    expect(c.getState().screenBig).toBe('COUNT 3');
+    looper.countdown = 0;
+    looper.emit();
+    expect(c.getState().screenBig).toBe('REC 2');
+    looper.mode = 'play';
+    looper.trackCount = 1;
+    looper.loopBars = 2;
+    looper.stopped = true;
+    looper.emit();
+    expect(c.getState().screenBig).toBe('STOPPED');
+  });
 });
 
 describe('PLAY mode', () => {

@@ -115,6 +115,11 @@ export class SynthController {
     if (!this.power || this.inspect) return;
     this.looper.selectTrack(dir);
   }
+  // Joystick down (no pad held, loop playing): stop / restart the loops from the top.
+  looperStop(): void {
+    if (!this.power || this.inspect) return;
+    this.looper.toggleStop();
+  }
 
   // --- lifecycle ---
   resume(): void {
@@ -155,6 +160,7 @@ export class SynthController {
 
   releasePad(voiceId: string): void {
     this.dispatchRelease(voiceId);
+    this.looper.noteEnded(); // mark playing-ended for the looper's note-based length
     this.publish();
   }
 
@@ -591,13 +597,15 @@ export class SynthController {
       return { big: flashing ? this.flashText : keyScale, small: 'LOOP ARMED' };
     }
     if (lv.mode === 'rec') {
-      return { big: `REC ${lv.recTrack + 1}`, small: flashing ? this.flashText : keyScale };
+      // count-in (overdub) shows the 4..1 countdown; otherwise REC + the take number.
+      const big = lv.countdown > 0 ? `COUNT ${lv.countdown}` : `REC ${lv.recTrack + 1}`;
+      return { big, small: flashing ? this.flashText : keyScale };
     }
     if (lv.mode === 'play') {
       // big line is the live transport (bar.beat), flashing to chord names as you
-      // play; small line shows the selected layer + loop length.
+      // play; small line shows the selected layer + loop length. STOP halts it.
       return {
-        big: flashing ? this.flashText : `BAR ${lv.bar}.${lv.beat}`,
+        big: flashing ? this.flashText : lv.stopped ? 'STOPPED' : `BAR ${lv.bar}.${lv.beat}`,
         small: `TRK ${lv.selected + 1}/${lv.trackCount} ${lv.loopBars}BR`,
       };
     }

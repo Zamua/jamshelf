@@ -16,6 +16,10 @@ export class FakeAudioLooper implements AudioLooper {
   loopBars = 0;
   bar = 0;
   beat = 0;
+  stopped = false;
+  countdown = 0;
+  stops = 0;
+  ended = 0;
   selectDirs: number[] = [];
   private cb: (() => void) | null = null;
 
@@ -28,8 +32,14 @@ export class FakeAudioLooper implements AudioLooper {
   selectTrack(dir: -1 | 1): void {
     this.selectDirs.push(dir);
   }
+  toggleStop(): void {
+    this.stops++;
+  }
   noteStarted(): void {
     this.notes++;
+  }
+  noteEnded(): void {
+    this.ended++;
   }
   setBpm(bpm: number): void {
     this.bpm = bpm;
@@ -43,6 +53,8 @@ export class FakeAudioLooper implements AudioLooper {
       loopBars: this.loopBars,
       bar: this.bar,
       beat: this.beat,
+      stopped: this.stopped,
+      countdown: this.countdown,
       posFraction: 0,
     };
   }

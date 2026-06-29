@@ -29,6 +29,7 @@ const SCHEDULE_AHEAD = 0.12; // seconds of click events to schedule each poll
 interface Track {
   source: AudioBufferSourceNode;
   gain: GainNode; // per-layer gain, so a layer can be faded out on delete (no click)
+  buffer: AudioBuffer; // kept so the layer can be re-started (stop/resume, overdub count-in)
 }
 
 export class WebAudioLooper implements AudioLooper {
@@ -54,6 +55,12 @@ export class WebAudioLooper implements AudioLooper {
   private loopBeats = 0; // its length in whole beats (locks the metronome)
   private loopBars = 0; // its length in whole bars (BEATS_PER_BAR beats each)
   private anchorTime = 0; // ctx time of loop phase 0 (the first note)
+  private lastActivity = 0; // ctx time of the last note on/off while recording the
+  // master - the loop length quantizes to THIS (the notes), not the captured audio,
+  // so a long release/reverb tail bleeds into the loop instead of adding a bar.
+  private stopped = false; // joystick-down stop: layers halted (resume from the top)
+  private countdown = 0; // overdub count-in clicks remaining (0 = not counting in)
+  private pendingTimers: ReturnType<typeof setTimeout>[] = []; // scheduled count-in steps
 
   // metronome
   private metroTimer: ReturnType<typeof setInterval> | null = null;
@@ -85,7 +92,7 @@ export class WebAudioLooper implements AudioLooper {
     let pos = 0;
     let bar = 0;
     let beat = 0;
-    if (this.ctx && this.loopLenSamples > 0 && this.mode === 'play') {
+    if (this.ctx && this.loopLenSamples > 0 && this.mode === 'play' && !this.stopped) {
       const lenSec = this.loopLenSamples / this.ctx.sampleRate;
       const t = (((this.ctx.currentTime - this.anchorTime) % lenSec) + lenSec) % lenSec;
       pos = t / lenSec;
@@ -101,6 +108,8 @@ export class WebAudioLooper implements AudioLooper {
       loopBars: this.loopBars,
       bar,
       beat,
+      stopped: this.stopped,
+      countdown: this.countdown,
       posFraction: pos,
     };
   }
@@ -139,15 +148,43 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   noteStarted(): void {
-    if (this.mode !== 'armed' || !this.ctx) return;
-    // The first key of the master take: start capturing rendered audio NOW and make
-    // this instant the loop's downbeat (re-anchor the metronome to it).
-    this.mode = 'rec';
-    this.recTrack = 0;
-    this.masterChunks = [[], []];
-    this.capturing = true;
-    this.anchorTime = this.ctx.currentTime;
-    this.startMetronome(this.anchorTime);
+    if (!this.ctx) return;
+    if (this.mode === 'armed') {
+      // The first key of the master take: start capturing rendered audio NOW and make
+      // this instant the loop's downbeat (re-anchor the metronome to it).
+      this.mode = 'rec';
+      this.recTrack = 0;
+      this.masterChunks = [[], []];
+      this.capturing = true;
+      this.anchorTime = this.ctx.currentTime;
+      this.lastActivity = this.anchorTime;
+      this.startMetronome(this.anchorTime);
+      this.emit();
+    } else if (this.mode === 'rec' && this.recTrack === 0) {
+      this.lastActivity = this.ctx.currentTime; // a note while recording the master
+    }
+  }
+  // A pad release while recording the master - marks where the playing ended (the
+  // loop quantizes to this, not to where the release/reverb tail finally decays).
+  noteEnded(): void {
+    if (this.mode === 'rec' && this.recTrack === 0 && this.ctx)
+      this.lastActivity = this.ctx.currentTime;
+  }
+
+  // Joystick down: STOP all layers (resume restarts them from the top / bar 1).
+  toggleStop(): void {
+    if (this.mode !== 'play') return;
+    if (!this.stopped) {
+      this.stopAllSources();
+      this.stopped = true;
+      this.stopDisplayTimer();
+    } else {
+      const at = this.ctx!.currentTime + 0.05;
+      this.anchorTime = at;
+      this.restartTracks(at);
+      this.stopped = false;
+      this.startDisplayTimer();
+    }
     this.emit();
   }
 
@@ -165,6 +202,7 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   private resetAll(): void {
+    this.clearPendingTimers();
     for (const t of this.tracks) this.stopTrack(t, false);
     this.tracks = [];
     this.mode = 'idle';
@@ -176,6 +214,8 @@ export class WebAudioLooper implements AudioLooper {
     this.loopLenSamples = 0;
     this.loopBeats = 0;
     this.loopBars = 0;
+    this.stopped = false;
+    this.countdown = 0;
     this.stopMetronome();
     this.stopDisplayTimer();
     this.emit();
@@ -208,20 +248,23 @@ export class WebAudioLooper implements AudioLooper {
     const right = concat(this.masterChunks[1]);
     this.masterChunks = [[], []];
 
-    // Snap the loop length to a whole number of BARS at the current tempo (round to
-    // nearest, min 1 bar) so the metronome + every later layer lock to it. Snapping
-    // to bars (not beats) means a small overshoot past the bar line rounds back DOWN
-    // to a clean bar count instead of tacking on a stray beat: a tail has to exceed
-    // half a bar before it counts as another bar.
+    // Quantize on the NOTES, not the captured audio: the length is how long you
+    // actually played (anchor -> last note on/off), snapped to whole bars. Measuring
+    // the audio instead would let a long release/reverb tail past the bar line round
+    // the loop UP a bar. The tail (audio captured past the last note) is wrapped back
+    // into the loop start below, so it bleeds in rather than extending the loop.
     const beatSamples = Math.max(1, Math.round((ctx.sampleRate * 60) / this.bpm));
     const barSamples = beatSamples * BEATS_PER_BAR;
-    this.loopBars = Math.max(1, Math.round(left.length / barSamples));
+    const playedSamples = Math.max(0, (this.lastActivity - this.anchorTime) * ctx.sampleRate);
+    this.loopBars = Math.max(1, Math.round(playedSamples / barSamples));
     this.loopBeats = this.loopBars * BEATS_PER_BAR;
     this.loopLenSamples = this.loopBars * barSamples;
 
+    // Wrap-add the captured audio into the loop buffer: anything past loopLenSamples
+    // (the note tail) folds onto the start, so the tail rings into bar 1 of the loop.
     const buf = ctx.createBuffer(2, this.loopLenSamples, ctx.sampleRate);
-    copyInto(buf.getChannelData(0), left);
-    copyInto(buf.getChannelData(1), right);
+    wrapAdd(buf.getChannelData(0), left, this.loopLenSamples);
+    wrapAdd(buf.getChannelData(1), right, this.loopLenSamples);
 
     // The loop's phase 0 is the first note (anchorTime, set in noteStarted). Start
     // the looping source on the next loop boundary so playback is seamless.
@@ -234,12 +277,74 @@ export class WebAudioLooper implements AudioLooper {
     this.startDisplayTimer();
   }
 
+  // Overdub with a 4-beat count-in: silence the existing layers, click 4 times, then
+  // restart every layer from bar 1 AND begin capturing - all locked to the downbeat
+  // after the count-in, so a new layer never waits a whole (e.g. 8-bar) loop to align.
   private startOverdub(): void {
+    const ctx = this.ctx!;
+    this.stopAllSources(); // layers go silent during the count-in
+    this.stopMetronome();
     this.recTrack = this.tracks.length;
     this.overdub = [new Float32Array(this.loopLenSamples), new Float32Array(this.loopLenSamples)];
-    this.capturing = true;
+    this.capturing = false; // not yet - wait out the count-in
     this.mode = 'rec';
-    this.startMetronome(this.metroBeatBefore(this.ctx!.currentTime));
+    this.countdown = BEATS_PER_BAR;
+
+    const beat = this.beatSec();
+    const t0 = ctx.currentTime + 0.12; // first count-in click
+    for (let k = 0; k < BEATS_PER_BAR; k++) this.click(t0 + k * beat, k === 0);
+    // tick the on-screen countdown 4 -> 1 on each count-in beat
+    for (let k = 0; k < BEATS_PER_BAR; k++)
+      this.scheduleAt(t0 + k * beat, () => {
+        this.countdown = BEATS_PER_BAR - k;
+        this.emit();
+      });
+
+    const downbeat = t0 + BEATS_PER_BAR * beat; // the loop's new bar 1
+    this.anchorTime = downbeat;
+    this.restartTracks(downbeat); // existing layers replay from the top, in sync
+    this.scheduleAt(downbeat, () => {
+      this.countdown = 0;
+      this.capturing = true; // recording begins
+      this.startMetronome(downbeat);
+      this.startDisplayTimer();
+      this.emit();
+    });
+  }
+
+  // Stop every layer's source (keeping its buffer + gain slot) - used by the
+  // joystick-down stop and the overdub count-in.
+  private stopAllSources(): void {
+    for (const t of this.tracks) {
+      try {
+        t.source.stop();
+        t.source.disconnect();
+        t.gain.disconnect();
+      } catch {
+        /* already stopped */
+      }
+    }
+  }
+  // Re-create every layer's source from its retained buffer and start it at `at`, so
+  // all layers play from bar 1 in lockstep.
+  private restartTracks(at: number): void {
+    for (const t of this.tracks) {
+      const fresh = this.startLoop(t.buffer, at);
+      t.source = fresh.source;
+      t.gain = fresh.gain;
+    }
+  }
+  private scheduleAt(time: number, fn: () => void): void {
+    const ms = Math.max(0, (time - this.ctx!.currentTime) * 1000);
+    const id = setTimeout(() => {
+      this.pendingTimers = this.pendingTimers.filter((t) => t !== id);
+      fn();
+    }, ms);
+    this.pendingTimers.push(id);
+  }
+  private clearPendingTimers(): void {
+    for (const id of this.pendingTimers) clearTimeout(id);
+    this.pendingTimers = [];
   }
 
   private finalizeOverdub(): void {
@@ -266,7 +371,7 @@ export class WebAudioLooper implements AudioLooper {
     src.connect(gain);
     gain.connect(this.loopOut!);
     src.start(at);
-    return { source: src, gain };
+    return { source: src, gain, buffer: buf };
   }
 
   // The next loop boundary (a multiple of the loop length from the anchor) at or
@@ -367,13 +472,6 @@ export class WebAudioLooper implements AudioLooper {
       return this.loopLenSamples / this.loopBeats / this.ctx.sampleRate;
     return 60 / this.bpm;
   }
-  // The most recent beat time at or before `t` (used to phase an overdub's clicks
-  // onto the existing loop grid).
-  private metroBeatBefore(t: number): number {
-    const b = this.beatSec();
-    const n = Math.floor((t - this.anchorTime) / b);
-    return this.anchorTime + n * b;
-  }
   private startMetronome(anchor: number): void {
     this.stopMetronome();
     if (!this.ctx) return;
@@ -445,8 +543,10 @@ function concat(chunks: Float32Array[]): Float32Array {
   return out;
 }
 
-// Copy `src` into `dst`, truncating or zero-padding to dst's length (the master is
-// snapped to a whole number of beats, so it may be a hair shorter/longer).
-function copyInto(dst: Float32Array, src: Float32Array): void {
-  dst.set(src.length > dst.length ? src.subarray(0, dst.length) : src);
+// Fold `src` into `dst` (length `len`) with wraparound: samples past `len` add onto
+// the start, so a note's release/reverb tail recorded past the loop boundary bleeds
+// into bar 1 instead of lengthening the loop. (If src is shorter, the rest stays 0.)
+function wrapAdd(dst: Float32Array, src: Float32Array, len: number): void {
+  if (len <= 0) return;
+  for (let i = 0; i < src.length; i++) dst[i % len] += src[i];
 }

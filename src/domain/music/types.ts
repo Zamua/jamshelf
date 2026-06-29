@@ -9,7 +9,8 @@ export type Midi = number;
 // Scale degree 1..7 (Nashville-number style). 1 = tonic.
 export type Degree = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
-// The seven-note scales/modes the instrument offers (each maps the 7 pads to 7 degrees).
+// The scales/modes the instrument offers. The first seven are seven-note; the last
+// three are pentatonic (5) / blues (6) - the 7 pads wrap around them into octaves.
 export type ScaleName =
   | 'MAJOR'
   | 'MINOR'
@@ -17,7 +18,10 @@ export type ScaleName =
   | 'MELODIC'
   | 'DORIAN'
   | 'MIXO'
-  | 'LYDIAN';
+  | 'LYDIAN'
+  | 'MAJ_PENT'
+  | 'MIN_PENT'
+  | 'BLUES';
 
 // The joystick chord-quality morph states: the centre (TRIAD) plus the 8 compass
 // directions, matching the real device's DEFAULT joystick layout:

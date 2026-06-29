@@ -35,7 +35,9 @@ const inC = (scale: ScaleName): KeyState => ({ root: 0, scale, octave: 0 });
 
 describe('diatonic triads, all 7 scales (rooted in C, sharp spelling)', () => {
   // The 7 stacked-thirds triads per scale, hand-derived from music theory.
-  const expectedTriadNames: Record<ScaleName, string[]> = {
+  // Only the seven-note modes have canonical stacked-thirds triads; the pentatonic /
+  // blues scales are covered separately, so this map is keyed loosely.
+  const expectedTriadNames: Record<string, string[]> = {
     MAJOR: ['C', 'Dm', 'Em', 'F', 'G', 'Am', 'Bdim'],
     MINOR: ['Cm', 'Ddim', 'D#', 'Fm', 'Gm', 'G#', 'A#'],
     HARMONIC: ['Cm', 'Ddim', 'D#aug', 'Fm', 'G', 'G#', 'Bdim'],

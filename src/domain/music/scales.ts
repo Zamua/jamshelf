@@ -11,6 +11,9 @@ export const SCALES: Record<ScaleName, readonly number[]> = {
   DORIAN: [0, 2, 3, 5, 7, 9, 10],
   MIXO: [0, 2, 4, 5, 7, 9, 10], // mixolydian
   LYDIAN: [0, 2, 4, 6, 7, 9, 11],
+  MAJ_PENT: [0, 2, 4, 7, 9], // major pentatonic (5 notes)
+  MIN_PENT: [0, 3, 5, 7, 10], // minor pentatonic (5 notes)
+  BLUES: [0, 3, 5, 6, 7, 10], // blues (6 notes, with the b5)
 };
 
 // Short labels for the OLED screen.
@@ -22,6 +25,9 @@ export const SCALE_LABELS: Record<ScaleName, string> = {
   DORIAN: 'DOR',
   MIXO: 'MIX',
   LYDIAN: 'LYD',
+  MAJ_PENT: 'PNT',
+  MIN_PENT: 'mPN',
+  BLUES: 'BLU',
 };
 
 export const SCALE_ORDER: readonly ScaleName[] = [
@@ -32,6 +38,9 @@ export const SCALE_ORDER: readonly ScaleName[] = [
   'DORIAN',
   'MIXO',
   'LYDIAN',
+  'MAJ_PENT',
+  'MIN_PENT',
+  'BLUES',
 ];
 
 // Physical pad layout. The device has 3 pads on the top sub-row and 4 on the

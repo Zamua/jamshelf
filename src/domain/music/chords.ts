@@ -1,10 +1,12 @@
 import type { Degree, KeyState, Midi, PitchClass, Quality, Chord } from './types';
 import { SCALES, NOTE_NAMES } from './scales';
 
-// Semitone offset for scale position i (i may exceed 6; wraps with an octave).
+// Semitone offset for scale position i (i may exceed the scale length; it wraps
+// into octaves). Works for any scale size (7-note modes, 5-note pentatonics, etc.).
 function scaleTone(intervals: readonly number[], i: number): number {
-  const octave = Math.floor(i / 7);
-  const idx = ((i % 7) + 7) % 7;
+  const n = intervals.length;
+  const octave = Math.floor(i / n);
+  const idx = ((i % n) + n) % n;
   return intervals[idx] + 12 * octave;
 }
 

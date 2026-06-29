@@ -16,7 +16,12 @@ const ALL_SCALES: ScaleName[] = [
   'DORIAN',
   'MIXO',
   'LYDIAN',
+  'MAJ_PENT',
+  'MIN_PENT',
+  'BLUES',
 ];
+// The seven-note modes (the pentatonic / blues scales have fewer notes).
+const HEPTATONIC: ScaleName[] = ['MAJOR', 'MINOR', 'HARMONIC', 'MELODIC', 'DORIAN', 'MIXO', 'LYDIAN'];
 
 describe('SCALES interval sets', () => {
   // Each scale is verified against its canonical semitone formula.
@@ -28,6 +33,9 @@ describe('SCALES interval sets', () => {
     DORIAN: [0, 2, 3, 5, 7, 9, 10], // minor with a natural 6
     MIXO: [0, 2, 4, 5, 7, 9, 10], // major with a b7
     LYDIAN: [0, 2, 4, 6, 7, 9, 11], // major with a #4
+    MAJ_PENT: [0, 2, 4, 7, 9],
+    MIN_PENT: [0, 3, 5, 7, 10],
+    BLUES: [0, 3, 5, 6, 7, 10],
   };
 
   for (const scale of ALL_SCALES) {
@@ -40,7 +48,7 @@ describe('SCALES interval sets', () => {
     expect(Object.keys(SCALES).sort()).toEqual([...ALL_SCALES].sort());
   });
 
-  for (const scale of ALL_SCALES) {
+  for (const scale of HEPTATONIC) {
     it(`${scale} is 7 unique tones, ascending, within one octave, rooted at 0`, () => {
       const tones = SCALES[scale];
       expect(tones).toHaveLength(7);
@@ -50,6 +58,16 @@ describe('SCALES interval sets', () => {
         expect(tones[i]).toBeGreaterThan(tones[i - 1]); // strictly ascending
       }
       expect(tones[6]).toBeLessThan(12); // stays inside the octave
+    });
+  }
+
+  for (const scale of ALL_SCALES) {
+    it(`${scale} is distinct ascending tones inside one octave, rooted at 0`, () => {
+      const tones = SCALES[scale];
+      expect(tones[0]).toBe(0);
+      expect(new Set(tones).size).toBe(tones.length);
+      for (let i = 1; i < tones.length; i++) expect(tones[i]).toBeGreaterThan(tones[i - 1]);
+      expect(tones[tones.length - 1]).toBeLessThan(12);
     });
   }
 
@@ -72,8 +90,8 @@ describe('scale metadata', () => {
 
   it('SCALE_ORDER lists every scale exactly once', () => {
     expect([...SCALE_ORDER].sort()).toEqual([...ALL_SCALES].sort());
-    expect(SCALE_ORDER).toHaveLength(7);
-    expect(new Set(SCALE_ORDER).size).toBe(7);
+    expect(SCALE_ORDER).toHaveLength(ALL_SCALES.length);
+    expect(new Set(SCALE_ORDER).size).toBe(ALL_SCALES.length);
   });
 
   it('SCALE_ORDER starts on MAJOR', () => {

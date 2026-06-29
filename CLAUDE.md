@@ -172,16 +172,29 @@ long-press = clear; the Knob detects tap vs hold vs drag and emits `onJoyClick`/
 
 **Drums (`DRUM` play mode)**: the 7 pads map to a kit (`drumForDegree`); drum hits
 flow through the RecordingSynth + Looper so beats loop. Kits via the DRUM-mode KIT
-field: TIGHT/BOX808/BOX909 are SYNTHESIZED (`KIT_TUNE` factors); TRAP/BOUNCE/LOFI are
-CC0 SAMPLE kits. Samples live in `public/drums/<kit>/<pad>.mp3` (one mono mp3 per
-pad), lazy-loaded + decoded on first use (`SAMPLE_KITS` map in `webAudioSynth.ts`;
-fetch `drums/<folder>/<pad>.mp3`, cache by `${kit}:${pad}`); the first hit before a
-kit finishes loading falls back to the synth so it is never silent. The samples are
-CC0 1.0 (from Boochi44/free-drum-samples, derived from Edward Loveall's CC0 TR-808
-set) - free to redistribute, see `public/drums/CREDITS.txt`. To add a genre kit: drop
-mono mp3s named kick/kick2/snare/hat/tom/ride/openhat into a new `public/drums/<kit>/`,
-add the kit to `DrumKit` + `DRUM_KITS` + `SAMPLE_KITS`. ONLY use CC0 / public-domain /
-permissively-licensed samples (the deployed site is public-reachable = redistribution).
+field: TIGHT/BOX808/BOX909 are SYNTHESIZED (`KIT_TUNE` factors); TRAP/LOFI are CC0
+SAMPLE kits. Samples live in `public/drums/<kit>/<pad>.mp3` (one mono mp3 per pad),
+lazy-loaded + decoded on first use (`SAMPLE_KITS` map in `webAudioSynth.ts`; fetch
+`drums/<folder>/<pad>.mp3`, cache by `${kit}:${pad}`); the first hit before a kit
+finishes loading falls back to the synth so it is never silent. All bundled samples
+are CC0 1.0 (public domain, no attribution) - the TRAP/LOFI kits are sounds the user
+hand-picked from Freesound (see `public/drums/CREDITS.txt`).
+
+Adding a genre kit (the established workflow): use the *Freesound API* - the user's
+key is at `~/keys/freesound` (the 40-char token only; never commit it). Token auth:
+`curl -sG https://freesound.org/apiv2/search/text/ --data-urlencode 'query=...'
+--data-urlencode 'filter=license:"Creative Commons 0" duration:[0.05 TO 2]'
+--data-urlencode 'fields=id,name,username,license,previews,avg_rating' --data-urlencode
+'sort=rating_desc' --data-urlencode "token=$(cat ~/keys/freesound)"`. The `previews`
+field gives public `preview-hq-mp3` CDN URLs (downloadable without auth; CC0 = fine to
+bundle). Prefer COHESIVE single-producer kits over mixing sources. Build a tappable
+audition page (scratchpad), deploy it as its own hostthis static site, send the link,
+let the user pick by number, then drop the chosen mp3s into `public/drums/<kit>/` and
+add the kit to `DrumKit` + `DRUM_KITS` + `SAMPLE_KITS`. LICENSING IS THE WHOLE TRICK:
+ONLY bundle CC0 / public-domain (or CC-BY *with* a credit line in CREDITS.txt) - the
+deployed site is public-reachable, so "royalty-free for your tracks" packs are NOT
+redistributable. Most "free drum kits" online fail this; CC0 ones skew to loops +
+partial packs.
 
 **Scales**: 10 total - the 7 modes plus MAJ_PENT / MIN_PENT / BLUES. `scaleTone` is
 generalized to any scale length (the 7 pads wrap the 5/6-note scales into octaves).

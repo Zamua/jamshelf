@@ -3,6 +3,12 @@
   height: 100%;
   position: relative;
   touch-action: none;
+  /* Stop iOS from hijacking a hold with text selection / the callout bar / the
+     magnifier loupe (which steals the pointer and leaves the joystick stuck). */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
   background:
     radial-gradient(120% 90% at 50% 36%, #1a2138 0%, #0c0f1a 52%, #06070c 100%);
 }
@@ -10,6 +16,9 @@
 .stage canvas {
   display: block;
   touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 /* Meta controls (help / 3D inspect): small, corner-parked, out of the way. */

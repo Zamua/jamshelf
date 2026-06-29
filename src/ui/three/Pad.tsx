@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, type RefObject } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -19,6 +19,9 @@ interface PadProps {
   lit: boolean;
   power: boolean;
   handlers: DeviceHandlers;
+  // The pointer that owns the joystick (shared with Knob). A finger that started
+  // on the joystick must never trigger a pad, even if it drags over one.
+  joyPointer: RefObject<number | null>;
 }
 
 // A single cream keycap with a slightly-raised platform layered on its face. For
@@ -26,9 +29,24 @@ interface PadProps {
 // it reads like a piano sharp between the bottom keys. The visual state (depress
 // + emissive glow) is driven by `lit` (the controller decides which pads are
 // held), so press, multi-touch and glissando all light correctly.
-export function Pad({ degree, x, y, w, h, platW, platH, platDx, lit, power, handlers }: PadProps) {
+export function Pad({
+  degree,
+  x,
+  y,
+  w,
+  h,
+  platW,
+  platH,
+  platDx,
+  lit,
+  power,
+  handlers,
+  joyPointer,
+}: PadProps) {
   const group = useRef<THREE.Group>(null);
   const mats = useRef<(THREE.MeshStandardMaterial | null)[]>([]);
+  // True when this pointer is the one currently driving the joystick.
+  const fromJoystick = (e: ThreeEvent<PointerEvent>) => joyPointer.current === e.pointerId;
 
   useFrame((_, delta) => {
     const k = Math.min(1, delta * 18); // frame-rate independent smoothing
@@ -43,17 +61,21 @@ export function Pad({ degree, x, y, w, h, platW, platH, platDx, lit, power, hand
   });
 
   const down = (e: ThreeEvent<PointerEvent>) => {
+    if (fromJoystick(e)) return; // a joystick finger dragged onto this pad - ignore
     e.stopPropagation();
     handlers.resume();
     handlers.onPadDown(String(e.pointerId), degree);
   };
   // R3F re-raycasts every pointer move (even during a touch drag, since the
   // canvas keeps implicit capture), so onPointerEnter fires as a finger/mouse
-  // slides onto another pad. Gate on a held button for glissando.
+  // slides onto another pad. Gate on a held button for glissando, and ignore the
+  // joystick's own finger so dragging it over the pads never plays them.
   const enter = (e: ThreeEvent<PointerEvent>) => {
+    if (fromJoystick(e)) return;
     if (e.buttons > 0) handlers.onPadMove(String(e.pointerId), degree);
   };
   const up = (e: ThreeEvent<PointerEvent>) => {
+    if (fromJoystick(e)) return;
     e.stopPropagation();
     handlers.onPadUp(String(e.pointerId));
   };

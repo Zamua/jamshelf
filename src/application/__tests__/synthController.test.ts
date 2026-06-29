@@ -106,8 +106,9 @@ describe('LEAD mode', () => {
 describe('ARP mode', () => {
   it('runs the clock and steps through the pattern on ticks', () => {
     switchMode('ARP');
+    expect(clock.running).toBe(false); // clock idles until a pad is held
+    c.pressPad('p1', 1); // immediate first step (UP -> 60), starts the clock
     expect(clock.running).toBe(true);
-    c.pressPad('p1', 1); // immediate first step (UP -> 60)
     expect(synth.lastOn().id).toBe('arp');
     expect(synth.lastOn().freqs).toHaveLength(1);
     expect(synth.lastOn().freqs[0]).toBeCloseTo(C);
@@ -118,24 +119,20 @@ describe('ARP mode', () => {
     clock.tick(); // wraps -> 60
     expect(synth.lastOn().freqs[0]).toBeCloseTo(C);
   });
-  it('stops the arp voice when the last pad is released', () => {
+  it('releases the arp when the last pad lifts (and the clock stops)', () => {
     switchMode('ARP');
     c.pressPad('p1', 1);
     c.releasePad('p1');
     expect(synth.off).toContain('arp');
-  });
-  it('a tick with nothing held does not error and releases the arp', () => {
-    switchMode('ARP');
-    clock.tick();
-    expect(synth.off).toContain('arp');
+    expect(clock.running).toBe(false); // nothing held: clock idles again
   });
 });
 
 describe('REPEAT mode', () => {
   it('re-triggers the held chord on every tick', () => {
     switchMode('REPEAT');
-    expect(clock.running).toBe(true);
     c.pressPad('p1', 1);
+    expect(clock.running).toBe(true); // starts on first press
     const before = synth.on.length;
     clock.tick();
     clock.tick();
@@ -145,12 +142,15 @@ describe('REPEAT mode', () => {
 });
 
 describe('clock lifecycle', () => {
-  it('runs only in ARP/REPEAT and stops otherwise', () => {
+  it('runs only in ARP/REPEAT while a pad is held', () => {
     switchMode('ARP');
+    expect(clock.running).toBe(false); // armed mode but nothing held
+    c.pressPad('p1', 1);
     expect(clock.running).toBe(true);
-    switchMode('PLAY');
+    switchMode('PLAY'); // clears held + stops the clock
     expect(clock.running).toBe(false);
     switchMode('REPEAT');
+    c.pressPad('p2', 3);
     expect(clock.running).toBe(true);
   });
   it('power-off and inspect stop the clock and release everything', () => {
@@ -177,18 +177,28 @@ describe('menus', () => {
     expect(c.getState().octave).toBe(1);
   });
 
+  // The OLED's big line is ">FIELD value"; the active field label is what we read
+  // back as we step the cursor through the menu.
+  const activeField = () => c.getState().screenBig.split(' ')[0].slice(1);
+  function walkFields(count: number): string[] {
+    const seen: string[] = [];
+    for (let i = 0; i < count; i++) {
+      seen.push(activeField());
+      c.cursorField(1);
+    }
+    return seen;
+  }
+
   it('MODE menu exposes mode-specific fields (PATTERN+RATE only for ARP)', () => {
     switchMode('ARP');
     c.toggleMenu('MODE');
-    const labels = c.getState().menuFields.map((f) => f.label);
-    expect(labels).toEqual(['MODE', 'PATTERN', 'RATE', 'BPM']);
+    expect(walkFields(4)).toEqual(['MODE', 'PATTERN', 'RATE', 'BPM']);
   });
 
   it('STRUM menu exposes SPEED, not PATTERN/RATE', () => {
     switchMode('STRUM');
     c.toggleMenu('MODE');
-    const labels = c.getState().menuFields.map((f) => f.label);
-    expect(labels).toEqual(['MODE', 'SPEED', 'BPM']);
+    expect(walkFields(3)).toEqual(['MODE', 'SPEED', 'BPM']);
   });
 
   it('pressing the same menu button closes it; the other switches', () => {

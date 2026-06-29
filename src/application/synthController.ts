@@ -89,7 +89,10 @@ export class SynthController {
   pressPad(voiceId: string, degree: Degree): void {
     if (!this.power || this.inspect) return;
     this.dispatchPress(voiceId, degree);
-    this.flash(this.currentChordName(degree));
+    // DRONE: pressing the latched pad again just silences it - nothing to announce.
+    if (!(this.mode === 'DRONE' && this.latched === null)) {
+      this.flash(this.currentChordName(degree));
+    }
     this.publish();
   }
 
@@ -99,8 +102,11 @@ export class SynthController {
     if (this.mode === 'DRONE') return; // drone latches on tap, not on slide
     if (this.held.get(voiceId) === degree) return;
     this.held.set(voiceId, degree);
-    if (this.mode === 'LEAD') this.triggerLead();
-    else if (this.mode === 'PLAY' || this.mode === 'STRUM' || this.mode === 'REPEAT')
+    if (this.mode === 'LEAD') {
+      // only re-voice if the slid finger is the newest (the note actually
+      // sounding); otherwise we'd pointlessly re-attack the same lead note.
+      if ([...this.held.keys()].pop() === voiceId) this.triggerLead();
+    } else if (this.mode === 'PLAY' || this.mode === 'STRUM' || this.mode === 'REPEAT')
       this.triggerVoice(voiceId, degree);
     // ARP picks up the new held set on the next tick.
     this.flash(this.currentChordName(degree));
@@ -248,14 +254,18 @@ export class SynthController {
         this.held.set(voiceId, degree);
         if (wasEmpty) {
           this.arpStep = 0;
-          this.arpTick(); // respond immediately, then the clock continues
+          this.applyMode(); // start the clock, phase-aligned to this press
+          this.arpTick(); // immediate first step, then the clock continues
         }
         return;
       }
-      case 'REPEAT':
+      case 'REPEAT': {
+        const wasEmpty = this.held.size === 0;
         this.held.set(voiceId, degree);
+        if (wasEmpty) this.applyMode(); // start the clock, phase-aligned to this press
         this.triggerVoice(voiceId, degree); // immediate hit; ticks re-pulse it
         return;
+      }
       case 'PLAY':
       case 'STRUM':
         this.held.set(voiceId, degree);
@@ -274,9 +284,15 @@ export class SynthController {
         else this.triggerLead();
         return;
       case 'ARP':
-        if (this.held.size === 0) this.synth.noteOff(ARP_ID);
+        if (this.held.size === 0) {
+          this.synth.noteOff(ARP_ID);
+          this.applyMode(); // nothing held: stop the clock
+        }
         return;
       case 'REPEAT':
+        this.synth.noteOff(voiceId);
+        if (this.held.size === 0) this.applyMode(); // nothing held: stop the clock
+        return;
       case 'PLAY':
       case 'STRUM':
         this.synth.noteOff(voiceId);
@@ -311,7 +327,16 @@ export class SynthController {
   // --- mode / clock configuration -----------------------------------------
   private applyMode(): void {
     this.synth.setStrumMs(this.mode === 'STRUM' ? strumMs(this.strumSpeed) : PLAY_STRUM_MS);
-    if ((this.mode === 'ARP' || this.mode === 'REPEAT') && this.power && !this.inspect) {
+    // The clock runs ONLY while ARP/REPEAT actually has a pad held. Gating on
+    // `held` (not just the mode) means the clock is (re)started at the first
+    // press, so its phase aligns to the downbeat - no first-note flam - and it
+    // never idles/ticks with nothing to play.
+    const stepping =
+      (this.mode === 'ARP' || this.mode === 'REPEAT') &&
+      this.power &&
+      !this.inspect &&
+      this.held.size > 0;
+    if (stepping) {
       this.clock.setBpm(this.bpm);
       this.clock.setBeatsPerTick(rateBeats(this.mode === 'ARP' ? this.arpRate : this.repeatRate));
       this.clock.start();
@@ -479,15 +504,6 @@ export class SynthController {
     };
   }
 
-  private menuFieldViews(): ViewModel['menuFields'] {
-    if (!this.menuOpen) return [];
-    return this.fields().map((f, i) => ({
-      label: f,
-      value: this.fieldValue(f),
-      active: i === this.menuIndex,
-    }));
-  }
-
   private snapshot(): ViewModel {
     const { big, small } = this.screenLines();
     const litPads =
@@ -510,8 +526,6 @@ export class SynthController {
       mode: this.mode,
       menuOpen: this.menuOpen,
       menuKind: this.menuKind,
-      menuField: this.menuOpen ? this.fields()[this.menuIndex] : '',
-      menuFields: this.menuFieldViews(),
       litPads,
       screenBig: big,
       screenSmall: small,

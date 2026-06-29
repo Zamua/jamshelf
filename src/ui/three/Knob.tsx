@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { DeviceHandlers } from './deviceProps';
@@ -12,6 +12,10 @@ interface KnobProps {
   rim: string; // theme deep shade (dish rim)
   basin: string; // theme darkest shade (dish basin)
   handlers: DeviceHandlers;
+  // Shared "which pointer owns the joystick" ref. Knob sets it on grab / clears it
+  // on release; the pads READ it and ignore that pointer, so a finger that started
+  // on the joystick can never press a key even if it drags over the key area.
+  joyPointer: RefObject<number | null>;
 }
 
 const RADIUS = 0.36; // normalization radius: dragging this far == full deflection
@@ -23,20 +27,19 @@ const TILT = 0.45; // how far the cap tilts (radians) at full deflection
 // releasing springs the cap back to center and fires onJoyEnd. While dragging,
 // a large invisible plane in front of the device tracks the pointer so the drag
 // keeps following even when it slides off the small cap.
-export function Knob({ x, y, z, power, rim, basin, handlers }: KnobProps) {
+export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobProps) {
   const group = useRef<THREE.Group>(null);
   const pivot = useRef<THREE.Group>(null);
   const target = useRef(new THREE.Vector2(0, 0));
   const cur = useRef(new THREE.Vector2(0, 0));
   const [dragging, setDragging] = useState(false);
-  // The pointer that owns the joystick drag. The drag-tracking plane covers the
-  // whole stage, so we must IGNORE events from any other finger - otherwise a
-  // second finger pressing a pad would drive (or end) the joystick AND, because
-  // the plane sits in front, swallow that pad's release (stuck key). Foreign
-  // pointers fall through (no stopPropagation) so the pad behind still gets them.
-  const dragPointer = useRef<number | null>(null);
+  // The drag-tracking plane covers the whole stage, so we IGNORE events from any
+  // other finger - otherwise a second finger pressing a pad would drive (or end)
+  // the joystick AND, because the plane sits in front, swallow that pad's release
+  // (stuck key). Foreign pointers fall through (no stopPropagation) so the pad
+  // behind still gets them. `joyPointer` is shared with the pads (see KnobProps).
   const owns = (e: ThreeEvent<PointerEvent>) =>
-    dragPointer.current === null || e.pointerId === dragPointer.current;
+    joyPointer.current === null || e.pointerId === joyPointer.current;
 
   const apply = (e: ThreeEvent<PointerEvent>) => {
     if (!group.current || !owns(e)) return;
@@ -55,9 +58,9 @@ export function Knob({ x, y, z, power, rim, basin, handlers }: KnobProps) {
   };
 
   const start = (e: ThreeEvent<PointerEvent>) => {
-    if (dragPointer.current !== null) return; // a drag is already in progress
+    if (joyPointer.current !== null) return; // a drag is already in progress
     e.stopPropagation();
-    dragPointer.current = e.pointerId;
+    joyPointer.current = e.pointerId;
     handlers.resume();
     setDragging(true);
     apply(e);
@@ -65,7 +68,7 @@ export function Knob({ x, y, z, power, rim, basin, handlers }: KnobProps) {
   const end = (e: ThreeEvent<PointerEvent>) => {
     if (!owns(e)) return; // a different finger - let it pass through to the pad
     e.stopPropagation();
-    dragPointer.current = null;
+    joyPointer.current = null;
     setDragging(false);
     target.current.set(0, 0);
     handlers.onJoyEnd();

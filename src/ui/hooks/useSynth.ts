@@ -7,38 +7,49 @@ import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
 
 // Past this magnitude the joystick is considered "pushed"; inside it the stick
-// is treated as centered (dead-zone) for both morph and menu navigation.
-const JOY_DEADZONE = 0.34;
+// is treated as centered (dead-zone). Generous, so the angle is only read once the
+// push is clearly established (near-center the angle is jittery).
+const JOY_DEADZONE = 0.42;
 // Slightly larger gate for discrete menu flicks so the latch is unambiguous.
-const MENU_NAV_THRESHOLD = 0.4;
+const MENU_NAV_THRESHOLD = 0.45;
+// Each of the 8 directions only registers within +/- this many degrees of its
+// center, leaving dead GAPS between directions. In a gap the previous quality is
+// held (hysteresis), so dragging toward a diagonal never clips the neighbour.
+const DIR_HALF_WIDTH = 17;
+
+// The 8 compass directions (degrees, +y = up) and the chord quality each morphs to.
+const DIRECTIONS: readonly [number, Quality][] = [
+  [90, '7th'], // N
+  [45, '9th'], // NE
+  [0, 'sus4'], // E
+  [315, 'sus2'], // SE
+  [270, 'OPEN'], // S
+  [225, 'add9'], // SW
+  [180, '6th'], // W
+  [135, 'JAZZ'], // NW
+];
+
+// Smallest absolute angle between two bearings, 0..180.
+function angleGap(a: number, b: number): number {
+  return Math.abs(((a - b + 540) % 360) - 180);
+}
 
 // Map a joystick vector (x = right+, y = up+, magnitude 0..1) to a chord quality.
-// Inside the dead-zone it is a plain triad.
-function joyQuality(x: number, y: number): Quality {
-  const dist = Math.hypot(x, y);
-  if (dist < JOY_DEADZONE) return 'TRIAD';
-  const deg = (Math.atan2(y, x) * 180) / Math.PI; // -180..180, +y = up
-  const snapped = ((Math.round(deg / 45) * 45) + 360) % 360;
-  switch (snapped) {
-    case 90:
-      return '7th'; // N
-    case 45:
-      return '9th'; // NE
-    case 0:
-      return 'sus4'; // E
-    case 315:
-      return 'sus2'; // SE
-    case 270:
-      return 'OPEN'; // S
-    case 225:
-      return 'add9'; // SW
-    case 180:
-      return '6th'; // W
-    case 135:
-      return 'JAZZ'; // NW
-    default:
-      return 'TRIAD';
+// Inside the dead-zone -> triad. Between two directions (a gap) -> hold `prev`, so
+// a diagonal push does not briefly trigger the horizontal/vertical neighbour.
+function joyQuality(x: number, y: number, prev: Quality): Quality {
+  if (Math.hypot(x, y) < JOY_DEADZONE) return 'TRIAD';
+  const deg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+  let best: Quality | null = null;
+  let bestGap = 999;
+  for (const [center, quality] of DIRECTIONS) {
+    const gap = angleGap(deg, center);
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = quality;
+    }
   }
+  return best !== null && bestGap <= DIR_HALF_WIDTH ? best : prev;
 }
 
 // A digit key '1'..'7' -> its scale degree, anything else -> null.
@@ -55,6 +66,7 @@ export function useSynth() {
   const controller = useMemo(() => new SynthController(new WebAudioSynth(), new IntervalClock()), []);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());
   const menuLatched = useRef(false); // one nav step per flick out of the dead-zone
+  const lastQuality = useRef<Quality>('TRIAD'); // for joystick direction hysteresis
 
   useEffect(() => controller.subscribe(setVm), [controller]);
 
@@ -83,19 +95,34 @@ export function useSynth() {
   }, [controller]);
 
   const handlers: DeviceHandlers = useMemo(() => {
-    // Joystick while the gray menu is open: one discrete cursor move per flick.
-    // We latch on the first out-of-dead-zone reading and unlatch only when the
-    // stick returns to center, so a single push steps exactly once (not per
-    // pointermove event). Up/down picks the field; left/right edits its value.
+    // Joystick while a menu is open: exactly ONE discrete step per flick. The
+    // pitfalls a springy analog stick creates, and how this avoids them:
+    //  - wobble re-triggering: we LATCH on a clear push and only unlatch once the
+    //    stick is well back inside the centre (a much smaller radius than the push
+    //    threshold = hysteresis), so a hovering finger can't flash a value back and
+    //    forth.
+    //  - up/down vs left/right confusion: we only act when ONE axis clearly
+    //    dominates; a near-diagonal flick lands in an ambiguous band and does
+    //    nothing, waiting for a cleaner flick.
+    const MENU_RELEASE = 0.24; // unlatch radius (< MENU_NAV_THRESHOLD => hysteresis)
+    const AXIS_DOMINANCE = 1.5; // one axis must beat the other by this factor
     const navMenu = (x: number, y: number) => {
-      if (Math.hypot(x, y) < MENU_NAV_THRESHOLD) {
-        menuLatched.current = false; // back in the dead-zone: ready for the next flick
+      const mag = Math.hypot(x, y);
+      if (mag < MENU_RELEASE) {
+        menuLatched.current = false; // back near centre: ready for the next flick
         return;
       }
-      if (menuLatched.current) return; // this flick already counted
-      menuLatched.current = true;
-      if (Math.abs(y) > Math.abs(x)) controller.cursorField(y > 0 ? -1 : 1);
-      else controller.editValue(x > 0 ? 1 : -1);
+      if (menuLatched.current || mag < MENU_NAV_THRESHOLD) return;
+      const ax = Math.abs(x);
+      const ay = Math.abs(y);
+      if (ay > ax * AXIS_DOMINANCE) {
+        menuLatched.current = true;
+        controller.cursorField(y > 0 ? -1 : 1); // up/down picks the field
+      } else if (ax > ay * AXIS_DOMINANCE) {
+        menuLatched.current = true;
+        controller.editValue(x > 0 ? 1 : -1); // left/right edits the value
+      }
+      // else: diagonal/ambiguous - wait for a clearer flick (no latch)
     };
 
     return {
@@ -106,10 +133,15 @@ export function useSynth() {
       onJoyMove: (x, y) => {
         // Menu open -> navigate fields/values; menu closed -> morph the held chord.
         if (controller.getState().menuOpen) navMenu(x, y);
-        else controller.setQuality(joyQuality(x, y));
+        else {
+          const q = joyQuality(x, y, lastQuality.current);
+          lastQuality.current = q;
+          controller.setQuality(q);
+        }
       },
       onJoyEnd: () => {
         menuLatched.current = false;
+        lastQuality.current = 'TRIAD';
         // Releasing the stick springs the held chord(s) back to a plain triad.
         if (!controller.getState().menuOpen) controller.springToTriad();
       },

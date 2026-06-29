@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Text } from '@react-three/drei';
 import type { DeviceProps } from './deviceProps';
@@ -32,6 +33,10 @@ import { TopEdge } from './TopEdge';
 // input through the handlers.
 export function Device({ vm, handlers }: DeviceProps) {
   const pads = padSpecs();
+  // Shared across the Knob + every Pad: the pointer id currently driving the
+  // joystick (or null). The Knob owns it; the pads ignore that pointer so a
+  // joystick finger can never trigger a key, even dragged over the key area.
+  const joyPointer = useRef<number | null>(null);
 
   // Fit-scale the device to the viewport. We derive the visible extent from the
   // fixed App camera (CAM_DIST/CAM_FOV) and the DOM pixel size, NOT the live
@@ -73,6 +78,7 @@ export function Device({ vm, handlers }: DeviceProps) {
           lit={vm.litPads.includes(p.degree)}
           power={vm.power}
           handlers={handlers}
+          joyPointer={joyPointer}
         />
       ))}
 
@@ -95,6 +101,7 @@ export function Device({ vm, handlers }: DeviceProps) {
         rim={theme.deep}
         basin={theme.floor}
         handlers={handlers}
+        joyPointer={joyPointer}
       />
 
       {/* ring of 8 dots around the joystick */}

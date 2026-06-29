@@ -5,7 +5,6 @@ import { useSynth } from './ui/hooks/useSynth';
 import { Device } from './ui/three/Device';
 import { BODY_THEMES } from './ui/three/palette';
 import { Manual } from './ui/components/Manual';
-import { KeyMenuHint } from './ui/components/KeyMenuHint';
 import './App.css';
 
 // Composition root: wires the synth (controller + Web Audio adapter via the
@@ -56,9 +55,6 @@ export default function App() {
           maxDistance={11}
         />
       </Canvas>
-
-      {/* Appears only while the gray key menu is open. */}
-      <KeyMenuHint vm={vm} />
 
       {/* Meta controls, parked in the top-right corner so they clear the device. */}
       <div className="tools">

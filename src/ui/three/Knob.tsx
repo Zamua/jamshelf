@@ -23,6 +23,7 @@ const RADIUS = 0.34; // normalization radius: dragging this far == full deflecti
 const GRAB = 0.56; // radius of the (invisible) grab target around the cap
 const TRAVEL = 0.1; // how far the cap visually shifts at full deflection
 const TILT = 0.45; // how far the cap tilts (radians) at full deflection
+const HOLD_MS = 550; // press longer than this (no drag) = a long-press, not a tap
 
 // Local z levels (the group sits at FRONT_Z, so z=0 is the case face). The dish is
 // RECESSED into a cut well (Chassis cuts the hole); only the cap protrudes.
@@ -41,6 +42,19 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
   const target = useRef(new THREE.Vector2(0, 0));
   const cur = useRef(new THREE.Vector2(0, 0));
   const [dragging, setDragging] = useState(false);
+  // Tap vs hold detection (the joystick CLICK / long-press controls the looper): a
+  // press that never drags is a TAP on release (-> onJoyClick), or a long HOLD if it
+  // stays down past HOLD_MS without dragging (-> onJoyHold). Any real drag cancels both.
+  const downAt = useRef(0);
+  const moved = useRef(false);
+  const holdFired = useRef(false);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearHoldTimer = () => {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  };
   // The drag-tracking plane covers the whole stage, so we IGNORE events from any
   // other finger - otherwise a second finger pressing a pad would drive (or end)
   // the joystick AND, because the plane sits in front, swallow that pad's release
@@ -61,6 +75,10 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
       nx /= m;
       ny /= m;
     }
+    if (m > 0.15) {
+      moved.current = true; // a real drag: not a tap/hold
+      clearHoldTimer();
+    }
     target.current.set(nx, ny);
     handlers.onJoyMove(nx, ny);
   };
@@ -73,6 +91,16 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
     const local = group.current.worldToLocal(e.point.clone());
     origin.current.set(local.x, local.y);
     target.current.set(0, 0);
+    downAt.current = performance.now();
+    moved.current = false;
+    holdFired.current = false;
+    clearHoldTimer();
+    holdTimer.current = setTimeout(() => {
+      if (!moved.current) {
+        holdFired.current = true;
+        handlers.onJoyHold();
+      }
+    }, HOLD_MS);
     handlers.resume();
     setDragging(true);
     handlers.onJoyMove(0, 0);
@@ -82,6 +110,11 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
     e.stopPropagation();
     joyPointer.current = null;
     setDragging(false);
+    clearHoldTimer();
+    // a quick press that never dragged and never became a hold = a click
+    if (!moved.current && !holdFired.current && performance.now() - downAt.current < HOLD_MS) {
+      handlers.onJoyClick();
+    }
     target.current.set(0, 0);
     handlers.onJoyEnd();
   };

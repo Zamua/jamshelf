@@ -49,6 +49,11 @@ const ITEMS: readonly Item[] = [
       'In Drone mode a chord latches on: tap a pad and it keeps playing on its own, so you can shape it with the joystick using your other hand. Tap the same pad to stop it, or another pad to switch chords.',
   },
   {
+    title: 'Looper',
+    body:
+      'Tap the joystick (a quick press, no drag) to start recording a loop; tap again to stop, and it plays back on repeat. Tap once more to overdub another track on top (up to 6, each keeps its own sound). Long-press the joystick to clear all loops.',
+  },
+  {
     title: 'Power',
     body: 'The power button toggles the device on and off. Powering off mutes every voice.',
   },

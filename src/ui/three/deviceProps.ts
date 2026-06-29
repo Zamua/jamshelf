@@ -16,6 +16,10 @@ export interface DeviceHandlers {
   // The controller maps this to a quality morph (menu closed) or menu nav (open).
   onJoyMove(x: number, y: number): void;
   onJoyEnd(): void;
+  // joystick CLICK (tap, no drag) + long-press: drive the looper (record / overdub
+  // / clear), like the device's joystick click.
+  onJoyClick(): void;
+  onJoyHold(): void;
   // colored menu buttons
   onKey(): void; // gray
   onSound(): void; // yellow

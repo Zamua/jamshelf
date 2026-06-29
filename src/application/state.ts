@@ -1,5 +1,6 @@
 import type { Degree, Quality, ScaleName, PitchClass, PlayMode } from '../domain/music';
 import type { PatchName } from './ports';
+import type { LooperView } from './looper';
 
 // Which menu is open: the gray KEY menu or the red MODE menu.
 export type MenuKind = 'KEY' | 'MODE';
@@ -23,6 +24,8 @@ export interface ViewModel {
   readonly mode: PlayMode;
   readonly menuOpen: boolean;
   readonly menuKind: MenuKind;
+  // the loop recorder's state (for the OLED + any loop UI).
+  readonly looper: LooperView;
   // pads currently held/lit (by degree), for visual press state.
   readonly litPads: readonly Degree[];
   // OLED lines.

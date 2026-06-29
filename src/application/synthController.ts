@@ -27,6 +27,7 @@ import {
   type BassMode,
 } from '../domain/music';
 import { PATCH_ORDER, type Clock, type PatchName, type SynthPort } from './ports';
+import type { Looper } from './looper';
 import type { Listener, MenuKind, ViewModel } from './state';
 
 const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS'] as const;
@@ -76,14 +77,27 @@ export class SynthController {
   private listeners = new Set<Listener>();
   private readonly synth: SynthPort;
   private readonly clock: Clock;
+  private readonly looper: Looper;
 
-  constructor(synth: SynthPort, clock: Clock) {
+  constructor(synth: SynthPort, clock: Clock, looper: Looper) {
     this.synth = synth;
     this.clock = clock;
+    this.looper = looper;
     this.synth.setStrumMs(PLAY_STRUM_MS);
     this.synth.setVolume(this.volume);
     this.clock.onTick(() => this.tick());
     this.clock.setBpm(this.bpm);
+    this.looper.onChange(() => this.publish());
+  }
+
+  // --- looper (joystick click = record/overdub, long-press = clear) ---
+  joyClick(): void {
+    if (!this.power || this.inspect) return;
+    this.looper.toggle(now());
+  }
+  joyHold(): void {
+    if (!this.power || this.inspect) return;
+    this.looper.clear();
   }
 
   // --- lifecycle ---
@@ -528,9 +542,15 @@ export class SynthController {
     }
     const flashing = now() < this.flashUntil;
     const keyScale = `${NOTE_NAMES[this.root]} ${SCALE_LABELS[this.scale]}`;
+    const lv = this.looper.view();
+    // While recording, REC is the headline; while a loop plays, it shows in the
+    // small line. Otherwise the usual key/chord + patch/mode.
+    if (lv.mode === 'rec') {
+      return { big: `REC ${lv.recTrack + 1}`, small: flashing ? this.flashText : keyScale };
+    }
     return {
       big: flashing ? this.flashText : keyScale,
-      small: `${this.patch}  ${this.mode}`,
+      small: lv.mode === 'play' ? `LOOP ${lv.trackCount}` : `${this.patch}  ${this.mode}`,
     };
   }
 
@@ -556,6 +576,7 @@ export class SynthController {
       mode: this.mode,
       menuOpen: this.menuOpen,
       menuKind: this.menuKind,
+      looper: this.looper.view(),
       litPads,
       screenBig: big,
       screenSmall: small,

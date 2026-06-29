@@ -39,14 +39,24 @@ export interface Clock {
   onTick(cb: () => void): () => void; // subscribe; returns an unsubscribe fn
 }
 
+// A high-resolution frame ticker (the looper uses it to advance the playhead and
+// fire recorded events at ~ms accuracy). The adapter implements it with
+// requestAnimationFrame; the callback receives a millisecond timestamp.
+export interface Ticker {
+  start(cb: (nowMs: number) => void): void;
+  stop(): void;
+}
+
 // The audio output port. Voice groups are addressed by an opaque id (one chord
 // = one voice group) so multi-touch chords can be released independently.
 export interface SynthPort {
   // Unlock/resume the audio backend on the first user gesture.
   resume(): void;
   // Start a voice group of frequencies (Hz). Re-calling with the same id
-  // replaces that group (used for the live joystick morph).
-  noteOn(voiceId: string, freqs: number[]): void;
+  // replaces that group (used for the live joystick morph). An optional patch
+  // overrides the current voice for THIS group only (the looper plays each track
+  // with its own instrument without disturbing the live patch).
+  noteOn(voiceId: string, freqs: number[], patch?: PatchName): void;
   // Release a voice group's envelope.
   noteOff(voiceId: string): void;
   // Release every sounding voice immediately (used by power-off).

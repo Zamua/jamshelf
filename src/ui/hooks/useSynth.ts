@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SynthController } from '../../application/synthController';
+import { Looper } from '../../application/looper';
 import type { ViewModel } from '../../application/state';
 import { WebAudioSynth } from '../../infrastructure/audio/webAudioSynth';
+import { RecordingSynth } from '../../infrastructure/audio/recordingSynth';
 import { IntervalClock } from '../../infrastructure/clock/intervalClock';
+import { RafTicker } from '../../infrastructure/clock/rafTicker';
 import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
 
@@ -72,7 +75,15 @@ function keyToDegree(key: string): Degree | null {
 // adds desktop keyboard play. The glissando itself is delivered by the 3D pad
 // meshes calling onPadMove -> controller.movePad; nothing here needs to know.
 export function useSynth() {
-  const controller = useMemo(() => new SynthController(new WebAudioSynth(), new IntervalClock()), []);
+  const controller = useMemo(() => {
+    // The real synth plays audio; the looper records/loops note events and plays
+    // them back through the real synth; the RecordingSynth transparently captures
+    // the player's live notes into the looper while recording.
+    const realSynth = new WebAudioSynth();
+    const looper = new Looper(realSynth, new RafTicker());
+    const recording = new RecordingSynth(realSynth, looper);
+    return new SynthController(recording, new IntervalClock(), looper);
+  }, []);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());
   const menuLatched = useRef(false); // one nav step per flick out of the dead-zone
   const lastQuality = useRef<Quality>('TRIAD'); // for joystick direction hysteresis
@@ -154,6 +165,8 @@ export function useSynth() {
         // Releasing the stick springs the held chord(s) back to a plain triad.
         if (!controller.getState().menuOpen) controller.springToTriad();
       },
+      onJoyClick: () => controller.joyClick(), // looper: record / stop / overdub
+      onJoyHold: () => controller.joyHold(), // looper: clear
       onKey: () => controller.toggleMenu('KEY'), // gray: key / scale / octave / bass
       onSound: () => controller.pressSound(), // yellow: voice, or inversion if a pad is held
       onTempo: () => controller.toggleMenu('MODE'), // red: play mode / rate / bpm

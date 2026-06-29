@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SynthController } from '../synthController';
+import { Looper } from '../looper';
 import { midiToFreq, type PlayMode } from '../../domain/music';
-import { FakeClock, SpySynth } from './fakes';
+import { FakeClock, FakeTicker, SpySynth } from './fakes';
 
 // C major triad (degree 1, C major, octave 0) = MIDI 60/64/67.
 const C = midiToFreq(60);
@@ -15,7 +16,7 @@ let c: SynthController;
 beforeEach(() => {
   synth = new SpySynth();
   clock = new FakeClock();
-  c = new SynthController(synth, clock);
+  c = new SynthController(synth, clock, new Looper(synth, new FakeTicker()));
 });
 
 // Drive a mode change through the public MODE menu, cycling from the CURRENT mode.

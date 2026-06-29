@@ -116,11 +116,11 @@ export class WebAudioSynth implements SynthPort {
     if (ctx.state === 'suspended') void ctx.resume();
   }
 
-  noteOn(voiceId: string, freqs: number[]): void {
+  noteOn(voiceId: string, freqs: number[], patchName?: PatchName): void {
     if (!this.ctx || !this.master || !this.reverbBus) return;
     // Re-noteOn with the same id replaces the group (powers the live morph).
     this.noteOff(voiceId);
-    const patch = PATCHES[this.patchName];
+    const patch = PATCHES[patchName ?? this.patchName];
     const t0 = this.ctx.currentTime + 0.005;
     const spread = this.strumMs / 1000;
     const voices: Voice[] = freqs.map((f, i) =>

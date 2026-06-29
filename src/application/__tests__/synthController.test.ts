@@ -82,8 +82,9 @@ describe('looper wiring', () => {
     expect(c.getState().screenBig).toBe('REC 1');
     looper.mode = 'play';
     looper.trackCount = 2;
+    looper.loopBars = 4;
     looper.emit();
-    expect(c.getState().screenSmall).toBe('LOOP 2');
+    expect(c.getState().screenSmall).toBe('LOOP 2 4BR');
   });
 });
 

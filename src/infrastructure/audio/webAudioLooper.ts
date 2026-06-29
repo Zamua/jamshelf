@@ -21,6 +21,7 @@ import type { WebAudioSynth } from './webAudioSynth';
 // routes to the synth's loop bus, so it is never captured into a recording.
 
 const MAX_TRACKS = 6;
+const BEATS_PER_BAR = 4; // 4/4 - the master loop is snapped to whole bars
 const BUFFER_SIZE = 2048; // ScriptProcessor block (~46ms @ 44.1k) - safe on iOS
 const LOOKAHEAD_MS = 25; // metronome scheduler poll interval
 const SCHEDULE_AHEAD = 0.12; // seconds of click events to schedule each poll
@@ -49,6 +50,7 @@ export class WebAudioLooper implements AudioLooper {
 
   private loopLenSamples = 0; // master loop length (defines every layer)
   private loopBeats = 0; // its length in whole beats (locks the metronome)
+  private loopBars = 0; // its length in whole bars (BEATS_PER_BAR beats each)
   private anchorTime = 0; // ctx time of loop phase 0 (the first note)
 
   // metronome
@@ -84,6 +86,7 @@ export class WebAudioLooper implements AudioLooper {
       mode: this.mode,
       recTrack: this.recTrack,
       trackCount: this.tracks.length,
+      loopBars: this.loopBars,
       posFraction: pos,
     };
   }
@@ -137,6 +140,7 @@ export class WebAudioLooper implements AudioLooper {
     this.masterChunks = [[], []];
     this.loopLenSamples = 0;
     this.loopBeats = 0;
+    this.loopBars = 0;
     this.stopMetronome();
     this.emit();
   }
@@ -149,11 +153,16 @@ export class WebAudioLooper implements AudioLooper {
     const right = concat(this.masterChunks[1]);
     this.masterChunks = [[], []];
 
-    // Snap the loop length to a whole number of beats at the current tempo so the
-    // metronome and every later layer lock to the loop boundary.
+    // Snap the loop length to a whole number of BARS at the current tempo (round to
+    // nearest, min 1 bar) so the metronome + every later layer lock to it. Snapping
+    // to bars (not beats) means a small overshoot past the bar line rounds back DOWN
+    // to a clean bar count instead of tacking on a stray beat: a tail has to exceed
+    // half a bar before it counts as another bar.
     const beatSamples = Math.max(1, Math.round((ctx.sampleRate * 60) / this.bpm));
-    this.loopBeats = Math.max(1, Math.round(left.length / beatSamples));
-    this.loopLenSamples = this.loopBeats * beatSamples;
+    const barSamples = beatSamples * BEATS_PER_BAR;
+    this.loopBars = Math.max(1, Math.round(left.length / barSamples));
+    this.loopBeats = this.loopBars * BEATS_PER_BAR;
+    this.loopLenSamples = this.loopBars * barSamples;
 
     const buf = ctx.createBuffer(2, this.loopLenSamples, ctx.sampleRate);
     copyInto(buf.getChannelData(0), left);
@@ -302,11 +311,17 @@ export class WebAudioLooper implements AudioLooper {
     if (!this.ctx) return;
     const b = this.beatSec();
     const horizon = this.ctx.currentTime + SCHEDULE_AHEAD;
+    // Accents must land on the TRUE bar grid (1-2-3-4 | 1-2-3-4). Once a loop exists
+    // we count beats from the loop's first-note anchor, NOT from this metronome's own
+    // anchor - an overdub's metronome restarts on whatever beat boundary is nearest,
+    // which may fall mid-bar, and keying the accent off it would drop/shift the accent
+    // for later tracks. Before a loop is set (the count-in), the metronome anchor IS
+    // the grid origin, so either reference agrees.
+    const accentRef = this.loopBars > 0 ? this.anchorTime : this.metroAnchor;
     let t = this.metroAnchor + this.metroBeat * b;
     while (t < horizon) {
-      // accent the loop downbeat (or every 4th beat before a loop exists)
-      const per = this.loopBeats > 0 ? this.loopBeats : 4;
-      this.click(t, this.metroBeat % per === 0);
+      const beatIdx = Math.round((t - accentRef) / b);
+      this.click(t, (((beatIdx % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR) === 0);
       this.metroBeat++;
       t = this.metroAnchor + this.metroBeat * b;
     }

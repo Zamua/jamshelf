@@ -589,7 +589,10 @@ export class SynthController {
     }
     return {
       big: flashing ? this.flashText : keyScale,
-      small: lv.mode === 'play' ? `LOOP ${lv.trackCount}` : `${this.patch}  ${this.mode}`,
+      small:
+        lv.mode === 'play'
+          ? `LOOP ${lv.trackCount} ${lv.loopBars}BR`
+          : `${this.patch}  ${this.mode}`,
     };
   }
 

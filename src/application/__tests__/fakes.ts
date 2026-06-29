@@ -12,6 +12,7 @@ export class FakeAudioLooper implements AudioLooper {
   mode: LooperMode = 'idle';
   trackCount = 0;
   recTrack = -1;
+  loopBars = 0;
   private cb: (() => void) | null = null;
 
   toggle(): void {
@@ -27,7 +28,13 @@ export class FakeAudioLooper implements AudioLooper {
     this.bpm = bpm;
   }
   view(): LooperView {
-    return { mode: this.mode, recTrack: this.recTrack, trackCount: this.trackCount, posFraction: 0 };
+    return {
+      mode: this.mode,
+      recTrack: this.recTrack,
+      trackCount: this.trackCount,
+      loopBars: this.loopBars,
+      posFraction: 0,
+    };
   }
   onChange(cb: () => void): void {
     this.cb = cb;

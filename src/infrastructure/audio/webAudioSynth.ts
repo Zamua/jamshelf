@@ -295,6 +295,16 @@ export class WebAudioSynth implements SynthPort {
     chWet.connect(liveSum);
     this.chorusWet = chWet;
 
+    // Browsers SUSPEND the AudioContext when the tab is backgrounded (currentTime
+    // freezes); on return it stays suspended and everything goes silent. Resume it
+    // when the page becomes visible again so loops + the live synth keep playing.
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && ctx.state === 'suspended')
+          void ctx.resume();
+      });
+    }
+
     this.applyFx();
   }
 

@@ -155,16 +155,28 @@ describe('WebAudioLooper', () => {
     expect(data[20000]).toBeCloseTo(0.5);
   });
 
-  it('snaps the master loop length to a whole number of beats', () => {
+  it('snaps the master to whole BARS - a small tail past the bar line rounds down', () => {
     const { looper, ctx } = makeLooper();
-    looper.setBpm(120); // beat = 0.5s = 24000 samples @ 48k
+    looper.setBpm(120); // beat = 24000, bar = 96000 samples @ 48k
     looper.toggle();
     looper.noteStarted();
-    // feed ~1.1 beats of audio (26400 samples) -> should snap to 1 beat (24000)
-    const samples = Math.round(24000 * 1.1);
-    pump(ctx, 0.5, Math.ceil(samples / ctx.lastScript!.bufferSize));
+    // ~4 bars + a fraction of a beat over the line -> must snap back to 4 bars, not 5
+    const target = 96000 * 4 + 5000;
+    pump(ctx, 0.5, Math.ceil(target / ctx.lastScript!.bufferSize));
     looper.toggle();
-    expect(ctx.sources[0].buffer!.length).toBe(24000);
+    expect(looper.view().loopBars).toBe(4);
+    expect(ctx.sources[0].buffer!.length).toBe(96000 * 4);
+  });
+
+  it('snaps a very short take up to a minimum of one bar', () => {
+    const { looper, ctx } = makeLooper();
+    looper.setBpm(120);
+    looper.toggle();
+    looper.noteStarted();
+    pump(ctx, 0.5, 3); // a few blocks, well under a bar
+    looper.toggle();
+    expect(looper.view().loopBars).toBe(1);
+    expect(ctx.sources[0].buffer!.length).toBe(96000);
   });
 
   it('overdubs a new layer without disturbing the frozen first track', () => {

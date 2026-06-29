@@ -40,11 +40,30 @@ export const STRUM_SPEEDS: readonly StrumSpeed[] = ['SLOW', 'MED', 'FAST'];
 export type BassMode = 'OFF' | 'ROOT';
 export const BASS_MODES: readonly BassMode[] = ['OFF', 'ROOT'];
 
-// Prepend the bass note (root - 2 octaves) when bass is ROOT. The chord's lowest
-// note is its root, so notes[0] - 24 is the bass.
-export function withBass(notes: readonly Midi[], bass: BassMode): Midi[] {
-  if (bass === 'OFF' || notes.length === 0) return [...notes];
-  return [notes[0] - 24, ...notes];
+// Inversions cycle Root / 1st / 2nd (like the real device).
+export const INVERSIONS = 3;
+
+// Invert a chord: lift the lowest `inversion` notes up an octave (and move them to
+// the top). 0 = root position, 1 = 1st inversion, 2 = 2nd. Reshuffles which note is
+// lowest for smoother voice leading; the chord's identity (and name) is unchanged.
+export function invert(notes: readonly Midi[], inversion: number): Midi[] {
+  const n = notes.length;
+  if (n === 0) return [];
+  const k = ((inversion % n) + n) % n;
+  return [...notes.slice(k), ...notes.slice(0, k).map((m) => m + 12)];
+}
+
+// Voice a chord for playback: apply the inversion, then (for bass ROOT) prepend the
+// chord ROOT two octaves down. Bass is always the original root, independent of the
+// inversion. `notes[0]` is the chord root (chords are built ascending from it).
+export function voiceChord(
+  notes: readonly Midi[],
+  inversion: number,
+  bass: BassMode,
+): Midi[] {
+  if (notes.length === 0) return [];
+  const inverted = invert(notes, inversion);
+  return bass === 'ROOT' ? [notes[0] - 24, ...inverted] : inverted;
 }
 
 // Beats per tick for a rate. 1/4 = one beat, 1/8 = half, 1/16 = quarter,

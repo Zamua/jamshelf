@@ -5,7 +5,8 @@ import {
   leadNote,
   rateBeats,
   strumMs,
-  withBass,
+  voiceChord,
+  INVERSIONS,
   NOTE_NAMES,
   SCALE_LABELS,
   SCALE_ORDER,
@@ -60,6 +61,7 @@ export class SynthController {
   private repeatRate: Rate = '1/8';
   private strumSpeed: StrumSpeed = 'MED';
   private bass: BassMode = 'OFF';
+  private inversion = 0; // 0 = root position, 1 = 1st, 2 = 2nd
   private latched: Degree | null = null; // DRONE: the currently-sustained pad
   private arpStep = 0;
 
@@ -183,6 +185,19 @@ export class SynthController {
     this.patch = patch;
     this.synth.setPatch(patch);
     this.flash(patch);
+    this.publish();
+  }
+
+  // Yellow button: with a pad held (or a drone latched), cycle the chord INVERSION
+  // (root / 1st / 2nd), like the real device; otherwise cycle the synth voice.
+  pressSound(): void {
+    if (this.held.size > 0 || this.latched !== null) this.cycleInversion();
+    else this.cyclePatch();
+  }
+  cycleInversion(): void {
+    this.inversion = (this.inversion + 1) % INVERSIONS;
+    this.revoiceHeld();
+    this.flash('INV ' + this.inversion);
     this.publish();
   }
 
@@ -437,9 +452,14 @@ export class SynthController {
   private key(): KeyState {
     return { root: this.root, scale: this.scale, octave: this.octave };
   }
-  private triggerVoice(voiceId: string, degree: Degree): void {
+  // The chord notes as actually voiced: resolve the degree, then apply the
+  // inversion + bass (the joystick morph already baked into `quality`).
+  private voiced(degree: Degree): Midi[] {
     const chord = resolveChord(degree, this.key(), this.quality);
-    this.synth.noteOn(voiceId, withBass(chord.notes, this.bass).map(midiToFreq));
+    return voiceChord(chord.notes, this.inversion, this.bass);
+  }
+  private triggerVoice(voiceId: string, degree: Degree): void {
+    this.synth.noteOn(voiceId, this.voiced(degree).map(midiToFreq));
   }
   private triggerLead(): void {
     const last = [...this.held.values()].pop();

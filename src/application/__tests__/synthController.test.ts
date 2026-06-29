@@ -214,6 +214,16 @@ describe('menus', () => {
     expect(synth.lastOn().freqs[1]).toBeCloseTo(midiToFreq(60)); // then the chord root
   });
 
+  it('yellow cycles the voice when idle, the inversion while a pad is held', () => {
+    const patch0 = c.getState().patch;
+    c.pressSound(); // nothing held -> cycle the synth voice
+    expect(c.getState().patch).not.toBe(patch0);
+    c.pressPad('p1', 1); // C major triad, root position (lowest = C4 = 60)
+    c.pressSound(); // a pad is held -> cycle to 1st inversion (lowest = E4 = 64)
+    expect(synth.lastOn().id).toBe('p1');
+    expect(synth.lastOn().freqs[0]).toBeCloseTo(midiToFreq(64));
+  });
+
   it('pressing the same menu button closes it; the other switches', () => {
     c.toggleMenu('KEY');
     expect(c.getState().menuOpen).toBe(true);

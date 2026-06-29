@@ -9,7 +9,8 @@ import {
   strumMs,
   arpOrder,
   leadNote,
-  withBass,
+  invert,
+  voiceChord,
 } from '../performance';
 
 describe('performance value sets', () => {
@@ -79,17 +80,33 @@ describe('leadNote', () => {
   });
 });
 
-describe('withBass', () => {
+describe('invert', () => {
+  it('0 = root position (unchanged)', () => {
+    expect(invert([60, 64, 67], 0)).toEqual([60, 64, 67]);
+  });
+  it('1st inversion lifts the lowest note an octave to the top', () => {
+    expect(invert([60, 64, 67], 1)).toEqual([64, 67, 72]);
+  });
+  it('2nd inversion lifts the lowest two', () => {
+    expect(invert([60, 64, 67], 2)).toEqual([67, 72, 76]);
+  });
+  it('handles an empty chord', () => {
+    expect(invert([], 1)).toEqual([]);
+  });
+});
+
+describe('voiceChord (inversion + bass)', () => {
   it('lists the bass modes', () => {
     expect(BASS_MODES).toEqual(['OFF', 'ROOT']);
   });
-  it('OFF leaves the chord unchanged', () => {
-    expect(withBass([60, 64, 67], 'OFF')).toEqual([60, 64, 67]);
+  it('root position, no bass = the chord unchanged', () => {
+    expect(voiceChord([60, 64, 67], 0, 'OFF')).toEqual([60, 64, 67]);
   });
-  it('ROOT prepends the root two octaves down', () => {
-    expect(withBass([60, 64, 67], 'ROOT')).toEqual([36, 60, 64, 67]);
+  it('bass ROOT prepends the original root two octaves down', () => {
+    expect(voiceChord([60, 64, 67], 0, 'ROOT')).toEqual([36, 60, 64, 67]);
   });
-  it('handles an empty chord', () => {
-    expect(withBass([], 'ROOT')).toEqual([]);
+  it('bass is always the ORIGINAL root, even when inverted', () => {
+    // 1st inversion is [64,67,72]; the bass must still be 60-24 = 36, not 64-24
+    expect(voiceChord([60, 64, 67], 1, 'ROOT')).toEqual([36, 64, 67, 72]);
   });
 });

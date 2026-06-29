@@ -154,8 +154,8 @@ export function useSynth() {
         // Releasing the stick springs the held chord(s) back to a plain triad.
         if (!controller.getState().menuOpen) controller.springToTriad();
       },
-      onKey: () => controller.toggleMenu('KEY'), // gray: key / scale / octave
-      onSound: () => controller.cyclePatch(), // yellow: cycle the voice
+      onKey: () => controller.toggleMenu('KEY'), // gray: key / scale / octave / bass
+      onSound: () => controller.pressSound(), // yellow: voice, or inversion if a pad is held
       onTempo: () => controller.toggleMenu('MODE'), // red: play mode / rate / bpm
       onPower: () => controller.togglePower(),
       onVolume: (delta) => controller.nudgeVolume(delta),

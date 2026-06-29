@@ -79,6 +79,16 @@ structural facts, learned by iterating against the official photos in
   GOTCHA: a solid slab front face would OCCLUDE any recess behind it - you must cut
   the hole. Also: surface-mounted bits (speaker dots, mic) sit at `FRONT_Z + ~0.012`;
   if you re-enable an extrude bevel the land front creeps proud and hides them.
+- **Metallic look**: the case is `metalness ~0.78 / roughness ~0.28` and reflects a
+  drei `<Environment>` built from `<Lightformer>` panels in `App.tsx` (a bright overhead
+  bar + a soft frontal fill + side panels) - NO CDN HDR (preset envs fetch from a CDN;
+  this is local). Without an env map a high-metalness surface reads as dead dark grey;
+  the lightformers are the brushed-aluminium sheen. Tune the FRONTAL panel intensity to
+  trade head-on brightness vs sheen gradient (too bright = flat white).
+- **Top-edge ports** (`TopEdge.tsx`, jack + USB-C) must sit slightly PROUD of the slab's
+  top face (`TOP_Y`), never flush/coplanar with it - coplanar faces z-fight (shimmer in
+  the 3D inspect view). The wordmark font is upright Poppins (`brandFont.ts`); the old
+  rounded Baloo read as slanted.
 - **4-column grid**: the 4 top cells (OLED + 3 menu buttons) are SQUARES that
   share the column centers + width (`COLS`, `KEY_W`) of the 4 bottom keys, so they
   line up vertically. The 3 sharp (top) keys sit at the gaps BETWEEN columns; each
@@ -131,6 +141,12 @@ speed, rate, and BPM. Design is in `docs/SPEC.md` (Phase 1). Key pieces:
   starts phase-aligned to the first press (no first-note flam) and never idle-ticks.
   DRONE latches (fixes the two-hand morph problem); LEAD is mono root; STRUM widens
   the synth strum spread; ARP/REPEAT are clock-driven.
+- **LEAD mode specials**: the OLED names the single NOTE (e.g. `C4`, via `leadNoteName`),
+  not the chord; and the joystick is a PITCH BEND (X = +/-2 semitones) + OCTAVE glide
+  (Y = +/-1 octave) instead of the chord-quality morph. Implemented as a global
+  `ConstantSourceNode` (the synth's `bendNode`) fanned into every oscillator's `detune`
+  (so carrier + modulator bend together, FM ratio preserved); `SynthPort.setBend(cents)`
+  drives it, `controller.setLeadBend` gates it to LEAD, and `allNotesOff` resets it to 0.
 - The menu renders on the OLED (no floating 2D panel). `useSynth` maps the joystick
   to the morph (8 directions, with a centre dead-zone + angular gaps + hysteresis so
   diagonals do not clip a neighbour) or to menu nav (latch hysteresis + axis-dominance

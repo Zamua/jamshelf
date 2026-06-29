@@ -215,7 +215,13 @@ wiring tests.
 joystick finger can be swallowed when a second finger (a held chord) is down and the
 release lands over a pad, a **window-level `pointerup`/`pointercancel` fallback** (keyed on
 `joyPointer.current`) force-ends the drag - the browser always fires it, so the stick can
-never stay stuck deflected. `WebAudioSynth` also resumes the AudioContext on
+never stay stuck deflected. **Pads use the same safety net** (`useSynth`): a pad's
+pointer-up is raycast-delivered, so a finger lifting off a pad EDGE or in a gap (easy when
+swiping fast) left the note held with no release = a stuck key. A window
+`pointerup`/`pointercancel` listener calls `controller.releasePad(String(pointerId))` for
+the lifted pointer (idempotent: a normal over-pad release already cleared it; a non-pad
+pointer id isn't a held voice). Reproduced + verified via CDP touch (7 stuck oscillators ->
+0, only the chorus LFO remains). `WebAudioSynth` also resumes the AudioContext on
 `document` `visibilitychange` (backgrounding a tab suspends it).
 
 **Drums (`DRUM` play mode)**: the 7 pads map to a kit (`drumForDegree`). Drum hits are

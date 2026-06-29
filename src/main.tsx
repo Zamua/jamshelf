@@ -9,6 +9,20 @@ import App from './App.tsx'
 // never get hijacked by an OS gesture (which also stranded the joystick mid-drag).
 document.addEventListener('selectstart', (e) => e.preventDefault())
 document.addEventListener('gesturestart', (e) => e.preventDefault())
+// The double-tap magnifier is an OS gesture that CSS alone does not stop on iOS:
+// if a second touchend lands within the double-tap window, cancel its default. The
+// pads still fire on both taps because they run on pointer events, which are
+// independent of (and already dispatched before) this touchend default.
+let lastTouchEnd = 0
+document.addEventListener(
+  'touchend',
+  (e) => {
+    const t = Date.now()
+    if (t - lastTouchEnd <= 350) e.preventDefault()
+    lastTouchEnd = t
+  },
+  { passive: false },
+)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

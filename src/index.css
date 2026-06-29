@@ -4,6 +4,11 @@
 
 * {
   box-sizing: border-box;
+  /* No selectable / callout-able content anywhere: belt-and-suspenders against the
+     iOS selection loupe + magnifier on taps and holds. */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 html,

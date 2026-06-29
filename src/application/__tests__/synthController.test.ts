@@ -301,6 +301,17 @@ describe('menus', () => {
     expect(c.getState().octave).toBe(1);
   });
 
+  it('OCT reaches -2 (for the bass presets) and clamps there', () => {
+    c.toggleMenu('KEY');
+    c.cursorField(1); // SCL
+    c.cursorField(1); // OCT
+    c.editValue(-1);
+    c.editValue(-1); // -> -2
+    expect(c.getState().octave).toBe(-2);
+    c.editValue(-1); // clamped at the floor
+    expect(c.getState().octave).toBe(-2);
+  });
+
   // The OLED's big line is ">FIELD value"; the active field label is what we read
   // back as we step the cursor through the menu.
   const activeField = () => c.getState().screenBig.split(' ')[0].slice(1);

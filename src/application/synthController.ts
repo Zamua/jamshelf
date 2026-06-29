@@ -429,7 +429,7 @@ export class SynthController {
       const i = SCALE_ORDER.indexOf(this.scale);
       this.scale = SCALE_ORDER[(i + delta + SCALE_ORDER.length) % SCALE_ORDER.length];
     } else if (field === 'OCT') {
-      this.octave = Math.max(-1, Math.min(2, this.octave + delta));
+      this.octave = Math.max(-2, Math.min(2, this.octave + delta));
     } else if (field === 'BASS') {
       const i = BASS_MODES.indexOf(this.bass);
       this.bass = BASS_MODES[(i + delta + BASS_MODES.length) % BASS_MODES.length];

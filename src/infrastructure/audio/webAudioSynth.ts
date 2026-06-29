@@ -4,10 +4,18 @@ import type { PatchName, SynthPort } from '../../application/ports';
 // Per-kit tuning factors applied to the base drum recipes (kick pitch + decay,
 // snare noise/tone balance, hat brightness). TIGHT = neutral; 808 = boomy + softer;
 // 909 = punchy + bright.
-const KIT_TUNE: Record<DrumKit, { kickF: number; kickDecay: number; snareN: number; snareT: number; hatF: number }> = {
+const KIT_TUNE: Record<string, { kickF: number; kickDecay: number; snareN: number; snareT: number; hatF: number }> = {
   TIGHT: { kickF: 1, kickDecay: 1, snareN: 1, snareT: 1, hatF: 1 },
   BOX808: { kickF: 0.78, kickDecay: 1.7, snareN: 0.8, snareT: 0.7, hatF: 0.9 },
   BOX909: { kickF: 1.12, kickDecay: 0.78, snareN: 1.25, snareT: 0.85, hatF: 1.18 },
+};
+
+// Sample kits load mono mp3 one-shots from /drums/<folder>/<pad>.mp3 (CC0). Map of
+// kit -> folder; kits not listed here are synthesized.
+const SAMPLE_KITS: Partial<Record<DrumKit, string>> = {
+  TRAP: 'trap',
+  BOUNCE: 'bounce',
+  LOFI: 'lofi',
 };
 
 // Full Web Audio implementation of SynthPort. Ported from the single-file
@@ -110,6 +118,8 @@ export class WebAudioSynth implements SynthPort {
   private groups = new Map<string, Voice[]>();
   private active: Voice[] = []; // insertion-ordered, for oldest-steal
   private noise: AudioBuffer | null = null; // shared white noise for the drum voices
+  private sampleCache = new Map<string, AudioBuffer>(); // `${kit}:${pad}` -> decoded sample
+  private kitLoading = new Set<DrumKit>();
   // Global FX (delay + chorus); wet gains start at 0 = off.
   private delay: DelayNode | null = null;
   private delayWet: GainNode | null = null;
@@ -271,10 +281,66 @@ export class WebAudioSynth implements SynthPort {
     this.chorusWet.gain.setTargetAtTime(this.fxChorusOn ? 0.5 : 0, now, 0.05);
   }
 
+  // A drum hit: play the loaded sample for a sample kit, else synthesize. Sample
+  // kits are lazy-loaded on first use; until ready, this hit falls back to the
+  // synth so it is never silent.
+  drum(name: DrumName, kit: DrumKit): void {
+    if (!this.ctx || !this.master || this.muted) return;
+    const folder = SAMPLE_KITS[kit];
+    if (folder) {
+      const buf = this.sampleCache.get(`${kit}:${name}`);
+      if (buf) {
+        this.playBuffer(buf);
+        return;
+      }
+      void this.loadKit(kit, folder); // kick off loading for next time
+      this.synthDrum(name, 'TIGHT'); // neutral fallback for this hit
+      return;
+    }
+    this.synthDrum(name, kit);
+  }
+
+  private playBuffer(buf: AudioBuffer): void {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const g = ctx.createGain();
+    g.gain.value = 0.9;
+    src.connect(g);
+    g.connect(this.master!);
+    src.start();
+    src.onended = () => {
+      try {
+        src.disconnect();
+        g.disconnect();
+      } catch {
+        /* already gone */
+      }
+    };
+  }
+
+  private async loadKit(kit: DrumKit, folder: string): Promise<void> {
+    if (this.kitLoading.has(kit) || !this.ctx) return;
+    this.kitLoading.add(kit);
+    const pads: DrumName[] = ['KICK', 'KICK2', 'SNARE', 'HAT', 'TOM', 'RIDE', 'OPENHAT'];
+    await Promise.all(
+      pads.map(async (n) => {
+        try {
+          const res = await fetch(`drums/${folder}/${n.toLowerCase()}.mp3`);
+          const arr = await res.arrayBuffer();
+          const buf = await this.ctx!.decodeAudioData(arr);
+          this.sampleCache.set(`${kit}:${n}`, buf);
+        } catch {
+          /* leave it missing; the synth fallback covers it */
+        }
+      }),
+    );
+  }
+
   // One-shot synthesized drum hit (no samples). Builds a tiny percussion graph
   // (pitch-swept tone and/or filtered noise burst with a fast amp decay) straight
   // to the master, then disconnects it once it has rung out.
-  drum(name: DrumName, kit: DrumKit): void {
+  private synthDrum(name: DrumName, kit: DrumKit): void {
     if (!this.ctx || !this.master || this.muted || !this.noise) return;
     const ctx = this.ctx;
     const k = KIT_TUNE[kit];

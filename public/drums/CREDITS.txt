@@ -1,0 +1,8 @@
+Drum samples (trap / bounce / lofi kits)
+=========================================
+Source: Boochi44/free-drum-samples (https://github.com/Boochi44/free-drum-samples)
+License: Creative Commons Zero v1.0 Universal (CC0 1.0) - public domain, free to
+use / modify / redistribute, no attribution required.
+
+Many one-shots are derived from the TR-808 sample set by Edward Loveall
+(tidalcycles, CC0). Converted to mono mp3 (192k) for the web. One sample per pad.

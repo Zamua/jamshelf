@@ -27,9 +27,18 @@ export function drumForDegree(degree: Degree): DrumName {
   return DRUM_PADS[(degree - 1) % DRUM_PADS.length];
 }
 
-// The drum kits (the synthesis is tuned differently per kit).
-export type DrumKit = 'TIGHT' | 'BOX808' | 'BOX909';
-export const DRUM_KITS: readonly DrumKit[] = ['TIGHT', 'BOX808', 'BOX909'];
+// The drum kits. TIGHT/BOX808/BOX909 are synthesized; TRAP/BOUNCE/LOFI are CC0
+// sample kits (lazy-loaded from /drums/<kit>/). The infra layer decides which is
+// which; the domain just lists them.
+export type DrumKit = 'TIGHT' | 'BOX808' | 'BOX909' | 'TRAP' | 'BOUNCE' | 'LOFI';
+export const DRUM_KITS: readonly DrumKit[] = [
+  'TIGHT',
+  'BOX808',
+  'BOX909',
+  'TRAP',
+  'BOUNCE',
+  'LOFI',
+];
 
 // Global effects: a tempo-synced delay and/or a chorus (reverb is always on).
 export type FxMode = 'OFF' | 'DELAY' | 'CHORUS' | 'BOTH';

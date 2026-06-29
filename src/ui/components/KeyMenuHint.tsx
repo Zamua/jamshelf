@@ -1,42 +1,24 @@
-import type { MenuField, ViewModel } from '../../application/state';
-import { NOTE_NAMES, SCALE_LABELS } from '../../domain/music';
+import type { ViewModel } from '../../application/state';
 import './KeyMenuHint.css';
 
-// A light 2D readout that appears only while the gray key menu is open. It shows
-// the three editable fields (key / scale / octave) with the active one
-// highlighted, so the joystick edit is legible without leaning on the tiny OLED.
-// Purely informational: pointer-events are off so it never blocks the device.
+// A light 2D readout that appears while EITHER menu (gray KEY or red MODE) is open.
+// It renders the open menu's fields (from the ViewModel, so it never re-derives
+// state) with the active one highlighted, so the joystick edit is legible without
+// leaning on the tiny OLED. Purely informational: pointer-events are off so it
+// never blocks the device.
 export interface KeyMenuHintProps {
   vm: ViewModel;
-}
-
-function octaveLabel(octave: number): string {
-  return octave > 0 ? '+' + octave : String(octave);
-}
-
-interface Field {
-  field: MenuField;
-  label: string;
-  value: string;
 }
 
 export function KeyMenuHint({ vm }: KeyMenuHintProps) {
   if (!vm.menuOpen) return null;
 
-  const fields: Field[] = [
-    { field: 'KEY', label: 'KEY', value: NOTE_NAMES[vm.root] },
-    { field: 'SCL', label: 'SCALE', value: SCALE_LABELS[vm.scale] },
-    { field: 'OCT', label: 'OCT', value: octaveLabel(vm.octave) },
-  ];
-
   return (
     <div className="keyhint" role="status" aria-live="polite">
+      <p className="keyhint-kind">{vm.menuKind === 'KEY' ? 'KEY / SCALE / OCTAVE' : 'PLAY MODE'}</p>
       <div className="keyhint-fields">
-        {fields.map((f) => (
-          <div
-            key={f.field}
-            className={'keyhint-field' + (f.field === vm.menuField ? ' is-active' : '')}
-          >
+        {vm.menuFields.map((f) => (
+          <div key={f.label} className={'keyhint-field' + (f.active ? ' is-active' : '')}>
             <span className="keyhint-label">{f.label}</span>
             <span className="keyhint-value">{f.value}</span>
           </div>

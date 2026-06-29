@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { SynthController } from '../../application/synthController';
 import type { ViewModel } from '../../application/state';
 import { WebAudioSynth } from '../../infrastructure/audio/webAudioSynth';
+import { IntervalClock } from '../../infrastructure/clock/intervalClock';
 import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
 
@@ -51,7 +52,7 @@ function keyToDegree(key: string): Degree | null {
 // adds desktop keyboard play. The glissando itself is delivered by the 3D pad
 // meshes calling onPadMove -> controller.movePad; nothing here needs to know.
 export function useSynth() {
-  const controller = useMemo(() => new SynthController(new WebAudioSynth()), []);
+  const controller = useMemo(() => new SynthController(new WebAudioSynth(), new IntervalClock()), []);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());
   const menuLatched = useRef(false); // one nav step per flick out of the dead-zone
 
@@ -112,9 +113,9 @@ export function useSynth() {
         // Releasing the stick springs the held chord(s) back to a plain triad.
         if (!controller.getState().menuOpen) controller.springToTriad();
       },
-      onKey: () => controller.toggleMenu(),
-      onSound: () => controller.cyclePatch(),
-      onTempo: () => controller.tapTempo(),
+      onKey: () => controller.toggleMenu('KEY'), // gray: key / scale / octave
+      onSound: () => controller.cyclePatch(), // yellow: cycle the voice
+      onTempo: () => controller.toggleMenu('MODE'), // red: play mode / rate / bpm
       onPower: () => controller.togglePower(),
       onVolume: (delta) => controller.nudgeVolume(delta),
       onInspectToggle: () => controller.setInspect(!controller.getState().inspect),

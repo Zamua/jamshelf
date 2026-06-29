@@ -11,11 +11,12 @@ import {
   leadNote,
   invert,
   voiceChord,
+  drumForDegree,
 } from '../performance';
 
 describe('performance value sets', () => {
   it('lists the play modes in menu order', () => {
-    expect(PLAY_MODES).toEqual(['PLAY', 'STRUM', 'ARP', 'DRONE', 'REPEAT', 'LEAD']);
+    expect(PLAY_MODES).toEqual(['PLAY', 'STRUM', 'ARP', 'DRONE', 'REPEAT', 'LEAD', 'DRUM']);
   });
   it('lists arp patterns, rates and strum speeds', () => {
     expect(ARP_PATTERNS).toEqual(['UP', 'DOWN', 'UPDOWN', 'DOWNUP', 'RANDOM', 'FINGER']);
@@ -108,5 +109,15 @@ describe('voiceChord (inversion + bass)', () => {
   it('bass is always the ORIGINAL root, even when inverted', () => {
     // 1st inversion is [64,67,72]; the bass must still be 60-24 = 36, not 64-24
     expect(voiceChord([60, 64, 67], 1, 'ROOT')).toEqual([36, 64, 67, 72]);
+  });
+});
+
+describe('drumForDegree', () => {
+  it('maps the 7 pads to the drum kit', () => {
+    expect(drumForDegree(1)).toBe('KICK');
+    expect(drumForDegree(2)).toBe('KICK2');
+    expect(drumForDegree(3)).toBe('SNARE');
+    expect(drumForDegree(4)).toBe('HAT');
+    expect(drumForDegree(7)).toBe('OPENHAT');
   });
 });

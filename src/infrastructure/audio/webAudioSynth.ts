@@ -1,3 +1,4 @@
+import type { DrumName } from '../../domain/music';
 import type { PatchName, SynthPort } from '../../application/ports';
 
 // Full Web Audio implementation of SynthPort. Ported from the single-file
@@ -99,6 +100,7 @@ export class WebAudioSynth implements SynthPort {
   private strumMs = 8;
   private groups = new Map<string, Voice[]>();
   private active: Voice[] = []; // insertion-ordered, for oldest-steal
+  private noise: AudioBuffer | null = null; // shared white noise for the drum voices
 
   resume(): void {
     if (!this.ctx) this.build();
@@ -195,6 +197,92 @@ export class WebAudioSynth implements SynthPort {
     convolver.connect(wet);
     wet.connect(master);
     this.reverbBus = reverbBus;
+
+    // A second of white noise, reused by the drum voices (snare/hats/ride).
+    const nlen = ctx.sampleRate;
+    const nbuf = ctx.createBuffer(1, nlen, ctx.sampleRate);
+    const nd = nbuf.getChannelData(0);
+    for (let i = 0; i < nlen; i++) nd[i] = Math.random() * 2 - 1;
+    this.noise = nbuf;
+  }
+
+  // One-shot synthesized drum hit (no samples). Builds a tiny percussion graph
+  // (pitch-swept tone and/or filtered noise burst with a fast amp decay) straight
+  // to the master, then disconnects it once it has rung out.
+  drum(name: DrumName): void {
+    if (!this.ctx || !this.master || this.muted || !this.noise) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.002;
+    const out = ctx.createGain();
+    out.gain.value = 0.5;
+    out.connect(this.master);
+    let until = t + 0.1;
+
+    const tone = (wave: OscillatorType, f0: number, f1: number, peak: number, dur: number) => {
+      const o = ctx.createOscillator();
+      o.type = wave;
+      o.frequency.setValueAtTime(f0, t);
+      if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur * 0.9);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(peak, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      o.connect(g);
+      g.connect(out);
+      o.start(t);
+      o.stop(t + dur + 0.02);
+      until = Math.max(until, t + dur);
+    };
+    const noiseHit = (type: BiquadFilterType, freq: number, q: number, peak: number, dur: number) => {
+      const n = ctx.createBufferSource();
+      n.buffer = this.noise;
+      const f = ctx.createBiquadFilter();
+      f.type = type;
+      f.frequency.value = freq;
+      if (q) f.Q.value = q;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(peak, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      n.connect(f);
+      f.connect(g);
+      g.connect(out);
+      n.start(t);
+      n.stop(t + dur + 0.02);
+      until = Math.max(until, t + dur);
+    };
+
+    switch (name) {
+      case 'KICK':
+        tone('sine', 150, 45, 0.9, 0.35);
+        break;
+      case 'KICK2':
+        tone('sine', 110, 40, 0.95, 0.28);
+        break;
+      case 'SNARE':
+        noiseHit('highpass', 1500, 0, 0.6, 0.2);
+        tone('triangle', 190, 190, 0.4, 0.12);
+        break;
+      case 'HAT':
+        noiseHit('highpass', 8000, 0, 0.4, 0.045);
+        break;
+      case 'OPENHAT':
+        noiseHit('highpass', 7000, 0, 0.4, 0.3);
+        break;
+      case 'TOM':
+        tone('sine', 160, 80, 0.8, 0.25);
+        break;
+      case 'RIDE':
+        noiseHit('bandpass', 6000, 2, 0.3, 0.5);
+        tone('square', 320, 320, 0.08, 0.4);
+        break;
+    }
+    const ms = (until - ctx.currentTime + 0.1) * 1000;
+    setTimeout(() => {
+      try {
+        out.disconnect();
+      } catch {
+        /* already gone */
+      }
+    }, ms);
   }
 
   // Stereo, exponentially-decaying white-noise impulse response (no asset file).

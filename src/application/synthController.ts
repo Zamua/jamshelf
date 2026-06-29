@@ -6,6 +6,7 @@ import {
   rateBeats,
   strumMs,
   voiceChord,
+  drumForDegree,
   INVERSIONS,
   NOTE_NAMES,
   SCALE_LABELS,
@@ -109,8 +110,10 @@ export class SynthController {
   pressPad(voiceId: string, degree: Degree): void {
     if (!this.power || this.inspect) return;
     this.dispatchPress(voiceId, degree);
-    // DRONE: pressing the latched pad again just silences it - nothing to announce.
-    if (!(this.mode === 'DRONE' && this.latched === null)) {
+    if (this.mode === 'DRUM') {
+      this.flash(drumForDegree(degree));
+    } else if (!(this.mode === 'DRONE' && this.latched === null)) {
+      // DRONE: pressing the latched pad again just silences it - nothing to announce.
       this.flash(this.currentChordName(degree));
     }
     this.publish();
@@ -119,7 +122,7 @@ export class SynthController {
   // Glissando: a held finger slid onto a different pad.
   movePad(voiceId: string, degree: Degree): void {
     if (!this.power || this.inspect) return;
-    if (this.mode === 'DRONE') return; // drone latches on tap, not on slide
+    if (this.mode === 'DRONE' || this.mode === 'DRUM') return; // no glissando here
     if (this.held.get(voiceId) === degree) return;
     this.held.set(voiceId, degree);
     if (this.mode === 'LEAD') {
@@ -269,6 +272,9 @@ export class SynthController {
   // --- play-mode dispatch -------------------------------------------------
   private dispatchPress(voiceId: string, degree: Degree): void {
     switch (this.mode) {
+      case 'DRUM':
+        this.synth.drum(drumForDegree(degree)); // one-shot percussion, no held voice
+        return;
       case 'DRONE':
         if (this.latched === degree) {
           this.synth.noteOff(DRONE_ID);

@@ -1,3 +1,4 @@
+import type { DrumName } from '../../domain/music';
 import type { Clock, PatchName, SynthPort, Ticker } from '../ports';
 
 // A frame ticker you drive by hand: call frame(nowMs) to advance the looper.
@@ -89,6 +90,10 @@ export class SpySynth implements SynthPort {
   }
   setMuted(m: boolean): void {
     this.muted = m;
+  }
+  drums: DrumName[] = [];
+  drum(name: DrumName): void {
+    this.drums.push(name);
   }
 
   // helpers

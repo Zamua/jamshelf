@@ -1,3 +1,4 @@
+import type { DrumName } from '../domain/music';
 import type { PatchName, SynthPort, Ticker } from './ports';
 
 // A multi-track loop recorder. It records the actual note events the player makes
@@ -16,10 +17,11 @@ export type LooperMode = 'idle' | 'rec' | 'play';
 
 interface LoopEvent {
   at: number; // ms from the loop start
-  on: boolean; // true = noteOn, false = noteOff
+  on: boolean; // true = noteOn, false = noteOff (ignored for a drum)
   voiceId: string;
   freqs: number[];
   patch: PatchName;
+  drum?: DrumName; // present = a one-shot drum hit instead of a tonal note
 }
 interface Track {
   events: LoopEvent[];
@@ -106,6 +108,17 @@ export class Looper {
     if (this.mode !== 'rec' || this.recTrack < 0) return;
     this.tracks[this.recTrack].events.push({ at: this.posMs, on, voiceId, freqs, patch });
   }
+  captureDrum(name: DrumName): void {
+    if (this.mode !== 'rec' || this.recTrack < 0) return;
+    this.tracks[this.recTrack].events.push({
+      at: this.posMs,
+      on: true,
+      voiceId: '',
+      freqs: [],
+      patch: 'SAW',
+      drum: name,
+    });
+  }
 
   // --- internals ----------------------------------------------------------
   private startRecording(idx: number, nowMs: number): void {
@@ -153,6 +166,10 @@ export class Looper {
     }
   }
   private fireEvent(track: number, e: LoopEvent): void {
+    if (e.drum) {
+      this.synth.drum(e.drum);
+      return;
+    }
     const id = `loop:${track}:${e.voiceId}`;
     if (e.on) {
       this.synth.noteOn(id, e.freqs, e.patch);

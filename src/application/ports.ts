@@ -1,3 +1,5 @@
+import type { DrumName } from '../domain/music';
+
 // Ports = the narrow interfaces the application depends on. Concrete adapters
 // (Web Audio, a test stub, ...) live in infrastructure and implement these.
 // The application/domain never import a vendor SDK or framework directly.
@@ -65,4 +67,6 @@ export interface SynthPort {
   setVolume(v: number): void; // 0..1
   setStrumMs(ms: number): void; // chord spread per note
   setMuted(muted: boolean): void; // power gate
+  // Fire a one-shot synthesized drum hit (DRUM mode).
+  drum(name: DrumName): void;
 }

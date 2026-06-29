@@ -1,4 +1,4 @@
-import type { Midi } from './types';
+import type { Degree, Midi } from './types';
 
 // Performance domain: HOW a resolved chord's notes are delivered over time. Pure
 // (no I/O, no timing, no randomness in the deterministic helpers). The application
@@ -6,8 +6,9 @@ import type { Midi } from './types';
 // this setting, what plays".
 
 // The play modes (menu order). PLAY = full chord; STRUM = rolled; ARP = stepped;
-// DRONE = latched sustain; REPEAT = rhythmic pulse; LEAD = monophonic root.
-export type PlayMode = 'PLAY' | 'STRUM' | 'ARP' | 'DRONE' | 'REPEAT' | 'LEAD';
+// DRONE = latched sustain; REPEAT = rhythmic pulse; LEAD = monophonic root;
+// DRUM = the 7 pads play a drum kit instead of chords.
+export type PlayMode = 'PLAY' | 'STRUM' | 'ARP' | 'DRONE' | 'REPEAT' | 'LEAD' | 'DRUM';
 export const PLAY_MODES: readonly PlayMode[] = [
   'PLAY',
   'STRUM',
@@ -15,7 +16,16 @@ export const PLAY_MODES: readonly PlayMode[] = [
   'DRONE',
   'REPEAT',
   'LEAD',
+  'DRUM',
 ];
+
+// The drum kit voices. In DRUM mode the 7 pads map to these (kick, alt kick, snare,
+// closed hat, tom, ride, open hat) - the same layout as the real device.
+export type DrumName = 'KICK' | 'KICK2' | 'SNARE' | 'HAT' | 'TOM' | 'RIDE' | 'OPENHAT';
+const DRUM_PADS: readonly DrumName[] = ['KICK', 'KICK2', 'SNARE', 'HAT', 'TOM', 'RIDE', 'OPENHAT'];
+export function drumForDegree(degree: Degree): DrumName {
+  return DRUM_PADS[(degree - 1) % DRUM_PADS.length];
+}
 
 // Arpeggiator step patterns.
 export type ArpPattern = 'UP' | 'DOWN' | 'UPDOWN' | 'DOWNUP' | 'RANDOM' | 'FINGER';

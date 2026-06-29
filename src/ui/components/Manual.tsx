@@ -41,7 +41,7 @@ const ITEMS: readonly Item[] = [
     chip: { label: 'RED', tone: 'red' },
     title: 'Play modes',
     body:
-      'The red button opens the mode menu on the screen. Joystick up or down picks a field, left or right changes it. Cycle the mode through Play, Strum, Arpeggio, Drone, Repeat and Lead, set the arp pattern or strum speed, and dial the BPM (which now drives strum, arp and repeat).',
+      'The red button opens the mode menu on the screen. Joystick up or down picks a field, left or right changes it. Cycle the mode through Play, Strum, Arpeggio, Drone, Repeat, Lead and Drum (the 7 pads become a drum kit), set the arp pattern or strum speed, and dial the BPM (which now drives strum, arp and repeat).',
   },
   {
     title: 'Drone (hands-free)',

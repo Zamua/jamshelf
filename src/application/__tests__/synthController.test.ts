@@ -20,7 +20,7 @@ beforeEach(() => {
 });
 
 // Drive a mode change through the public MODE menu, cycling from the CURRENT mode.
-const MODE_ORDER: PlayMode[] = ['PLAY', 'STRUM', 'ARP', 'DRONE', 'REPEAT', 'LEAD'];
+const MODE_ORDER: PlayMode[] = ['PLAY', 'STRUM', 'ARP', 'DRONE', 'REPEAT', 'LEAD', 'DRUM'];
 function switchMode(target: PlayMode) {
   c.toggleMenu('MODE'); // opens on the MODE field
   const cur = c.getState().mode;
@@ -139,6 +139,19 @@ describe('REPEAT mode', () => {
     clock.tick();
     const repeats = synth.on.slice(before).filter((o) => o.id === 'p1');
     expect(repeats.length).toBe(2);
+  });
+});
+
+describe('DRUM mode', () => {
+  it('pads fire one-shot drums, not tonal chords', () => {
+    switchMode('DRUM');
+    c.pressPad('p1', 1);
+    expect(synth.drums).toContain('KICK');
+    c.pressPad('p2', 3);
+    expect(synth.drums).toContain('SNARE');
+    expect(synth.on).toHaveLength(0); // no chord notes in drum mode
+    c.releasePad('p1'); // one-shots: release is a no-op
+    expect(synth.off).toHaveLength(0);
   });
 });
 

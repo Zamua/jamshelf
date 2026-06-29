@@ -170,9 +170,18 @@ so it is never re-recorded. UI: joystick CLICK (tap, no drag) = record/stop/over
 long-press = clear; the Knob detects tap vs hold vs drag and emits `onJoyClick`/
 `onJoyHold`. The OLED shows REC n / LOOP n. 5 looper unit tests (fake ticker + spy synth).
 
-**Drums (`DRUM` play mode)**: the 7 pads map to a synthesized kit (`drumForDegree`);
-drum hits flow through the RecordingSynth + Looper so beats loop. Kits TIGHT/BOX808/
-BOX909 (`DrumKit`, tuned via `KIT_TUNE`) chosen by a KIT field in the DRUM-mode menu.
+**Drums (`DRUM` play mode)**: the 7 pads map to a kit (`drumForDegree`); drum hits
+flow through the RecordingSynth + Looper so beats loop. Kits via the DRUM-mode KIT
+field: TIGHT/BOX808/BOX909 are SYNTHESIZED (`KIT_TUNE` factors); TRAP/BOUNCE/LOFI are
+CC0 SAMPLE kits. Samples live in `public/drums/<kit>/<pad>.mp3` (one mono mp3 per
+pad), lazy-loaded + decoded on first use (`SAMPLE_KITS` map in `webAudioSynth.ts`;
+fetch `drums/<folder>/<pad>.mp3`, cache by `${kit}:${pad}`); the first hit before a
+kit finishes loading falls back to the synth so it is never silent. The samples are
+CC0 1.0 (from Boochi44/free-drum-samples, derived from Edward Loveall's CC0 TR-808
+set) - free to redistribute, see `public/drums/CREDITS.txt`. To add a genre kit: drop
+mono mp3s named kick/kick2/snare/hat/tom/ride/openhat into a new `public/drums/<kit>/`,
+add the kit to `DrumKit` + `DRUM_KITS` + `SAMPLE_KITS`. ONLY use CC0 / public-domain /
+permissively-licensed samples (the deployed site is public-reachable = redistribution).
 
 **Scales**: 10 total - the 7 modes plus MAJ_PENT / MIN_PENT / BLUES. `scaleTone` is
 generalized to any scale length (the 7 pads wrap the 5/6-note scales into octaves).

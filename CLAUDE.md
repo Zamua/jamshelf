@@ -173,10 +173,19 @@ ScriptProcessorNode; loop playback + the metronome go through a SEPARATE `loopSu
 that joins after the tap, so loops are never re-recorded and overdubs layer cleanly.
 `audioGraph()` exposes `{ctx, live, loopOut}`. State machine (joystick click):
 idle -> armed (waiting; nothing recorded) -> rec (the FIRST key starts the master
-capture, no leading silence) -> play; play -> rec overdubs a new layer aligned to the
-loop boundary (whole-track, not per-note). Track 1 sets the loop length, SNAPPED to a
-whole number of BARS (`BEATS_PER_BAR=4`, round-to-nearest, min 1 bar) so a tail past the
-bar line rounds DOWN to a clean bar count and the metronome + later layers lock to it.
+capture, no leading silence) -> play; play -> rec overdubs a new layer. Track 1 sets the
+loop length, SNAPPED to a whole number of BARS (`BEATS_PER_BAR=4`, round-to-nearest, min
+1 bar). **Quantization is on the NOTES, not the captured audio**: the length is
+`anchor -> lastActivity` (the last note on/off, via `noteStarted`/`noteEnded` from the
+controller's press/release), so a long release/reverb tail past the bar line does NOT add
+a bar - the tail is `wrapAdd`-folded back into the loop start (bleeds into bar 1) instead.
+**Overdub has a 4-beat count-in**: hitting record over a loop silences the layers, clicks
+4 beats (OLED `COUNT n`), then restarts ALL layers from bar 1 AND begins capturing on the
+downbeat (so a new layer never waits a whole loop to align). **Joystick DOWN = stop**
+(`toggleStop`, `useSynth` navLooper down-flick): halts all layers (OLED `STOPPED`); down
+again restarts them from the top (bar 1) via the retained per-layer `buffer`. Each layer
+is `{source, gain, buffer}` so it can be re-started (stop/resume, overdub count-in) and
+faded on delete.
 A metronome clicks while arming + recording (routed to loopSum so it is never captured),
 accenting every bar's downbeat anchored to the loop's first-note grid (NOT the overdub's
 own metronome anchor - keying off that dropped the accent on later tracks); its interval

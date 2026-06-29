@@ -6,16 +6,19 @@ import { IntervalClock } from '../../infrastructure/clock/intervalClock';
 import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
 
-// Past this magnitude the joystick is considered "pushed"; inside it the stick
-// is treated as centered (dead-zone). Generous, so the angle is only read once the
-// push is clearly established (near-center the angle is jittery).
-const JOY_DEADZONE = 0.42;
-// Slightly larger gate for discrete menu flicks so the latch is unambiguous.
-const MENU_NAV_THRESHOLD = 0.45;
+// The joystick only registers a direction when pushed almost FULLY to it, and only
+// disengages once it springs most of the way back. Two thresholds (engage high,
+// release low) give magnitude hysteresis so a finger hovering near the edge can't
+// flicker the morph on and off - the single biggest source of "twitchy" feel.
+const JOY_ENGAGE = 0.85; // must be this far out (0..1) to start morphing
+const JOY_RELEASE = 0.5; // and fall back inside this to return to a plain triad
+// Discrete menu flicks need an equally clear, near-full push.
+const MENU_NAV_THRESHOLD = 0.85;
 // Each of the 8 directions only registers within +/- this many degrees of its
-// center, leaving dead GAPS between directions. In a gap the previous quality is
-// held (hysteresis), so dragging toward a diagonal never clips the neighbour.
-const DIR_HALF_WIDTH = 17;
+// center, leaving wide dead GAPS between directions. In a gap the previous quality
+// is held (hysteresis), so a diagonal pull never clips the horizontal/vertical
+// neighbour. 12 deg half-width => 24 deg live sectors, 21 deg dead gaps.
+const DIR_HALF_WIDTH = 12;
 
 // The 8 compass directions (degrees, +y = up) and the chord quality each morphs to.
 const DIRECTIONS: readonly [number, Quality][] = [
@@ -34,11 +37,16 @@ function angleGap(a: number, b: number): number {
   return Math.abs(((a - b + 540) % 360) - 180);
 }
 
-// Map a joystick vector (x = right+, y = up+, magnitude 0..1) to a chord quality.
-// Inside the dead-zone -> triad. Between two directions (a gap) -> hold `prev`, so
-// a diagonal push does not briefly trigger the horizontal/vertical neighbour.
+// Map a joystick vector (x = right+, y = up+, magnitude 0..1) to a chord quality,
+// given the PREVIOUS quality (for hysteresis). Magnitude hysteresis: engage only
+// past JOY_ENGAGE, disengage only below JOY_RELEASE. Angular hysteresis: in a gap
+// between two directions, hold `prev` rather than snapping. Together this kills the
+// boundary flicker and stops a diagonal pull from clipping its neighbour.
 function joyQuality(x: number, y: number, prev: Quality): Quality {
-  if (Math.hypot(x, y) < JOY_DEADZONE) return 'TRIAD';
+  const mag = Math.hypot(x, y);
+  // Once morphing, you must spring most of the way back to drop to a triad; if not
+  // yet morphing, you must push nearly fully out to start.
+  if (mag < (prev === 'TRIAD' ? JOY_ENGAGE : JOY_RELEASE)) return 'TRIAD';
   const deg = ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
   let best: Quality | null = null;
   let bestGap = 999;
@@ -104,8 +112,8 @@ export function useSynth() {
     //  - up/down vs left/right confusion: we only act when ONE axis clearly
     //    dominates; a near-diagonal flick lands in an ambiguous band and does
     //    nothing, waiting for a cleaner flick.
-    const MENU_RELEASE = 0.24; // unlatch radius (< MENU_NAV_THRESHOLD => hysteresis)
-    const AXIS_DOMINANCE = 1.5; // one axis must beat the other by this factor
+    const MENU_RELEASE = 0.4; // unlatch radius (< MENU_NAV_THRESHOLD => hysteresis)
+    const AXIS_DOMINANCE = 1.6; // one axis must beat the other by this factor
     const navMenu = (x: number, y: number) => {
       const mag = Math.hypot(x, y);
       if (mag < MENU_RELEASE) {

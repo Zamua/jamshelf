@@ -29,9 +29,17 @@ export function Knob({ x, y, z, power, rim, basin, handlers }: KnobProps) {
   const target = useRef(new THREE.Vector2(0, 0));
   const cur = useRef(new THREE.Vector2(0, 0));
   const [dragging, setDragging] = useState(false);
+  // The pointer that owns the joystick drag. The drag-tracking plane covers the
+  // whole stage, so we must IGNORE events from any other finger - otherwise a
+  // second finger pressing a pad would drive (or end) the joystick AND, because
+  // the plane sits in front, swallow that pad's release (stuck key). Foreign
+  // pointers fall through (no stopPropagation) so the pad behind still gets them.
+  const dragPointer = useRef<number | null>(null);
+  const owns = (e: ThreeEvent<PointerEvent>) =>
+    dragPointer.current === null || e.pointerId === dragPointer.current;
 
   const apply = (e: ThreeEvent<PointerEvent>) => {
-    if (!group.current) return;
+    if (!group.current || !owns(e)) return;
     // Convert the world hit point into the knob's local frame (this divides out
     // the device's responsive scale + any inspect rotation), then normalize.
     const local = group.current.worldToLocal(e.point.clone());
@@ -47,13 +55,17 @@ export function Knob({ x, y, z, power, rim, basin, handlers }: KnobProps) {
   };
 
   const start = (e: ThreeEvent<PointerEvent>) => {
+    if (dragPointer.current !== null) return; // a drag is already in progress
     e.stopPropagation();
+    dragPointer.current = e.pointerId;
     handlers.resume();
     setDragging(true);
     apply(e);
   };
   const end = (e: ThreeEvent<PointerEvent>) => {
+    if (!owns(e)) return; // a different finger - let it pass through to the pad
     e.stopPropagation();
+    dragPointer.current = null;
     setDragging(false);
     target.current.set(0, 0);
     handlers.onJoyEnd();

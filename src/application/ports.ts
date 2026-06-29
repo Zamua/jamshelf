@@ -54,6 +54,7 @@ export interface LooperView {
   readonly mode: LooperMode;
   readonly recTrack: number; // 0-based track being recorded, or -1
   readonly trackCount: number; // finalized loop layers
+  readonly selected: number; // the layer the cursor is on (for clear/redo)
   readonly loopBars: number; // the loop's length in whole bars (0 until set)
   readonly posFraction: number; // 0..1 playhead within the loop
 }
@@ -63,7 +64,11 @@ export interface AudioLooper {
   // When it arms the master it does NOT start capturing yet - capture begins at the
   // first key (noteStarted), so there is no leading silence.
   toggle(): void;
-  // Long-press: wipe every layer back to idle.
+  // While a loop plays, move the selection cursor over the recorded layers (the
+  // joystick left/right when no pad is held). No-op outside play.
+  selectTrack(dir: -1 | 1): void;
+  // Long-press: clear the SELECTED layer while playing (the master, layer 0, clears
+  // everything since it defines the loop length); otherwise wipe everything.
   clear(): void;
   // The controller calls this on every pad press. While armed it starts the master
   // capture at this instant (the first note = the loop's downbeat); otherwise no-op.

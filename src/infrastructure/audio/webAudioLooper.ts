@@ -28,6 +28,7 @@ const SCHEDULE_AHEAD = 0.12; // seconds of click events to schedule each poll
 
 interface Track {
   source: AudioBufferSourceNode;
+  gain: GainNode; // per-layer gain, so a layer can be faded out on delete (no click)
 }
 
 export class WebAudioLooper implements AudioLooper {
@@ -40,6 +41,7 @@ export class WebAudioLooper implements AudioLooper {
   private mode: LooperMode = 'idle';
   private tracks: Track[] = [];
   private recTrack = -1;
+  private selected = 0; // the layer the clear/redo cursor is on (during play)
   private bpm = 120;
 
   // master capture (growable list of input blocks)
@@ -86,9 +88,17 @@ export class WebAudioLooper implements AudioLooper {
       mode: this.mode,
       recTrack: this.recTrack,
       trackCount: this.tracks.length,
+      selected: this.selected,
       loopBars: this.loopBars,
       posFraction: pos,
     };
+  }
+
+  selectTrack(dir: -1 | 1): void {
+    if (this.mode !== 'play' || this.tracks.length === 0) return;
+    const n = this.tracks.length;
+    this.selected = (this.selected + dir + n) % n;
+    this.emit();
   }
 
   toggle(): void {
@@ -131,10 +141,24 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   clear(): void {
-    for (const t of this.tracks) this.stopSource(t.source);
+    // While a loop plays, clear ONLY the selected layer - unless it's the master
+    // (layer 0), which defines the loop length, so clearing it wipes everything.
+    if (this.mode === 'play' && this.selected > 0 && this.selected < this.tracks.length) {
+      const [t] = this.tracks.splice(this.selected, 1);
+      this.stopTrack(t, true); // fade out so deleting a layer doesn't click
+      this.selected = Math.min(this.selected, this.tracks.length - 1);
+      this.emit();
+      return;
+    }
+    this.resetAll();
+  }
+
+  private resetAll(): void {
+    for (const t of this.tracks) this.stopTrack(t, false);
     this.tracks = [];
     this.mode = 'idle';
     this.recTrack = -1;
+    this.selected = 0;
     this.capturing = false;
     this.overdub = null;
     this.masterChunks = [[], []];
@@ -171,7 +195,8 @@ export class WebAudioLooper implements AudioLooper {
     // The loop's phase 0 is the first note (anchorTime, set in noteStarted). Start
     // the looping source on the next loop boundary so playback is seamless.
     const startAt = this.nextBoundary();
-    this.tracks.push({ source: this.startLoop(buf, startAt) });
+    this.tracks.push(this.startLoop(buf, startAt));
+    this.selected = this.tracks.length - 1;
     this.recTrack = -1;
     this.mode = 'play';
     this.stopMetronome();
@@ -193,20 +218,23 @@ export class WebAudioLooper implements AudioLooper {
     const buf = ctx.createBuffer(2, this.loopLenSamples, ctx.sampleRate);
     buf.getChannelData(0).set(od[0]);
     buf.getChannelData(1).set(od[1]);
-    this.tracks.push({ source: this.startLoop(buf, this.nextBoundary()) });
+    this.tracks.push(this.startLoop(buf, this.nextBoundary()));
+    this.selected = this.tracks.length - 1;
     this.recTrack = -1;
     this.mode = 'play';
     this.stopMetronome();
   }
 
-  private startLoop(buf: AudioBuffer, at: number): AudioBufferSourceNode {
+  private startLoop(buf: AudioBuffer, at: number): Track {
     const ctx = this.ctx!;
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
-    src.connect(this.loopOut!);
+    const gain = ctx.createGain();
+    src.connect(gain);
+    gain.connect(this.loopOut!);
     src.start(at);
-    return src;
+    return { source: src, gain };
   }
 
   // The next loop boundary (a multiple of the loop length from the anchor) at or
@@ -218,10 +246,31 @@ export class WebAudioLooper implements AudioLooper {
     return this.anchorTime + Math.max(0, Math.ceil(elapsed / lenSec)) * lenSec;
   }
 
-  private stopSource(src: AudioBufferSourceNode): void {
+  // Stop a layer. With `fade`, ramp its gain down over ~30ms first so deleting a
+  // layer mid-loop doesn't click; otherwise stop immediately (a full reset).
+  private stopTrack(t: Track, fade: boolean): void {
+    const ctx = this.ctx;
+    if (fade && ctx) {
+      t.gain.gain.setTargetAtTime(0.0001, ctx.currentTime, 0.01);
+      t.source.onended = () => {
+        try {
+          t.source.disconnect();
+          t.gain.disconnect();
+        } catch {
+          /* already gone */
+        }
+      };
+      try {
+        t.source.stop(ctx.currentTime + 0.08);
+      } catch {
+        /* already stopped */
+      }
+      return;
+    }
     try {
-      src.stop();
-      src.disconnect();
+      t.source.stop();
+      t.source.disconnect();
+      t.gain.disconnect();
     } catch {
       /* already stopped */
     }

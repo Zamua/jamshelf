@@ -109,6 +109,12 @@ export class SynthController {
     if (!this.power || this.inspect) return;
     this.looper.clear();
   }
+  // Joystick left/right while a loop plays + no pad is held: pick the layer the
+  // long-press will clear / redo. The UI only calls this in that context.
+  selectLoopTrack(dir: -1 | 1): void {
+    if (!this.power || this.inspect) return;
+    this.looper.selectTrack(dir);
+  }
 
   // --- lifecycle ---
   resume(): void {
@@ -591,7 +597,7 @@ export class SynthController {
       big: flashing ? this.flashText : keyScale,
       small:
         lv.mode === 'play'
-          ? `LOOP ${lv.trackCount} ${lv.loopBars}BR`
+          ? `TRK ${lv.selected + 1}/${lv.trackCount} ${lv.loopBars}BR`
           : `${this.patch}  ${this.mode}`,
     };
   }

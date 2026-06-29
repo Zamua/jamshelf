@@ -82,9 +82,19 @@ describe('looper wiring', () => {
     expect(c.getState().screenBig).toBe('REC 1');
     looper.mode = 'play';
     looper.trackCount = 2;
+    looper.selected = 1;
     looper.loopBars = 4;
     looper.emit();
-    expect(c.getState().screenSmall).toBe('LOOP 2 4BR');
+    expect(c.getState().screenSmall).toBe('TRK 2/2 4BR');
+  });
+
+  it('forwards joystick layer-select to the looper, gated by power/inspect', () => {
+    c.selectLoopTrack(1);
+    c.selectLoopTrack(-1);
+    expect(looper.selectDirs).toEqual([1, -1]);
+    c.togglePower(); // off
+    c.selectLoopTrack(1);
+    expect(looper.selectDirs).toEqual([1, -1]); // ignored while powered off
   });
 });
 

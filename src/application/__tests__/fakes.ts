@@ -12,7 +12,9 @@ export class FakeAudioLooper implements AudioLooper {
   mode: LooperMode = 'idle';
   trackCount = 0;
   recTrack = -1;
+  selected = 0;
   loopBars = 0;
+  selectDirs: number[] = [];
   private cb: (() => void) | null = null;
 
   toggle(): void {
@@ -20,6 +22,9 @@ export class FakeAudioLooper implements AudioLooper {
   }
   clear(): void {
     this.cleared++;
+  }
+  selectTrack(dir: -1 | 1): void {
+    this.selectDirs.push(dir);
   }
   noteStarted(): void {
     this.notes++;
@@ -32,6 +37,7 @@ export class FakeAudioLooper implements AudioLooper {
       mode: this.mode,
       recTrack: this.recTrack,
       trackCount: this.trackCount,
+      selected: this.selected,
       loopBars: this.loopBars,
       posFraction: 0,
     };

@@ -202,14 +202,49 @@ describe('WebAudioLooper', () => {
     // track 1's source object + audio are untouched (frozen)
     expect(ctx.sources[0]).toBe(track1Source);
     expect(track1Data[0]).toBeCloseTo(0.5);
-    // the overdub is its own looping source of the SAME loop length, on loopOut
+    // the overdub is its own looping source of the SAME loop length, reaching loopOut
+    // through its per-layer gain (source -> gain -> loopOut)
     const odSource = ctx.sources[1];
     expect(odSource.loop).toBe(true);
     expect(odSource.buffer!.length).toBe(len);
-    expect(odSource.connections).toContain(loopOut);
+    expect(odSource.connections[0].connections).toContain(loopOut);
     // the overdub buffer actually holds the captured 0.3 layer somewhere
     const od = odSource.buffer!.getChannelData(0);
     expect(od.some((s) => Math.abs(s - 0.3) < 1e-4)).toBe(true);
+  });
+
+  it('selects layers, clears a non-master layer alone, and the master wipes all', () => {
+    const { looper, ctx } = makeLooper();
+    looper.setBpm(120);
+    looper.toggle(); looper.noteStarted(); pump(ctx, 0.5, 50); looper.toggle(); // master
+    looper.toggle(); pump(ctx, 0.3, 50); looper.toggle();                       // overdub 1
+    looper.toggle(); pump(ctx, 0.2, 50); looper.toggle();                       // overdub 2
+    expect(looper.view().trackCount).toBe(3);
+    expect(looper.view().selected).toBe(2); // newest is selected
+
+    const master = ctx.sources[0];
+    const overdub1 = ctx.sources[1];
+
+    // selection wraps over the three layers
+    looper.selectTrack(1);
+    expect(looper.view().selected).toBe(0);
+    looper.selectTrack(-1);
+    expect(looper.view().selected).toBe(2);
+
+    // clear a non-master layer (overdub 1): only it stops; master + the other survive
+    looper.selectTrack(-1); // -> layer 1
+    looper.clear();
+    expect(looper.view().mode).toBe('play');
+    expect(looper.view().trackCount).toBe(2);
+    expect(overdub1.stopped).toBe(true);
+    expect(master.stopped).toBe(false);
+
+    // clearing the master (layer 0) wipes everything
+    while (looper.view().selected !== 0) looper.selectTrack(-1);
+    looper.clear();
+    expect(looper.view().mode).toBe('idle');
+    expect(looper.view().trackCount).toBe(0);
+    expect(master.stopped).toBe(true);
   });
 
   it('clear() stops every loop source and returns to idle', () => {

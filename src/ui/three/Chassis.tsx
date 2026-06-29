@@ -55,12 +55,12 @@ export function Chassis({ power, theme }: { power: boolean; theme: BodyTheme }) 
         smoothness={6}
         position={[0, 0, FLOOR_Z - BODY.d / 2]}
       >
-        <meshStandardMaterial color={body} metalness={0.5} roughness={0.24} />
+        <meshStandardMaterial color={body} metalness={0.78} roughness={0.28} />
       </RoundedBox>
 
       {/* raised land (face) with the well + pockets cut out */}
       <mesh geometry={landGeo} position={[0, 0, FLOOR_Z]}>
-        <meshStandardMaterial color={body} metalness={0.5} roughness={0.24} />
+        <meshStandardMaterial color={body} metalness={0.78} roughness={0.28} />
       </mesh>
 
       {/* darker floor at the bottom of the key well */}

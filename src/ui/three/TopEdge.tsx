@@ -117,25 +117,27 @@ export function TopEdge({ power, handlers }: TopEdgeProps) {
         VOL
       </Text>
 
-      {/* 3.5mm JACK: a FLUSH recessed dark socket (top sits in the edge, not proud) */}
-      <group position={[0.7, TOP_Y - 0.045, 0]}>
+      {/* 3.5mm JACK: a slightly-proud dark socket. It sits ABOVE the slab's top face
+          (not flush with it) so no surface is coplanar with the slab - coplanar faces
+          here were the source of the top-edge z-fighting shimmer. */}
+      <group position={[0.7, TOP_Y - 0.022, 0]}>
         <mesh>
           <cylinderGeometry args={[0.1, 0.1, 0.09, 22]} />
           <meshStandardMaterial color={powerColor('#15181f', power)} metalness={0.45} roughness={0.5} />
         </mesh>
-        {/* darker bore at the opening so it reads as a hole */}
-        <mesh position={[0, 0.046, 0]}>
+        {/* darker bore RECESSED below the socket rim so it reads as a hole */}
+        <mesh position={[0, 0.018, 0]}>
           <cylinderGeometry args={[0.055, 0.05, 0.02, 18]} />
           <meshStandardMaterial color="#050608" metalness={0.3} roughness={0.7} />
         </mesh>
       </group>
 
-      {/* USB-C PORT: a FLUSH recessed dark slot */}
+      {/* USB-C PORT: a slightly-proud dark slot (above the slab face, not coplanar) */}
       <RoundedBox
         args={[0.28, 0.08, 0.12]}
         radius={0.03}
         smoothness={3}
-        position={[1.7, TOP_Y - 0.04, 0]}
+        position={[1.7, TOP_Y - 0.018, 0]}
       >
         <meshStandardMaterial color={powerColor('#0a0c12', power)} metalness={0.45} roughness={0.5} />
       </RoundedBox>

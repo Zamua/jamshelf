@@ -1,5 +1,5 @@
-import brandFontUrl from './Baloo2-SemiBold.ttf';
+import brandFontUrl from './Poppins-SemiBold.ttf';
 
-// The wordmark font (a rounded geometric sans, closer to the HiChord logo than
-// the OLED monospace). Bundled locally so there is no runtime CDN fetch.
+// The wordmark font: an upright geometric sans (Poppins). Replaced the rounded Baloo
+// face, which read as slanted/casual. Bundled locally so there is no runtime CDN fetch.
 export const BRAND_FONT: string = brandFontUrl;

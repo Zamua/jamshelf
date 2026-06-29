@@ -173,6 +173,13 @@ export class SynthController {
     this.publish();
   }
 
+  // LEAD mode: the joystick is a pitch bend (X) + octave glide (Y) instead of the
+  // chord-quality morph. `cents` is the combined bend; only applied in LEAD.
+  setLeadBend(cents: number): void {
+    if (!this.power || this.inspect || this.mode !== 'LEAD') return;
+    this.synth.setBend(cents);
+  }
+
   // Releasing the joystick snaps the held chords back to a plain triad.
   springToTriad(): void {
     if (this.quality === 'TRIAD') return;
@@ -563,6 +570,7 @@ export class SynthController {
     this.latched = null;
     this.arpStep = 0;
     this.synth.releaseAll();
+    this.synth.setBend(0); // clear any LEAD pitch bend (mode change / power / inspect)
   }
   private currentChordName(degree: Degree): string {
     return resolveChord(degree, this.key(), this.quality).name;

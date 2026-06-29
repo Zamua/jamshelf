@@ -202,6 +202,16 @@ describe('LEAD mode', () => {
     c.pressPad('p2', 5); // V chord root = G4
     expect(c.getState().screenBig).toBe('G4');
   });
+
+  it('the joystick is a pitch bend in LEAD, ignored elsewhere, reset on mode change', () => {
+    c.setLeadBend(150);
+    expect(synth.bend).toBe(0); // PLAY: not a bend, ignored
+    switchMode('LEAD');
+    c.setLeadBend(150);
+    expect(synth.bend).toBe(150);
+    switchMode('PLAY'); // leaving LEAD clears the bend
+    expect(synth.bend).toBe(0);
+  });
 });
 
 describe('ARP mode', () => {

@@ -106,6 +106,8 @@ export interface SynthPort {
   setVolume(v: number): void; // 0..1
   setStrumMs(ms: number): void; // chord spread per note
   setMuted(muted: boolean): void; // power gate
+  // Global pitch bend in cents (LEAD mode joystick: X = bend, Y = octave). 0 = none.
+  setBend(cents: number): void;
   // Fire a one-shot synthesized drum hit (DRUM mode), tuned for the given kit.
   drum(name: DrumName, kit: DrumKit): void;
   // Toggle the global delay / chorus effects; delayMs is the (tempo-synced) delay.

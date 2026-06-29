@@ -111,6 +111,7 @@ export class WebAudioSynth implements SynthPort {
   private master: GainNode | null = null;
   private liveSum: GainNode | null = null; // tap point: the full live mix (recorded)
   private loopSum: GainNode | null = null; // loop playback + metronome (not recorded)
+  private bendNode: ConstantSourceNode | null = null; // global pitch bend (cents) -> every osc.detune
   private reverbBus: GainNode | null = null;
   private volume = 0.8;
   private muted = false;
@@ -185,6 +186,12 @@ export class WebAudioSynth implements SynthPort {
     this.strumMs = ms;
   }
 
+  // Global pitch bend in cents (smoothed). LEAD mode drives this from the joystick.
+  setBend(cents: number): void {
+    if (this.bendNode && this.ctx)
+      this.bendNode.offset.setTargetAtTime(cents, this.ctx.currentTime, 0.012);
+  }
+
   setMuted(muted: boolean): void {
     this.muted = muted;
     if (this.master && this.ctx)
@@ -212,6 +219,14 @@ export class WebAudioSynth implements SynthPort {
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new Ctor();
     this.ctx = ctx;
+
+    // Global pitch-bend source: a constant signal (in cents) fanned out to every
+    // oscillator's detune param, so LEAD mode's joystick can bend / octave-shift the
+    // sounding note smoothly. 0 = no bend.
+    const bend = ctx.createConstantSource();
+    bend.offset.value = 0;
+    bend.start();
+    this.bendNode = bend;
 
     // Master gain -> compressor (glue) -> limiter (brickwall) -> destination. The
     // limiter is what keeps stacked loop layers + live drums from clipping: the comp's
@@ -542,6 +557,11 @@ export class WebAudioSynth implements SynthPort {
         nodes.push(og);
       }
     }
+
+    // Fan the global bend (cents) into every oscillator's detune, so a LEAD bend
+    // shifts the whole voice (carrier + modulator / both detuned oscs) in lockstep,
+    // preserving the FM ratio + detune spread.
+    if (this.bendNode) for (const o of oscs) this.bendNode.connect(o.detune);
 
     filter.connect(vca);
 

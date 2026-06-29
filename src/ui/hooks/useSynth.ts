@@ -15,6 +15,9 @@ const JOY_ENGAGE = 0.85; // must be this far out (0..1) to start morphing
 const JOY_RELEASE = 0.5; // and fall back inside this to return to a plain triad
 // Discrete menu flicks need an equally clear, near-full push.
 const MENU_NAV_THRESHOLD = 0.85;
+// LEAD-mode pitch bend range on the joystick X axis (full deflection = this many
+// semitones up/down). Y axis is a full +/-1 octave (1200 cents).
+const BEND_SEMITONES = 2;
 // Each of the 8 directions only registers within +/- this many degrees of its
 // center, leaving wide dead GAPS between directions. In a gap the previous quality
 // is held (hysteresis), so a diagonal pull never clips the horizontal/vertical
@@ -186,10 +189,12 @@ export function useSynth() {
       onPadMove: (id, degree) => controller.movePad(id, degree), // glissando
       onPadUp: (id) => controller.releasePad(id),
       onJoyMove: (x, y) => {
-        // Menu open -> navigate fields/values. Else if a loop is playing and nothing
-        // is sounding -> select a looper layer. Otherwise -> morph the held chord.
+        // Menu open -> navigate fields/values. LEAD -> pitch bend (X = +/-2 semitones)
+        // + octave glide (Y = +/-1 octave). Loop playing + nothing sounding -> select a
+        // looper layer. Otherwise -> morph the held chord.
         const st = controller.getState();
         if (st.menuOpen) navMenu(x, y);
+        else if (st.mode === 'LEAD') controller.setLeadBend(x * BEND_SEMITONES * 100 + y * 1200);
         else if (st.looper.mode === 'play' && st.litPads.length === 0) navLooper(x, y);
         else {
           const q = joyQuality(x, y, lastQuality.current);
@@ -201,8 +206,11 @@ export function useSynth() {
         menuLatched.current = false;
         trackLatched.current = false;
         lastQuality.current = 'TRIAD';
-        // Releasing the stick springs the held chord(s) back to a plain triad.
-        if (!controller.getState().menuOpen) controller.springToTriad();
+        if (controller.getState().menuOpen) return;
+        // Releasing the stick: LEAD springs the bend back to centre, else springs the
+        // held chord(s) back to a plain triad.
+        if (controller.getState().mode === 'LEAD') controller.setLeadBend(0);
+        else controller.springToTriad();
       },
       onJoyClick: () => controller.joyClick(), // looper: record / stop / overdub
       onJoyHold: () => controller.joyHold(), // looper: clear

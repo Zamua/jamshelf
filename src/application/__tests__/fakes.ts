@@ -141,6 +141,10 @@ export class SpySynth implements SynthPort {
   setMuted(m: boolean): void {
     this.muted = m;
   }
+  bend = 0;
+  setBend(cents: number): void {
+    this.bend = cents;
+  }
   drums: DrumName[] = [];
   drumKits: DrumKit[] = [];
   drum(name: DrumName, kit: DrumKit): void {

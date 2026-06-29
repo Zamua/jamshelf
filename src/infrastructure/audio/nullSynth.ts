@@ -11,6 +11,7 @@ export class NullSynth implements SynthPort {
   setVolume(_v: number): void {}
   setStrumMs(_ms: number): void {}
   setMuted(_muted: boolean): void {}
+  setBend(_cents: number): void {}
   drum(_name: DrumName, _kit: DrumKit): void {}
   setFx(_delay: boolean, _chorus: boolean, _delayMs: number): void {}
 }

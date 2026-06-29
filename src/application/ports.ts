@@ -1,4 +1,4 @@
-import type { DrumName } from '../domain/music';
+import type { DrumName, DrumKit } from '../domain/music';
 
 // Ports = the narrow interfaces the application depends on. Concrete adapters
 // (Web Audio, a test stub, ...) live in infrastructure and implement these.
@@ -67,6 +67,8 @@ export interface SynthPort {
   setVolume(v: number): void; // 0..1
   setStrumMs(ms: number): void; // chord spread per note
   setMuted(muted: boolean): void; // power gate
-  // Fire a one-shot synthesized drum hit (DRUM mode).
-  drum(name: DrumName): void;
+  // Fire a one-shot synthesized drum hit (DRUM mode), tuned for the given kit.
+  drum(name: DrumName, kit: DrumKit): void;
+  // Toggle the global delay / chorus effects; delayMs is the (tempo-synced) delay.
+  setFx(delay: boolean, chorus: boolean, delayMs: number): void;
 }

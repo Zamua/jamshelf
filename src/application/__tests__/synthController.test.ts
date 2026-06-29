@@ -215,6 +215,26 @@ describe('menus', () => {
     expect(walkFields(3)).toEqual(['MODE', 'SPEED', 'BPM']);
   });
 
+  it('DRUM menu exposes a KIT field', () => {
+    switchMode('DRUM');
+    c.toggleMenu('MODE');
+    expect(walkFields(3)).toEqual(['MODE', 'KIT', 'BPM']);
+  });
+
+  it('the KEY menu FX field toggles delay/chorus on the synth', () => {
+    c.toggleMenu('KEY');
+    c.cursorField(1); // SCL
+    c.cursorField(1); // OCT
+    c.cursorField(1); // BASS
+    c.cursorField(1); // FX
+    c.editValue(1); // OFF -> DELAY
+    expect(synth.fx.delay).toBe(true);
+    expect(synth.fx.chorus).toBe(false);
+    c.editValue(1); // DELAY -> CHORUS
+    expect(synth.fx.delay).toBe(false);
+    expect(synth.fx.chorus).toBe(true);
+  });
+
   it('BASS ROOT (KEY menu) prepends a bass note two octaves under the root', () => {
     c.toggleMenu('KEY');
     c.cursorField(1); // SCL

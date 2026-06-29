@@ -1,4 +1,4 @@
-import type { DrumName } from '../domain/music';
+import type { DrumName, DrumKit } from '../domain/music';
 import type { PatchName, SynthPort, Ticker } from './ports';
 
 // A multi-track loop recorder. It records the actual note events the player makes
@@ -22,6 +22,7 @@ interface LoopEvent {
   freqs: number[];
   patch: PatchName;
   drum?: DrumName; // present = a one-shot drum hit instead of a tonal note
+  drumKit?: DrumKit;
 }
 interface Track {
   events: LoopEvent[];
@@ -108,7 +109,7 @@ export class Looper {
     if (this.mode !== 'rec' || this.recTrack < 0) return;
     this.tracks[this.recTrack].events.push({ at: this.posMs, on, voiceId, freqs, patch });
   }
-  captureDrum(name: DrumName): void {
+  captureDrum(name: DrumName, kit: DrumKit): void {
     if (this.mode !== 'rec' || this.recTrack < 0) return;
     this.tracks[this.recTrack].events.push({
       at: this.posMs,
@@ -117,6 +118,7 @@ export class Looper {
       freqs: [],
       patch: 'SAW',
       drum: name,
+      drumKit: kit,
     });
   }
 
@@ -167,7 +169,7 @@ export class Looper {
   }
   private fireEvent(track: number, e: LoopEvent): void {
     if (e.drum) {
-      this.synth.drum(e.drum);
+      this.synth.drum(e.drum, e.drumKit ?? 'TIGHT');
       return;
     }
     const id = `loop:${track}:${e.voiceId}`;

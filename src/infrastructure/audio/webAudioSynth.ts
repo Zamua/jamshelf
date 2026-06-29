@@ -1,5 +1,14 @@
-import type { DrumName } from '../../domain/music';
+import type { DrumName, DrumKit } from '../../domain/music';
 import type { PatchName, SynthPort } from '../../application/ports';
+
+// Per-kit tuning factors applied to the base drum recipes (kick pitch + decay,
+// snare noise/tone balance, hat brightness). TIGHT = neutral; 808 = boomy + softer;
+// 909 = punchy + bright.
+const KIT_TUNE: Record<DrumKit, { kickF: number; kickDecay: number; snareN: number; snareT: number; hatF: number }> = {
+  TIGHT: { kickF: 1, kickDecay: 1, snareN: 1, snareT: 1, hatF: 1 },
+  BOX808: { kickF: 0.78, kickDecay: 1.7, snareN: 0.8, snareT: 0.7, hatF: 0.9 },
+  BOX909: { kickF: 1.12, kickDecay: 0.78, snareN: 1.25, snareT: 0.85, hatF: 1.18 },
+};
 
 // Full Web Audio implementation of SynthPort. Ported from the single-file
 // prototype: six patch voices, dual oscillators with detune + ratio, a per-voice
@@ -101,6 +110,13 @@ export class WebAudioSynth implements SynthPort {
   private groups = new Map<string, Voice[]>();
   private active: Voice[] = []; // insertion-ordered, for oldest-steal
   private noise: AudioBuffer | null = null; // shared white noise for the drum voices
+  // Global FX (delay + chorus); wet gains start at 0 = off.
+  private delay: DelayNode | null = null;
+  private delayWet: GainNode | null = null;
+  private chorusWet: GainNode | null = null;
+  private fxDelayOn = false;
+  private fxChorusOn = false;
+  private fxDelayMs = 250;
 
   resume(): void {
     if (!this.ctx) this.build();
@@ -204,14 +220,64 @@ export class WebAudioSynth implements SynthPort {
     const nd = nbuf.getChannelData(0);
     for (let i = 0; i < nlen; i++) nd[i] = Math.random() * 2 - 1;
     this.noise = nbuf;
+
+    // FX sends off the master (dry stays master -> comp): a feedback delay and a
+    // chorus (LFO-modulated short delay). Their wet gains gate them on/off.
+    const delay = ctx.createDelay(1);
+    delay.delayTime.value = 0.25;
+    const delayFb = ctx.createGain();
+    delayFb.gain.value = 0.34;
+    const delayWet = ctx.createGain();
+    delayWet.gain.value = 0;
+    master.connect(delay);
+    delay.connect(delayFb);
+    delayFb.connect(delay);
+    delay.connect(delayWet);
+    delayWet.connect(comp);
+    this.delay = delay;
+    this.delayWet = delayWet;
+
+    const chDelay = ctx.createDelay(0.05);
+    chDelay.delayTime.value = 0.022;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.8;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 0.006;
+    lfo.connect(lfoGain);
+    lfoGain.connect(chDelay.delayTime);
+    lfo.start();
+    const chWet = ctx.createGain();
+    chWet.gain.value = 0;
+    master.connect(chDelay);
+    chDelay.connect(chWet);
+    chWet.connect(comp);
+    this.chorusWet = chWet;
+
+    this.applyFx();
+  }
+
+  setFx(delay: boolean, chorus: boolean, delayMs: number): void {
+    this.fxDelayOn = delay;
+    this.fxChorusOn = chorus;
+    this.fxDelayMs = delayMs;
+    this.applyFx();
+  }
+  private applyFx(): void {
+    if (!this.ctx || !this.delay || !this.delayWet || !this.chorusWet) return;
+    const now = this.ctx.currentTime;
+    this.delay.delayTime.setTargetAtTime(Math.max(0.02, this.fxDelayMs / 1000), now, 0.05);
+    this.delayWet.gain.setTargetAtTime(this.fxDelayOn ? 0.33 : 0, now, 0.05);
+    this.chorusWet.gain.setTargetAtTime(this.fxChorusOn ? 0.5 : 0, now, 0.05);
   }
 
   // One-shot synthesized drum hit (no samples). Builds a tiny percussion graph
   // (pitch-swept tone and/or filtered noise burst with a fast amp decay) straight
   // to the master, then disconnects it once it has rung out.
-  drum(name: DrumName): void {
+  drum(name: DrumName, kit: DrumKit): void {
     if (!this.ctx || !this.master || this.muted || !this.noise) return;
     const ctx = this.ctx;
+    const k = KIT_TUNE[kit];
     const t = ctx.currentTime + 0.002;
     const out = ctx.createGain();
     out.gain.value = 0.5;
@@ -252,26 +318,26 @@ export class WebAudioSynth implements SynthPort {
 
     switch (name) {
       case 'KICK':
-        tone('sine', 150, 45, 0.9, 0.35);
+        tone('sine', 150 * k.kickF, 45 * k.kickF, 0.9, 0.35 * k.kickDecay);
         break;
       case 'KICK2':
-        tone('sine', 110, 40, 0.95, 0.28);
+        tone('sine', 110 * k.kickF, 40 * k.kickF, 0.95, 0.28 * k.kickDecay);
         break;
       case 'SNARE':
-        noiseHit('highpass', 1500, 0, 0.6, 0.2);
-        tone('triangle', 190, 190, 0.4, 0.12);
+        noiseHit('highpass', 1500, 0, 0.6 * k.snareN, 0.2);
+        tone('triangle', 190, 190, 0.4 * k.snareT, 0.12);
         break;
       case 'HAT':
-        noiseHit('highpass', 8000, 0, 0.4, 0.045);
+        noiseHit('highpass', 8000 * k.hatF, 0, 0.4, 0.045);
         break;
       case 'OPENHAT':
-        noiseHit('highpass', 7000, 0, 0.4, 0.3);
+        noiseHit('highpass', 7000 * k.hatF, 0, 0.4, 0.3);
         break;
       case 'TOM':
-        tone('sine', 160, 80, 0.8, 0.25);
+        tone('sine', 160 * k.kickF, 80 * k.kickF, 0.8, 0.25);
         break;
       case 'RIDE':
-        noiseHit('bandpass', 6000, 2, 0.3, 0.5);
+        noiseHit('bandpass', 6000 * k.hatF, 2, 0.3, 0.5);
         tone('square', 320, 320, 0.08, 0.4);
         break;
     }

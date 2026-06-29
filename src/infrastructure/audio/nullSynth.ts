@@ -1,4 +1,4 @@
-import type { DrumName } from '../../domain/music';
+import type { DrumName, DrumKit } from '../../domain/music';
 import type { PatchName, SynthPort } from '../../application/ports';
 
 // A no-op SynthPort for tests and SSR (no Web Audio side effects).
@@ -11,5 +11,6 @@ export class NullSynth implements SynthPort {
   setVolume(_v: number): void {}
   setStrumMs(_ms: number): void {}
   setMuted(_muted: boolean): void {}
-  drum(_name: DrumName): void {}
+  drum(_name: DrumName, _kit: DrumKit): void {}
+  setFx(_delay: boolean, _chorus: boolean, _delayMs: number): void {}
 }

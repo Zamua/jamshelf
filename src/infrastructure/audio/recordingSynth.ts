@@ -1,4 +1,4 @@
-import type { DrumName } from '../../domain/music';
+import type { DrumName, DrumKit } from '../../domain/music';
 import type { PatchName, SynthPort } from '../../application/ports';
 import type { Looper } from '../../application/looper';
 
@@ -45,8 +45,11 @@ export class RecordingSynth implements SynthPort {
   setMuted(muted: boolean): void {
     this.inner.setMuted(muted);
   }
-  drum(name: DrumName): void {
-    this.looper.captureDrum(name);
-    this.inner.drum(name);
+  drum(name: DrumName, kit: DrumKit): void {
+    this.looper.captureDrum(name, kit);
+    this.inner.drum(name, kit);
+  }
+  setFx(delay: boolean, chorus: boolean, delayMs: number): void {
+    this.inner.setFx(delay, chorus, delayMs);
   }
 }

@@ -27,6 +27,20 @@ export function drumForDegree(degree: Degree): DrumName {
   return DRUM_PADS[(degree - 1) % DRUM_PADS.length];
 }
 
+// The drum kits (the synthesis is tuned differently per kit).
+export type DrumKit = 'TIGHT' | 'BOX808' | 'BOX909';
+export const DRUM_KITS: readonly DrumKit[] = ['TIGHT', 'BOX808', 'BOX909'];
+
+// Global effects: a tempo-synced delay and/or a chorus (reverb is always on).
+export type FxMode = 'OFF' | 'DELAY' | 'CHORUS' | 'BOTH';
+export const FX_MODES: readonly FxMode[] = ['OFF', 'DELAY', 'CHORUS', 'BOTH'];
+export function fxHasDelay(fx: FxMode): boolean {
+  return fx === 'DELAY' || fx === 'BOTH';
+}
+export function fxHasChorus(fx: FxMode): boolean {
+  return fx === 'CHORUS' || fx === 'BOTH';
+}
+
 // Arpeggiator step patterns.
 export type ArpPattern = 'UP' | 'DOWN' | 'UPDOWN' | 'DOWNUP' | 'RANDOM' | 'FINGER';
 export const ARP_PATTERNS: readonly ArpPattern[] = [

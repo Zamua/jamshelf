@@ -1,4 +1,4 @@
-import type { DrumName } from '../../domain/music';
+import type { DrumName, DrumKit } from '../../domain/music';
 import type { Clock, PatchName, SynthPort, Ticker } from '../ports';
 
 // A frame ticker you drive by hand: call frame(nowMs) to advance the looper.
@@ -92,8 +92,14 @@ export class SpySynth implements SynthPort {
     this.muted = m;
   }
   drums: DrumName[] = [];
-  drum(name: DrumName): void {
+  drumKits: DrumKit[] = [];
+  drum(name: DrumName, kit: DrumKit): void {
     this.drums.push(name);
+    this.drumKits.push(kit);
+  }
+  fx = { delay: false, chorus: false, delayMs: 0 };
+  setFx(delay: boolean, chorus: boolean, delayMs: number): void {
+    this.fx = { delay, chorus, delayMs };
   }
 
   // helpers

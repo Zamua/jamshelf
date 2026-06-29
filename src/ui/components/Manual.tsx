@@ -29,7 +29,7 @@ const ITEMS: readonly Item[] = [
     chip: { label: 'GRAY', tone: 'gray' },
     title: 'Key menu',
     body:
-      'The gray button opens the key / scale / octave / bass menu. Push the joystick up or down to pick a field, left or right to change its value. Bass ROOT adds a low root note under every chord. Press gray again to close.',
+      'The gray button opens the key / scale / octave / bass / fx menu. Push the joystick up or down to pick a field, left or right to change it. Ten scales (incl. pentatonics + blues); bass ROOT adds a low root; fx toggles a tempo-synced delay and a chorus. Press gray again to close.',
   },
   {
     chip: { label: 'YELLOW', tone: 'yellow' },

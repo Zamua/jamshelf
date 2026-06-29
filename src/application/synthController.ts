@@ -7,6 +7,9 @@ import {
   strumMs,
   voiceChord,
   drumForDegree,
+  fxHasDelay,
+  fxHasChorus,
+  FX_MODES,
   INVERSIONS,
   NOTE_NAMES,
   SCALE_LABELS,
@@ -16,6 +19,7 @@ import {
   RATES,
   STRUM_SPEEDS,
   BASS_MODES,
+  DRUM_KITS,
   type Degree,
   type Quality,
   type ScaleName,
@@ -26,12 +30,14 @@ import {
   type Rate,
   type StrumSpeed,
   type BassMode,
+  type DrumKit,
+  type FxMode,
 } from '../domain/music';
 import { PATCH_ORDER, type Clock, type PatchName, type SynthPort } from './ports';
 import type { Looper } from './looper';
 import type { Listener, MenuKind, ViewModel } from './state';
 
-const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS'] as const;
+const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS', 'FX'] as const;
 const PLAY_STRUM_MS = 4; // near-zero spread for the plain PLAY mode
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -63,6 +69,8 @@ export class SynthController {
   private repeatRate: Rate = '1/8';
   private strumSpeed: StrumSpeed = 'MED';
   private bass: BassMode = 'OFF';
+  private fx: FxMode = 'OFF';
+  private drumKit: DrumKit = 'TIGHT';
   private inversion = 0; // 0 = root position, 1 = 1st, 2 = 2nd
   private latched: Degree | null = null; // DRONE: the currently-sustained pad
   private arpStep = 0;
@@ -86,6 +94,7 @@ export class SynthController {
     this.looper = looper;
     this.synth.setStrumMs(PLAY_STRUM_MS);
     this.synth.setVolume(this.volume);
+    this.applyFx();
     this.clock.onTick(() => this.tick());
     this.clock.setBpm(this.bpm);
     this.looper.onChange(() => this.publish());
@@ -273,7 +282,7 @@ export class SynthController {
   private dispatchPress(voiceId: string, degree: Degree): void {
     switch (this.mode) {
       case 'DRUM':
-        this.synth.drum(drumForDegree(degree)); // one-shot percussion, no held voice
+        this.synth.drum(drumForDegree(degree), this.drumKit); // one-shot percussion
         return;
       case 'DRONE':
         if (this.latched === degree) {
@@ -400,12 +409,20 @@ export class SynthController {
       this.scale = SCALE_ORDER[(i + delta + SCALE_ORDER.length) % SCALE_ORDER.length];
     } else if (field === 'OCT') {
       this.octave = Math.max(-1, Math.min(2, this.octave + delta));
-    } else {
-      // BASS
+    } else if (field === 'BASS') {
       const i = BASS_MODES.indexOf(this.bass);
       this.bass = BASS_MODES[(i + delta + BASS_MODES.length) % BASS_MODES.length];
+    } else {
+      // FX
+      const i = FX_MODES.indexOf(this.fx);
+      this.fx = FX_MODES[(i + delta + FX_MODES.length) % FX_MODES.length];
+      this.applyFx();
     }
     this.revoiceHeld();
+  }
+  private applyFx(): void {
+    const delayMs = 30000 / this.bpm; // an eighth note at the current tempo
+    this.synth.setFx(fxHasDelay(this.fx), fxHasChorus(this.fx), delayMs);
   }
   private editModeField(field: string, delta: -1 | 1): void {
     if (field === 'MODE') {
@@ -424,10 +441,14 @@ export class SynthController {
       if (this.mode === 'ARP') this.arpRate = next;
       else this.repeatRate = next;
       this.applyMode();
+    } else if (field === 'KIT') {
+      const i = DRUM_KITS.indexOf(this.drumKit);
+      this.drumKit = DRUM_KITS[(i + delta + DRUM_KITS.length) % DRUM_KITS.length];
     } else {
       // BPM
       this.bpm = Math.max(40, Math.min(300, this.bpm + delta));
       this.applyMode();
+      this.applyFx(); // re-sync the delay time to the new tempo
     }
   }
 
@@ -440,6 +461,7 @@ export class SynthController {
     if (this.mode === 'ARP') f.push('PATTERN', 'RATE');
     else if (this.mode === 'STRUM') f.push('SPEED');
     else if (this.mode === 'REPEAT') f.push('RATE');
+    else if (this.mode === 'DRUM') f.push('KIT');
     f.push('BPM');
     return f;
   }
@@ -453,6 +475,8 @@ export class SynthController {
         return (this.octave >= 0 ? '+' : '') + this.octave;
       case 'BASS':
         return this.bass;
+      case 'FX':
+        return this.fx;
       case 'MODE':
         return this.mode;
       case 'PATTERN':
@@ -461,6 +485,8 @@ export class SynthController {
         return this.mode === 'ARP' ? this.arpRate : this.repeatRate;
       case 'SPEED':
         return this.strumSpeed;
+      case 'KIT':
+        return this.drumKit;
       case 'BPM':
         return String(this.bpm);
       default:

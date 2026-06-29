@@ -23,13 +23,13 @@ const ITEMS: readonly Item[] = [
   {
     title: 'Joystick morph',
     body:
-      'Hold a pad, then push the joystick to morph the held chord live: 7th, 9th, sus4, sus2, open, add9, 6th, jazz. Let go and the chord springs back to a plain triad.',
+      'Hold a pad, then push the joystick nearly all the way to a direction to morph the chord live: up flips major/minor, up-right adds a dominant 7th, right a natural 7th, down-right a 9th, down a sus4, down-left a 6th, left diminishes, up-left augments. Let go and it springs back to a plain triad.',
   },
   {
     chip: { label: 'GRAY', tone: 'gray' },
     title: 'Key menu',
     body:
-      'The gray button opens the key / scale / octave menu. Push the joystick up or down to pick a field, left or right to change its value. Press gray again to close.',
+      'The gray button opens the key / scale / octave / bass menu. Push the joystick up or down to pick a field, left or right to change its value. Bass ROOT adds a low root note under every chord. Press gray again to close.',
   },
   {
     chip: { label: 'YELLOW', tone: 'yellow' },

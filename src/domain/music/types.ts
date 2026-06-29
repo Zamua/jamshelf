@@ -19,17 +19,21 @@ export type ScaleName =
   | 'MIXO'
   | 'LYDIAN';
 
-// The joystick chord-quality morph states (center plus 8 compass directions).
+// The joystick chord-quality morph states: the centre (TRIAD) plus the 8 compass
+// directions, matching the real device's DEFAULT joystick layout:
+//   up = FLIP (maj<->min)   up-right = DOM7        right = 7th (natural maj7/min7)
+//   down-right = 9th        down = sus4           down-left = 6th
+//   left = DIM              up-left = AUG
 export type Quality =
   | 'TRIAD'
+  | 'FLIP'
+  | 'DOM7'
   | '7th'
   | '9th'
   | 'sus4'
-  | 'sus2'
-  | 'OPEN'
-  | 'add9'
   | '6th'
-  | 'JAZZ';
+  | 'DIM'
+  | 'AUG';
 
 // Immutable description of the current key/scale/octave selection (a value object).
 export interface KeyState {

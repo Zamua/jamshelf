@@ -21,14 +21,14 @@ const ALL_SCALES: ScaleName[] = [
 const ALL_DEGREES: Degree[] = [1, 2, 3, 4, 5, 6, 7];
 const ALL_QUALITIES: Quality[] = [
   'TRIAD',
+  'FLIP',
+  'DOM7',
   '7th',
   '9th',
   'sus4',
-  'sus2',
-  'OPEN',
-  'add9',
   '6th',
-  'JAZZ',
+  'DIM',
+  'AUG',
 ];
 
 const inC = (scale: ScaleName): KeyState => ({ root: 0, scale, octave: 0 });
@@ -83,11 +83,14 @@ describe('spot-checked diatonic triads (brief callouts)', () => {
   });
 });
 
-describe('every quality produces a sane, fully diatonic note set', () => {
-  // "No wrong notes": every emitted pitch class must belong to the active scale.
+describe('the diatonic qualities produce a fully in-scale note set', () => {
+  // "No wrong notes" holds for the diatonic voicings (the triad + its scale-stacked
+  // extensions). FLIP/DOM7/sus4/DIM/AUG are DELIBERATE chromatic alterations (the
+  // device's joystick goes outside the scale for those), so they are excluded here.
+  const DIATONIC_QUALITIES: Quality[] = ['TRIAD', '7th', '9th'];
   for (const scale of ALL_SCALES) {
     for (const degree of ALL_DEGREES) {
-      for (const quality of ALL_QUALITIES) {
+      for (const quality of DIATONIC_QUALITIES) {
         it(`${scale} deg ${degree} ${quality} stays in-scale`, () => {
           const key = inC(scale);
           const effectiveRoot = 60 + key.root + 12 * key.octave;
@@ -103,7 +106,7 @@ describe('every quality produces a sane, fully diatonic note set', () => {
     }
   }
 
-  it('the lowest note is always the chord root (degree tone)', () => {
+  it('the lowest note is always the chord root (degree tone), every quality', () => {
     for (const scale of ALL_SCALES) {
       for (const degree of ALL_DEGREES) {
         for (const quality of ALL_QUALITIES) {
@@ -115,50 +118,60 @@ describe('every quality produces a sane, fully diatonic note set', () => {
   });
 });
 
-describe('quality note-set shapes', () => {
+describe('quality note-set shapes + the DEFAULT joystick layout', () => {
   const key = inC('MAJOR');
 
-  it('TRIAD/sus2/sus4/OPEN are 3-note voicings', () => {
-    for (const q of ['TRIAD', 'sus2', 'sus4', 'OPEN'] as Quality[]) {
+  it('TRIAD/FLIP/sus4/DIM/AUG are 3-note voicings', () => {
+    for (const q of ['TRIAD', 'FLIP', 'sus4', 'DIM', 'AUG'] as Quality[]) {
       expect(qualityOffsets(1, SCALES.MAJOR, q)).toHaveLength(3);
     }
   });
 
-  it('7th/add9/6th are 4-note voicings', () => {
-    for (const q of ['7th', 'add9', '6th'] as Quality[]) {
+  it('DOM7/7th/6th are 4-note voicings', () => {
+    for (const q of ['DOM7', '7th', '6th'] as Quality[]) {
       expect(qualityOffsets(1, SCALES.MAJOR, q)).toHaveLength(4);
     }
   });
 
-  it('9th and JAZZ are 5-note voicings', () => {
+  it('9th is a 5-note voicing', () => {
     expect(qualityOffsets(1, SCALES.MAJOR, '9th')).toHaveLength(5);
-    expect(qualityOffsets(1, SCALES.MAJOR, 'JAZZ')).toHaveLength(5);
   });
 
-  it('OPEN keeps the same pitch classes as the triad but lifts the 3rd an octave', () => {
-    const triad = degreeToMidiNotes(1, key, 'TRIAD'); // 60 64 67
-    const open = degreeToMidiNotes(1, key, 'OPEN'); // 60 76 67
-    expect(open).toEqual([60, 76, 67]);
-    const pcs = (xs: number[]) => new Set(xs.map((x) => x % 12));
-    expect(pcs(open)).toEqual(pcs(triad));
+  it('FLIP flips the third major <-> minor', () => {
+    expect(degreeToMidiNotes(1, key, 'FLIP')).toEqual([60, 63, 67]); // C major -> C minor
+    expect(degreeToMidiNotes(2, key, 'FLIP')).toEqual([62, 66, 69]); // D minor -> D major
   });
 
-  it('JAZZ differs from the 9th: it drops the 5th and adds the 11th', () => {
-    for (const scale of ALL_SCALES) {
-      for (const degree of ALL_DEGREES) {
-        const ninth = degreeToMidiNotes(degree, inC(scale), '9th');
-        const jazz = degreeToMidiNotes(degree, inC(scale), 'JAZZ');
-        expect(jazz).not.toEqual(ninth);
-      }
-    }
-    // concrete: C major I 9th = C E G B D ; JAZZ = C E B D F (no G, adds F)
-    expect(degreeToMidiNotes(1, key, '9th')).toEqual([60, 64, 67, 71, 74]);
-    expect(degreeToMidiNotes(1, key, 'JAZZ')).toEqual([60, 64, 71, 74, 77]);
+  it('DOM7 forces a flat 7th; 7th keeps the natural (diatonic) 7th', () => {
+    expect(degreeToMidiNotes(1, key, 'DOM7')).toEqual([60, 64, 67, 70]); // C7
+    expect(degreeToMidiNotes(1, key, '7th')).toEqual([60, 64, 67, 71]); // Cmaj7
+    // on V the diatonic 7th already IS dominant, so they coincide (both G7)
+    expect(degreeToMidiNotes(5, key, 'DOM7')).toEqual(degreeToMidiNotes(5, key, '7th'));
   });
 
-  it('sus2 and sus4 replace the 3rd (degree 1 in C major)', () => {
-    expect(degreeToMidiNotes(1, key, 'sus2')).toEqual([60, 62, 67]); // C D G
+  it('9th = triad + diatonic 7th + 9th', () => {
+    expect(degreeToMidiNotes(1, key, '9th')).toEqual([60, 64, 67, 71, 74]); // C E G B D
+  });
+
+  it('sus4 replaces the 3rd with a perfect 4th; 6th adds a major 6th', () => {
     expect(degreeToMidiNotes(1, key, 'sus4')).toEqual([60, 65, 67]); // C F G
+    expect(degreeToMidiNotes(1, key, '6th')).toEqual([60, 64, 67, 69]); // C E G A
+  });
+
+  it('DIM is a diminished triad; AUG an augmented triad', () => {
+    expect(degreeToMidiNotes(1, key, 'DIM')).toEqual([60, 63, 66]); // C Eb Gb
+    expect(degreeToMidiNotes(1, key, 'AUG')).toEqual([60, 64, 68]); // C E G#
+  });
+
+  it('names the morphed chords', () => {
+    expect(resolveChord(1, key, 'FLIP').name).toBe('Cm');
+    expect(resolveChord(1, key, 'DOM7').name).toBe('C7');
+    expect(resolveChord(1, key, '7th').name).toBe('Cmaj7');
+    expect(resolveChord(1, key, '9th').name).toBe('Cmaj9');
+    expect(resolveChord(1, key, 'sus4').name).toBe('Csus4');
+    expect(resolveChord(1, key, '6th').name).toBe('C6');
+    expect(resolveChord(1, key, 'DIM').name).toBe('Cdim');
+    expect(resolveChord(1, key, 'AUG').name).toBe('Caug');
   });
 });
 
@@ -208,14 +221,17 @@ describe('nameChord edge cases', () => {
     expect(name(2, '9th')).toBe('Dm9'); // ii9 minor 9
   });
 
-  it('sus2 and sus4', () => {
-    expect(name(1, 'sus2')).toBe('Csus2');
+  it('sus4 and 6th', () => {
     expect(name(1, 'sus4')).toBe('Csus4');
+    expect(name(1, '6th')).toBe('C6');
   });
 
-  it('6 and add9', () => {
-    expect(name(1, '6th')).toBe('C6');
-    expect(name(1, 'add9')).toBe('Cadd9');
+  it('FLIP / DOM7 / DIM / AUG morphs', () => {
+    expect(name(1, 'FLIP')).toBe('Cm'); // C major flips to C minor
+    expect(name(2, 'FLIP')).toBe('D'); // D minor flips to D major
+    expect(name(1, 'DOM7')).toBe('C7'); // forced dominant 7th
+    expect(name(1, 'DIM')).toBe('Cdim');
+    expect(name(1, 'AUG')).toBe('Caug');
   });
 
   it('roots are spelled with sharps from the chromatic table', () => {

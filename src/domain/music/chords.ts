@@ -17,26 +17,34 @@ export function qualityOffsets(
 ): number[] {
   const i = degree - 1;
   const t = (k: number) => scaleTone(scaleIntervals, i + k);
-  const triad = [t(0), t(2), t(4)];
+  const root = t(0);
+  const third = t(2);
+  const fifth = t(4);
+  const triad = [root, third, fifth];
+  // The diatonic 7th/9th keep "no wrong notes"; FLIP/DOM7/DIM/AUG are deliberate
+  // chromatic alterations (as on the real device's DEFAULT joystick).
   switch (quality) {
     case 'TRIAD':
       return triad;
+    case 'FLIP': {
+      // flip the third major <-> minor relative to the root
+      const isMajorThird = (((third - root) % 12) + 12) % 12 === 4;
+      return [root, isMajorThird ? root + 3 : root + 4, fifth];
+    }
+    case 'DOM7':
+      return [root, third, fifth, root + 10]; // force a flat (dominant) 7th
     case '7th':
-      return [t(0), t(2), t(4), t(6)];
+      return [root, third, fifth, t(6)]; // natural/diatonic 7th (maj7 or min7)
     case '9th':
-      return [t(0), t(2), t(4), t(6), t(8)];
+      return [root, third, fifth, t(6), t(8)]; // diatonic 7th + 9th
     case 'sus4':
-      return [t(0), t(3), t(4)];
-    case 'sus2':
-      return [t(0), t(1), t(4)];
-    case 'OPEN':
-      return [triad[0], triad[1] + 12, triad[2]];
-    case 'add9':
-      return [t(0), t(2), t(4), t(8)];
+      return [root, root + 5, fifth]; // replace the 3rd with a perfect 4th
     case '6th':
-      return [t(0), t(2), t(4), t(5)];
-    case 'JAZZ':
-      return [t(0), t(2), t(6), t(8), t(10)]; // root, 3rd, 7th, 9th, 11th (drop 5th)
+      return [root, third, fifth, root + 9]; // add a major 6th
+    case 'DIM':
+      return [root, root + 3, root + 6]; // diminished triad (dark)
+    case 'AUG':
+      return [root, root + 4, root + 8]; // augmented triad (raised 5th)
     default:
       return triad;
   }

@@ -20,16 +20,17 @@ const MENU_NAV_THRESHOLD = 0.85;
 // neighbour. 12 deg half-width => 24 deg live sectors, 21 deg dead gaps.
 const DIR_HALF_WIDTH = 12;
 
-// The 8 compass directions (degrees, +y = up) and the chord quality each morphs to.
+// The 8 compass directions (degrees, +y = up) and the chord quality each morphs
+// to - the real device's DEFAULT joystick layout.
 const DIRECTIONS: readonly [number, Quality][] = [
-  [90, '7th'], // N
-  [45, '9th'], // NE
-  [0, 'sus4'], // E
-  [315, 'sus2'], // SE
-  [270, 'OPEN'], // S
-  [225, 'add9'], // SW
-  [180, '6th'], // W
-  [135, 'JAZZ'], // NW
+  [90, 'FLIP'], // up: flip maj <-> min
+  [45, 'DOM7'], // up-right: dominant 7th
+  [0, '7th'], // right: natural 7th (maj7 / min7)
+  [315, '9th'], // down-right: add 9th
+  [270, 'sus4'], // down: suspended 4th
+  [225, '6th'], // down-left: add 6th
+  [180, 'DIM'], // left: diminished
+  [135, 'AUG'], // up-left: augmented
 ];
 
 // Smallest absolute angle between two bearings, 0..180.

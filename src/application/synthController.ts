@@ -5,6 +5,7 @@ import {
   leadNote,
   rateBeats,
   strumMs,
+  withBass,
   NOTE_NAMES,
   SCALE_LABELS,
   SCALE_ORDER,
@@ -12,6 +13,7 @@ import {
   ARP_PATTERNS,
   RATES,
   STRUM_SPEEDS,
+  BASS_MODES,
   type Degree,
   type Quality,
   type ScaleName,
@@ -21,11 +23,12 @@ import {
   type ArpPattern,
   type Rate,
   type StrumSpeed,
+  type BassMode,
 } from '../domain/music';
 import { PATCH_ORDER, type Clock, type PatchName, type SynthPort } from './ports';
 import type { Listener, MenuKind, ViewModel } from './state';
 
-const KEY_FIELDS = ['KEY', 'SCL', 'OCT'] as const;
+const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS'] as const;
 const PLAY_STRUM_MS = 4; // near-zero spread for the plain PLAY mode
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -56,6 +59,7 @@ export class SynthController {
   private arpRate: Rate = '1/8';
   private repeatRate: Rate = '1/8';
   private strumSpeed: StrumSpeed = 'MED';
+  private bass: BassMode = 'OFF';
   private latched: Degree | null = null; // DRONE: the currently-sustained pad
   private arpStep = 0;
 
@@ -359,8 +363,12 @@ export class SynthController {
     } else if (field === 'SCL') {
       const i = SCALE_ORDER.indexOf(this.scale);
       this.scale = SCALE_ORDER[(i + delta + SCALE_ORDER.length) % SCALE_ORDER.length];
-    } else {
+    } else if (field === 'OCT') {
       this.octave = Math.max(-1, Math.min(2, this.octave + delta));
+    } else {
+      // BASS
+      const i = BASS_MODES.indexOf(this.bass);
+      this.bass = BASS_MODES[(i + delta + BASS_MODES.length) % BASS_MODES.length];
     }
     this.revoiceHeld();
   }
@@ -408,6 +416,8 @@ export class SynthController {
         return SCALE_LABELS[this.scale];
       case 'OCT':
         return (this.octave >= 0 ? '+' : '') + this.octave;
+      case 'BASS':
+        return this.bass;
       case 'MODE':
         return this.mode;
       case 'PATTERN':
@@ -429,7 +439,7 @@ export class SynthController {
   }
   private triggerVoice(voiceId: string, degree: Degree): void {
     const chord = resolveChord(degree, this.key(), this.quality);
-    this.synth.noteOn(voiceId, chord.notes.map(midiToFreq));
+    this.synth.noteOn(voiceId, withBass(chord.notes, this.bass).map(midiToFreq));
   }
   private triggerLead(): void {
     const last = [...this.held.values()].pop();

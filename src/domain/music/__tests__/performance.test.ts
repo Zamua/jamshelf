@@ -4,10 +4,12 @@ import {
   ARP_PATTERNS,
   RATES,
   STRUM_SPEEDS,
+  BASS_MODES,
   rateBeats,
   strumMs,
   arpOrder,
   leadNote,
+  withBass,
 } from '../performance';
 
 describe('performance value sets', () => {
@@ -74,5 +76,20 @@ describe('leadNote', () => {
   it('returns the lowest note (the root)', () => {
     expect(leadNote([60, 64, 67])).toBe(60);
     expect(leadNote([67, 60, 64])).toBe(60);
+  });
+});
+
+describe('withBass', () => {
+  it('lists the bass modes', () => {
+    expect(BASS_MODES).toEqual(['OFF', 'ROOT']);
+  });
+  it('OFF leaves the chord unchanged', () => {
+    expect(withBass([60, 64, 67], 'OFF')).toEqual([60, 64, 67]);
+  });
+  it('ROOT prepends the root two octaves down', () => {
+    expect(withBass([60, 64, 67], 'ROOT')).toEqual([36, 60, 64, 67]);
+  });
+  it('handles an empty chord', () => {
+    expect(withBass([], 'ROOT')).toEqual([]);
   });
 });

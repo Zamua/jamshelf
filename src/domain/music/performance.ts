@@ -36,6 +36,17 @@ export const RATES: readonly Rate[] = ['1/4', '1/8', '1/16', '1/8T'];
 export type StrumSpeed = 'SLOW' | 'MED' | 'FAST';
 export const STRUM_SPEEDS: readonly StrumSpeed[] = ['SLOW', 'MED', 'FAST'];
 
+// Optional bass voice under the chord. ROOT adds the chord root two octaves down.
+export type BassMode = 'OFF' | 'ROOT';
+export const BASS_MODES: readonly BassMode[] = ['OFF', 'ROOT'];
+
+// Prepend the bass note (root - 2 octaves) when bass is ROOT. The chord's lowest
+// note is its root, so notes[0] - 24 is the bass.
+export function withBass(notes: readonly Midi[], bass: BassMode): Midi[] {
+  if (bass === 'OFF' || notes.length === 0) return [...notes];
+  return [notes[0] - 24, ...notes];
+}
+
 // Beats per tick for a rate. 1/4 = one beat, 1/8 = half, 1/16 = quarter,
 // 1/8T = a third of a beat (three per beat).
 export function rateBeats(rate: Rate): number {

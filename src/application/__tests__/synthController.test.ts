@@ -201,6 +201,19 @@ describe('menus', () => {
     expect(walkFields(3)).toEqual(['MODE', 'SPEED', 'BPM']);
   });
 
+  it('BASS ROOT (KEY menu) prepends a bass note two octaves under the root', () => {
+    c.toggleMenu('KEY');
+    c.cursorField(1); // SCL
+    c.cursorField(1); // OCT
+    c.cursorField(1); // BASS
+    c.editValue(1); // OFF -> ROOT
+    c.toggleMenu('KEY'); // close
+    c.pressPad('p1', 1); // C major triad
+    expect(synth.lastOn().freqs).toHaveLength(4); // bass + 3 chord tones
+    expect(synth.lastOn().freqs[0]).toBeCloseTo(midiToFreq(36)); // C2 = root - 2 octaves
+    expect(synth.lastOn().freqs[1]).toBeCloseTo(midiToFreq(60)); // then the chord root
+  });
+
   it('pressing the same menu button closes it; the other switches', () => {
     c.toggleMenu('KEY');
     expect(c.getState().menuOpen).toBe(true);

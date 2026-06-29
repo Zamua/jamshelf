@@ -60,6 +60,10 @@ export class WebAudioLooper implements AudioLooper {
   private metroAnchor = 0; // ctx time of beat 0
   private metroBeat = 0; // next beat index to schedule
 
+  // display tick: re-emits while playing so the OLED bar.beat counter advances
+  private displayTimer: ReturnType<typeof setInterval> | null = null;
+  private lastBeatKey = -1;
+
   private listeners = new Set<() => void>();
 
   constructor(synth: WebAudioSynth) {
@@ -79,10 +83,15 @@ export class WebAudioLooper implements AudioLooper {
 
   view(): LooperView {
     let pos = 0;
+    let bar = 0;
+    let beat = 0;
     if (this.ctx && this.loopLenSamples > 0 && this.mode === 'play') {
       const lenSec = this.loopLenSamples / this.ctx.sampleRate;
       const t = (((this.ctx.currentTime - this.anchorTime) % lenSec) + lenSec) % lenSec;
       pos = t / lenSec;
+      const beatIdx = Math.min(this.loopBeats - 1, Math.floor(pos * this.loopBeats));
+      bar = Math.floor(beatIdx / BEATS_PER_BAR) + 1;
+      beat = (beatIdx % BEATS_PER_BAR) + 1;
     }
     return {
       mode: this.mode,
@@ -90,6 +99,8 @@ export class WebAudioLooper implements AudioLooper {
       trackCount: this.tracks.length,
       selected: this.selected,
       loopBars: this.loopBars,
+      bar,
+      beat,
       posFraction: pos,
     };
   }
@@ -166,7 +177,27 @@ export class WebAudioLooper implements AudioLooper {
     this.loopBeats = 0;
     this.loopBars = 0;
     this.stopMetronome();
+    this.stopDisplayTimer();
     this.emit();
+  }
+
+  private startDisplayTimer(): void {
+    this.stopDisplayTimer();
+    this.lastBeatKey = -1;
+    this.displayTimer = setInterval(() => {
+      const v = this.view();
+      const key = v.bar * 16 + v.beat;
+      if (key !== this.lastBeatKey) {
+        this.lastBeatKey = key;
+        this.emit(); // only re-render the OLED when the bar/beat actually advances
+      }
+    }, 40);
+  }
+  private stopDisplayTimer(): void {
+    if (this.displayTimer !== null) {
+      clearInterval(this.displayTimer);
+      this.displayTimer = null;
+    }
   }
 
   // --- recording lifecycle -------------------------------------------------
@@ -200,6 +231,7 @@ export class WebAudioLooper implements AudioLooper {
     this.recTrack = -1;
     this.mode = 'play';
     this.stopMetronome();
+    this.startDisplayTimer();
   }
 
   private startOverdub(): void {

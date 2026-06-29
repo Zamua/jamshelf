@@ -14,6 +14,8 @@ export class FakeAudioLooper implements AudioLooper {
   recTrack = -1;
   selected = 0;
   loopBars = 0;
+  bar = 0;
+  beat = 0;
   selectDirs: number[] = [];
   private cb: (() => void) | null = null;
 
@@ -39,6 +41,8 @@ export class FakeAudioLooper implements AudioLooper {
       trackCount: this.trackCount,
       selected: this.selected,
       loopBars: this.loopBars,
+      bar: this.bar,
+      beat: this.beat,
       posFraction: 0,
     };
   }

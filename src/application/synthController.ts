@@ -593,13 +593,15 @@ export class SynthController {
     if (lv.mode === 'rec') {
       return { big: `REC ${lv.recTrack + 1}`, small: flashing ? this.flashText : keyScale };
     }
-    return {
-      big: flashing ? this.flashText : keyScale,
-      small:
-        lv.mode === 'play'
-          ? `TRK ${lv.selected + 1}/${lv.trackCount} ${lv.loopBars}BR`
-          : `${this.patch}  ${this.mode}`,
-    };
+    if (lv.mode === 'play') {
+      // big line is the live transport (bar.beat), flashing to chord names as you
+      // play; small line shows the selected layer + loop length.
+      return {
+        big: flashing ? this.flashText : `BAR ${lv.bar}.${lv.beat}`,
+        small: `TRK ${lv.selected + 1}/${lv.trackCount} ${lv.loopBars}BR`,
+      };
+    }
+    return { big: flashing ? this.flashText : keyScale, small: `${this.patch}  ${this.mode}` };
   }
 
   private snapshot(): ViewModel {

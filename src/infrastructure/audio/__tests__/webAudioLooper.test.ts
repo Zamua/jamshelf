@@ -287,10 +287,13 @@ describe('WebAudioLooper', () => {
   });
 });
 
-afterEach(() => {
-  vi.useRealTimers();
+// Fake timers throughout: the looper's metronome + display use setInterval, and the
+// tests drive audio by hand (pumping blocks + advancing ctx.currentTime), so real
+// timers would only leak. The metronome test advances them explicitly.
+beforeEach(() => {
+  vi.useFakeTimers();
 });
 
-beforeEach(() => {
+afterEach(() => {
   vi.useRealTimers();
 });

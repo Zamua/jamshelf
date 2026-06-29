@@ -84,8 +84,11 @@ describe('looper wiring', () => {
     looper.trackCount = 2;
     looper.selected = 1;
     looper.loopBars = 4;
+    looper.bar = 2;
+    looper.beat = 3;
     looper.emit();
     expect(c.getState().screenSmall).toBe('TRK 2/2 4BR');
+    expect(c.getState().screenBig).toBe('BAR 2.3'); // live transport on the big line
   });
 
   it('forwards joystick layer-select to the looper, gated by power/inspect', () => {

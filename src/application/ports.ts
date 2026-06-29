@@ -56,6 +56,8 @@ export interface LooperView {
   readonly trackCount: number; // finalized loop layers
   readonly selected: number; // the layer the cursor is on (for clear/redo)
   readonly loopBars: number; // the loop's length in whole bars (0 until set)
+  readonly bar: number; // current bar of the playhead, 1-based (0 when not playing)
+  readonly beat: number; // current beat within the bar, 1-based (0 when not playing)
   readonly posFraction: number; // 0..1 playhead within the loop
 }
 

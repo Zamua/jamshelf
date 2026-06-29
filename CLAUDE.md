@@ -146,11 +146,22 @@ synthController.test.ts` (fake clock + spy synth). Run `npm run test`.
 
 ## Roadmap (HiChord feature parity)
 
-Phase 1 (play modes) is shipped. Later phases, in rough priority: inversions + bass
-mode + joystick EXTENDED/CHROMATIC + a real sound menu; looper + sequencer
-(event-based); effects + more scales (pentatonic/blues need a pad-mapping tweak) +
-Web-MIDI; then drums, presets, chord-lock, games. The full gap analysis vs the real
-HiChord is the basis for these.
+Shipped: Phase 1 play modes; the joystick DEFAULT layout now MATCHES the real
+device (up=FLIP maj/min, up-right=DOM7, right=7th, down-right=9th, down=sus4,
+down-left=6th, left=DIM, up-left=AUG - with real dim/aug/dom7/flip chord types in
+`chords.ts`; the 7 pads + diatonic 7th/9th stay "no wrong notes", these morphs are
+deliberately chromatic); Bass mode (OFF/ROOT) as a KEY-menu field (`withBass`).
+
+Touch hardening shipped: shared `joyPointer` ref (joystick finger can't hit keys),
+iOS selection/callout/magnifier suppressed (CSS + selectstart/gesturestart + a
+double-tap touchend guard in `main.tsx` + locked viewport), joystick morph has a big
+centre dead-zone with engage/release magnitude hysteresis + angular gaps so it is
+not twitchy, menu nav has latch hysteresis + axis-dominance gating.
+
+Next, in rough priority: inversions; joystick EXTENDED/CHROMATIC modes; a real sound
+menu + more voices; looper + sequencer (event-based); effects + more scales
+(pentatonic/blues need a pad-mapping tweak) + Web-MIDI; then drums, presets,
+chord-lock, games.
 
 ## Current state
 

@@ -171,7 +171,18 @@ long-press = clear; the Knob detects tap vs hold vs drag and emits `onJoyClick`/
 `onJoyHold`. The OLED shows REC n / LOOP n. 5 looper unit tests (fake ticker + spy synth).
 
 **Drums (`DRUM` play mode)**: the 7 pads map to a synthesized kit (`drumForDegree`);
-drum hits flow through the RecordingSynth + Looper so beats loop.
+drum hits flow through the RecordingSynth + Looper so beats loop. Kits TIGHT/BOX808/
+BOX909 (`DrumKit`, tuned via `KIT_TUNE`) chosen by a KIT field in the DRUM-mode menu.
+
+**Scales**: 10 total - the 7 modes plus MAJ_PENT / MIN_PENT / BLUES. `scaleTone` is
+generalized to any scale length (the 7 pads wrap the 5/6-note scales into octaves).
+
+**Effects**: tempo-synced feedback DELAY + a CHORUS as FX sends off the master
+(`SynthPort.setFx`); an FX field in the KEY menu cycles OFF/DELAY/CHORUS/BOTH; the
+delay re-syncs to BPM. Reverb is always-on per-patch.
+
+The KEY menu is now KEY/SCL/OCT/BASS/FX; the MODE menu is context-dependent (ARP ->
+PATTERN+RATE, STRUM -> SPEED, REPEAT -> RATE, DRUM -> KIT, all + BPM).
 
 Touch hardening shipped:
 - shared `joyPointer` ref (joystick finger can't hit keys);
@@ -188,10 +199,9 @@ Touch hardening shipped:
   `onCreated`) - pads/joystick run on pointer events so they are unaffected. (CSS +
   selectstart/gesturestart + locked viewport are kept as extra layers.)
 
-Next, in rough priority: effects (delay/chorus/tremolo/filter - the reverb bus exists);
-pentatonic + blues scales (need a pad-mapping tweak, they are not 7-note); joystick
-EXTENDED/CHROMATIC modes; a step sequencer; multiple drum kits (808/909); Web-MIDI;
-presets; chord-lock; games. The repo is private at github.com/Zamua/chord-synth.
+Next, in rough priority: joystick EXTENDED/CHROMATIC modes (richer voicings + key
+modulation); a step sequencer; Web-MIDI out; presets; chord-lock; more effects
+(tremolo/filter/flanger); games. The repo is private at github.com/Zamua/chord-synth.
 
 ## Current state
 

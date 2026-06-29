@@ -1,6 +1,5 @@
 import type { Degree, Quality, ScaleName, PitchClass, PlayMode } from '../domain/music';
-import type { PatchName } from './ports';
-import type { LooperView } from './looper';
+import type { PatchName, LooperView } from './ports';
 
 // Which menu is open: the gray KEY menu or the red MODE menu.
 export type MenuKind = 'KEY' | 'MODE';

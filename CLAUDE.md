@@ -161,17 +161,29 @@ STRINGS/CLARINET/BELL(FM)/ORGAN/PLUCK. `SynthPort.noteOn` takes an optional per-
 patch (the looper plays each track on its own instrument). Also a `drum(name)` method
 synthesizing percussion (no samples).
 
-**Looper (`application/looper.ts`)**: a 6-track EVENT looper (records the notes you
-play, each tagged with its instrument, and loops them). Driven by a `Ticker` port
-(`infrastructure/clock/rafTicker.ts`, RAF). The `RecordingSynth` decorator
-(`infrastructure/audio/recordingSynth.ts`) transparently captures live notes at the
-audio boundary while recording; the looper's playback talks to the REAL synth directly
-so it is never re-recorded. UI: joystick CLICK (tap, no drag) = record/stop/overdub,
-long-press = clear; the Knob detects tap vs hold vs drag and emits `onJoyClick`/
-`onJoyHold`. The OLED shows REC n / LOOP n. 5 looper unit tests (fake ticker + spy synth).
+**Looper (`infrastructure/audio/webAudioLooper.ts`, `AudioLooper` port)**: an AUDIO
+loop recorder, NOT an event looper (rewritten 2026-06-29 - the old event `Looper` +
+`RecordingSynth` + `Ticker`/`RafTicker` are gone). It records the synth's RENDERED
+output off a tap on the live bus, so every layer is frozen the instant it is captured -
+switching patch / play-mode / fx afterward never alters a recorded loop (the old event
+looper replayed through the live synth, so changing to STRUM made an old loop strum -
+the bug this fixes). Output routing (`webAudioSynth.ts`): the live graph (master dry +
+reverb + delay + chorus) sums into `liveSum`, which the looper taps via a
+ScriptProcessorNode; loop playback + the metronome go through a SEPARATE `loopSum` bus
+that joins after the tap, so loops are never re-recorded and overdubs layer cleanly.
+`audioGraph()` exposes `{ctx, live, loopOut}`. State machine (joystick click):
+idle -> armed (waiting; nothing recorded) -> rec (the FIRST key starts the master
+capture, no leading silence) -> play; play -> rec overdubs a new layer aligned to the
+loop boundary (whole-track, not per-note). Track 1 sets the loop length, SNAPPED to a
+whole number of beats so the metronome + later layers lock to it. A metronome clicks
+while arming + recording (routed to loopSum so it is never captured); its interval
+locks to the loop's own beat once a loop exists. 6 tracks, long-press = clear. The OLED
+shows LOOP ARMED / REC n / LOOP n. Controller calls `looper.noteStarted()` on every pad
+press (begins an armed take) + `looper.setBpm()`. 6 WebAudioLooper unit tests (fake
+AudioContext drives the capture/overdub/metronome logic) + controller wiring tests.
 
-**Drums (`DRUM` play mode)**: the 7 pads map to a kit (`drumForDegree`); drum hits
-flow through the RecordingSynth + Looper so beats loop. Kits via the DRUM-mode KIT
+**Drums (`DRUM` play mode)**: the 7 pads map to a kit (`drumForDegree`). Drum hits are
+rendered audio like everything else, so they are captured by the audio looper too. Kits via the DRUM-mode KIT
 field: TIGHT/BOX808/BOX909 are SYNTHESIZED (`KIT_TUNE` factors); TRAP/LOFI are CC0
 SAMPLE kits. Samples live in `public/drums/<kit>/<pad>.mp3` (one mono mp3 per pad),
 lazy-loaded + decoded on first use (`SAMPLE_KITS` map in `webAudioSynth.ts`; fetch

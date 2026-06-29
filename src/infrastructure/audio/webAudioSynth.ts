@@ -109,6 +109,8 @@ interface Voice {
 export class WebAudioSynth implements SynthPort {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private liveSum: GainNode | null = null; // tap point: the full live mix (recorded)
+  private loopSum: GainNode | null = null; // loop playback + metronome (not recorded)
   private reverbBus: GainNode | null = null;
   private volume = 0.8;
   private muted = false;
@@ -187,6 +189,19 @@ export class WebAudioSynth implements SynthPort {
     this.muted = muted;
     if (this.master && this.ctx)
       this.master.gain.setTargetAtTime(muted ? 0 : this.volume, this.ctx.currentTime, 0.02);
+    // Power also silences any playing loops + the metronome (they bypass the
+    // volume knob but not the mute gate).
+    if (this.loopSum && this.ctx)
+      this.loopSum.gain.setTargetAtTime(muted ? 0 : 1, this.ctx.currentTime, 0.02);
+  }
+
+  // The audio looper (infrastructure) taps these nodes directly: it records
+  // `live` (the full live mix) and plays its loops + metronome back through
+  // `loopOut` (which the recorder does NOT tap). Builds the context on demand.
+  audioGraph(): { ctx: AudioContext; live: AudioNode; loopOut: AudioNode } | null {
+    if (!this.ctx) this.build();
+    if (!this.ctx || !this.liveSum || !this.loopSum) return null;
+    return { ctx: this.ctx, live: this.liveSum, loopOut: this.loopSum };
   }
 
   // --- internals -----------------------------------------------------------
@@ -207,9 +222,26 @@ export class WebAudioSynth implements SynthPort {
     comp.ratio.value = 4;
     comp.attack.value = 0.003;
     comp.release.value = 0.12;
-    master.connect(comp);
     comp.connect(ctx.destination);
     this.master = master;
+
+    // Two summing buses sit between the live graph and the compressor so the looper
+    // can tap ONLY the live signal:
+    //   liveSum  = everything the player makes right now (master dry + reverb +
+    //              delay + chorus). The audio looper records its output.
+    //   loopSum  = loop playback. It joins AFTER the tap, so replaying a loop is
+    //              never re-recorded (overdubs layer cleanly), and the metronome
+    //              click routes here too so it stays out of the recording.
+    // Both feed the compressor. loopSum is gated by mute (power) but NOT by the
+    // volume knob, so a recorded layer keeps the level it was captured at.
+    const liveSum = ctx.createGain();
+    const loopSum = ctx.createGain();
+    loopSum.gain.value = this.muted ? 0 : 1;
+    master.connect(liveSum);
+    liveSum.connect(comp);
+    loopSum.connect(comp);
+    this.liveSum = liveSum;
+    this.loopSum = loopSum;
 
     // Reverb send bus -> convolver(generated impulse) -> wet gain -> master.
     const reverbBus = ctx.createGain();
@@ -242,7 +274,7 @@ export class WebAudioSynth implements SynthPort {
     delay.connect(delayFb);
     delayFb.connect(delay);
     delay.connect(delayWet);
-    delayWet.connect(comp);
+    delayWet.connect(liveSum);
     this.delay = delay;
     this.delayWet = delayWet;
 
@@ -260,7 +292,7 @@ export class WebAudioSynth implements SynthPort {
     chWet.gain.value = 0;
     master.connect(chDelay);
     chDelay.connect(chWet);
-    chWet.connect(comp);
+    chWet.connect(liveSum);
     this.chorusWet = chWet;
 
     this.applyFx();

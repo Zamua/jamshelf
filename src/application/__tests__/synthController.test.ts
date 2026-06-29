@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SynthController } from '../synthController';
-import { Looper } from '../looper';
 import { midiToFreq, type PlayMode } from '../../domain/music';
-import { FakeClock, FakeTicker, SpySynth } from './fakes';
+import { FakeAudioLooper, FakeClock, SpySynth } from './fakes';
 
 // C major triad (degree 1, C major, octave 0) = MIDI 60/64/67.
 const C = midiToFreq(60);
@@ -11,12 +10,14 @@ const G = midiToFreq(67);
 
 let synth: SpySynth;
 let clock: FakeClock;
+let looper: FakeAudioLooper;
 let c: SynthController;
 
 beforeEach(() => {
   synth = new SpySynth();
   clock = new FakeClock();
-  c = new SynthController(synth, clock, new Looper(synth, new FakeTicker()));
+  looper = new FakeAudioLooper();
+  c = new SynthController(synth, clock, looper);
 });
 
 // Drive a mode change through the public MODE menu, cycling from the CURRENT mode.
@@ -37,6 +38,52 @@ describe('construction', () => {
     expect(clock.bpm).toBe(120);
     expect(clock.running).toBe(false); // PLAY does not run the clock
     expect(c.getState().mode).toBe('PLAY');
+    expect(looper.bpm).toBe(120); // the looper's metronome gets the tempo too
+  });
+});
+
+describe('looper wiring', () => {
+  it('the joystick click toggles and the long-press clears', () => {
+    c.joyClick();
+    expect(looper.toggles).toBe(1);
+    c.joyHold();
+    expect(looper.cleared).toBe(1);
+  });
+
+  it('every pad press signals the looper (so an armed take starts on the first key)', () => {
+    c.pressPad('p1', 1);
+    c.pressPad('p2', 3);
+    expect(looper.notes).toBe(2);
+  });
+
+  it('does not toggle/clear while powered off or inspecting', () => {
+    c.togglePower(); // off
+    c.joyClick();
+    c.joyHold();
+    expect(looper.toggles).toBe(0);
+    expect(looper.cleared).toBe(0);
+  });
+
+  it('editing BPM forwards the new tempo to the looper', () => {
+    c.toggleMenu('MODE');
+    // walk to the BPM field (PLAY mode: MODE, BPM) and bump it
+    c.cursorField(1); // -> BPM
+    c.editValue(1);
+    expect(looper.bpm).toBe(121);
+  });
+
+  it('the OLED reflects armed / rec / play looper states', () => {
+    looper.mode = 'armed';
+    looper.emit();
+    expect(c.getState().screenSmall).toBe('LOOP ARMED');
+    looper.mode = 'rec';
+    looper.recTrack = 0;
+    looper.emit();
+    expect(c.getState().screenBig).toBe('REC 1');
+    looper.mode = 'play';
+    looper.trackCount = 2;
+    looper.emit();
+    expect(c.getState().screenSmall).toBe('LOOP 2');
   });
 });
 

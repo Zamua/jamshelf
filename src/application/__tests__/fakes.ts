@@ -1,20 +1,41 @@
 import type { DrumName, DrumKit } from '../../domain/music';
-import type { Clock, PatchName, SynthPort, Ticker } from '../ports';
+import type { AudioLooper, Clock, LooperMode, LooperView, PatchName, SynthPort } from '../ports';
 
-// A frame ticker you drive by hand: call frame(nowMs) to advance the looper.
-export class FakeTicker implements Ticker {
-  private cb: ((n: number) => void) | null = null;
-  start(cb: (n: number) => void): void {
+// A stand-in AudioLooper that records the controller's calls and lets a test drive
+// the reported mode (so the OLED + "first key begins the take" wiring is testable
+// without a real AudioContext - the actual audio capture is verified in-browser).
+export class FakeAudioLooper implements AudioLooper {
+  toggles = 0;
+  cleared = 0;
+  notes = 0; // noteStarted() calls
+  bpm = -1;
+  mode: LooperMode = 'idle';
+  trackCount = 0;
+  recTrack = -1;
+  private cb: (() => void) | null = null;
+
+  toggle(): void {
+    this.toggles++;
+  }
+  clear(): void {
+    this.cleared++;
+  }
+  noteStarted(): void {
+    this.notes++;
+  }
+  setBpm(bpm: number): void {
+    this.bpm = bpm;
+  }
+  view(): LooperView {
+    return { mode: this.mode, recTrack: this.recTrack, trackCount: this.trackCount, posFraction: 0 };
+  }
+  onChange(cb: () => void): void {
     this.cb = cb;
   }
-  stop(): void {
-    this.cb = null;
-  }
-  frame(nowMs: number): void {
-    this.cb?.(nowMs);
-  }
-  get running(): boolean {
-    return this.cb !== null;
+  // test-only: force a view state + notify the controller (mimics the real looper
+  // emitting on a state change).
+  emit(): void {
+    this.cb?.();
   }
 }
 

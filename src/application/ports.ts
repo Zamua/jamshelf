@@ -41,12 +41,36 @@ export interface Clock {
   onTick(cb: () => void): () => void; // subscribe; returns an unsubscribe fn
 }
 
-// A high-resolution frame ticker (the looper uses it to advance the playhead and
-// fire recorded events at ~ms accuracy). The adapter implements it with
-// requestAnimationFrame; the callback receives a millisecond timestamp.
-export interface Ticker {
-  start(cb: (nowMs: number) => void): void;
-  stop(): void;
+// The loop recorder, as the application sees it. The concrete adapter records the
+// synth's RENDERED AUDIO (not note events) off a tap on the live output, so every
+// layer is frozen the moment it is captured - immune to any later sound / play-mode
+// / fx change. Track 1 (the master) sets the loop length; later layers are aligned
+// to that loop's boundary. Driven by a single click (the joystick) that cycles
+// idle -> armed -> rec -> play, plus a separate clear.
+export type LooperMode = 'idle' | 'armed' | 'rec' | 'play';
+
+// What the UI needs to render the looper (kept tiny + serializable).
+export interface LooperView {
+  readonly mode: LooperMode;
+  readonly recTrack: number; // 0-based track being recorded, or -1
+  readonly trackCount: number; // finalized loop layers
+  readonly posFraction: number; // 0..1 playhead within the loop
+}
+
+export interface AudioLooper {
+  // The joystick click: advance idle -> armed -> rec -> play -> (overdub) rec ...
+  // When it arms the master it does NOT start capturing yet - capture begins at the
+  // first key (noteStarted), so there is no leading silence.
+  toggle(): void;
+  // Long-press: wipe every layer back to idle.
+  clear(): void;
+  // The controller calls this on every pad press. While armed it starts the master
+  // capture at this instant (the first note = the loop's downbeat); otherwise no-op.
+  noteStarted(): void;
+  // Tempo for the metronome + the beat-snap of the master loop length.
+  setBpm(bpm: number): void;
+  view(): LooperView;
+  onChange(cb: () => void): void;
 }
 
 // The audio output port. Voice groups are addressed by an opaque id (one chord

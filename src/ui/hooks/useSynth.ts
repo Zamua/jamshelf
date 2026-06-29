@@ -1,11 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SynthController } from '../../application/synthController';
-import { Looper } from '../../application/looper';
 import type { ViewModel } from '../../application/state';
 import { WebAudioSynth } from '../../infrastructure/audio/webAudioSynth';
-import { RecordingSynth } from '../../infrastructure/audio/recordingSynth';
+import { WebAudioLooper } from '../../infrastructure/audio/webAudioLooper';
 import { IntervalClock } from '../../infrastructure/clock/intervalClock';
-import { RafTicker } from '../../infrastructure/clock/rafTicker';
 import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
 
@@ -76,13 +74,12 @@ function keyToDegree(key: string): Degree | null {
 // meshes calling onPadMove -> controller.movePad; nothing here needs to know.
 export function useSynth() {
   const controller = useMemo(() => {
-    // The real synth plays audio; the looper records/loops note events and plays
-    // them back through the real synth; the RecordingSynth transparently captures
-    // the player's live notes into the looper while recording.
+    // The real synth plays audio; the audio looper taps its rendered output and
+    // loops it back through a separate (untapped) bus, so each recorded layer is
+    // frozen and unaffected by later sound / play-mode changes.
     const realSynth = new WebAudioSynth();
-    const looper = new Looper(realSynth, new RafTicker());
-    const recording = new RecordingSynth(realSynth, looper);
-    return new SynthController(recording, new IntervalClock(), looper);
+    const looper = new WebAudioLooper(realSynth);
+    return new SynthController(realSynth, new IntervalClock(), looper);
   }, []);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());
   const menuLatched = useRef(false); // one nav step per flick out of the dead-zone

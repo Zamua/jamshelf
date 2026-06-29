@@ -33,8 +33,7 @@ import {
   type DrumKit,
   type FxMode,
 } from '../domain/music';
-import { PATCH_ORDER, type Clock, type PatchName, type SynthPort } from './ports';
-import type { Looper } from './looper';
+import { PATCH_ORDER, type AudioLooper, type Clock, type PatchName, type SynthPort } from './ports';
 import type { Listener, MenuKind, ViewModel } from './state';
 
 const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS', 'FX'] as const;
@@ -86,9 +85,9 @@ export class SynthController {
   private listeners = new Set<Listener>();
   private readonly synth: SynthPort;
   private readonly clock: Clock;
-  private readonly looper: Looper;
+  private readonly looper: AudioLooper;
 
-  constructor(synth: SynthPort, clock: Clock, looper: Looper) {
+  constructor(synth: SynthPort, clock: Clock, looper: AudioLooper) {
     this.synth = synth;
     this.clock = clock;
     this.looper = looper;
@@ -97,13 +96,14 @@ export class SynthController {
     this.applyFx();
     this.clock.onTick(() => this.tick());
     this.clock.setBpm(this.bpm);
+    this.looper.setBpm(this.bpm);
     this.looper.onChange(() => this.publish());
   }
 
   // --- looper (joystick click = record/overdub, long-press = clear) ---
   joyClick(): void {
     if (!this.power || this.inspect) return;
-    this.looper.toggle(now());
+    this.looper.toggle();
   }
   joyHold(): void {
     if (!this.power || this.inspect) return;
@@ -119,6 +119,8 @@ export class SynthController {
   pressPad(voiceId: string, degree: Degree): void {
     if (!this.power || this.inspect) return;
     this.dispatchPress(voiceId, degree);
+    this.looper.noteStarted(); // if the looper is armed, this first key begins the take
+
     if (this.mode === 'DRUM') {
       this.flash(drumForDegree(degree));
     } else if (!(this.mode === 'DRONE' && this.latched === null)) {
@@ -447,6 +449,7 @@ export class SynthController {
     } else {
       // BPM
       this.bpm = Math.max(40, Math.min(300, this.bpm + delta));
+      this.looper.setBpm(this.bpm);
       this.applyMode();
       this.applyFx(); // re-sync the delay time to the new tempo
     }
@@ -575,8 +578,12 @@ export class SynthController {
     const flashing = now() < this.flashUntil;
     const keyScale = `${NOTE_NAMES[this.root]} ${SCALE_LABELS[this.scale]}`;
     const lv = this.looper.view();
-    // While recording, REC is the headline; while a loop plays, it shows in the
-    // small line. Otherwise the usual key/chord + patch/mode.
+    // Armed = waiting for the first key (the metronome is counting you in). While
+    // recording, REC is the headline; while a loop plays, it shows in the small
+    // line. Otherwise the usual key/chord + patch/mode.
+    if (lv.mode === 'armed') {
+      return { big: flashing ? this.flashText : keyScale, small: 'LOOP ARMED' };
+    }
     if (lv.mode === 'rec') {
       return { big: `REC ${lv.recTrack + 1}`, small: flashing ? this.flashText : keyScale };
     }

@@ -176,7 +176,11 @@ FM voices (a `Patch.engine` discriminator). Instruments: SAW/SINE/EPIANO(FM)/HX7
 STRINGS/CLARINET/BELL(FM)/ORGAN/PLUCK, plus the **"huge" family**: SUPER/HUGE/NEON
 (supersaws) + REESE/NEURO (DnB bass). `SynthPort.noteOn` takes an optional per-note
 patch (the looper plays each track on its own instrument). Also a `drum(name)` method
-synthesizing percussion (no samples). A global `setBend(cents)` pitch bend (LEAD mode).
+synthesizing percussion (no samples). A global `setBend(cents)` pitch bend (LEAD mode)
+and `setGlide(seconds)` portamento: a MONO note (`freqs.length === 1`, i.e. LEAD/DRONE)
+glides its oscillator frequencies from `lastMonoFreq` over the glide time
+(`glideFreq` exponential-ramps each osc, unison/sub/FM scaled by ratio). The `GLIDE`
+KEY-menu field (OFF/SLOW/MED/FAST, `glideSeconds`) drives it - HiChord-style toggle+speed.
 - **UNISON engine** (for the huge presets): `Patch.unison` stacks N detuned copies of
   osc1 across `unisonDetune` cents, panned across the stereo field by `unisonSpread`
   (StereoPannerNode -> the output + recorded loops are STEREO); `Patch.sub` adds a clean

@@ -136,7 +136,7 @@ export class SynthController {
       this.flash(drumForDegree(degree));
     } else if (!(this.mode === 'DRONE' && this.latched === null)) {
       // DRONE: pressing the latched pad again just silences it - nothing to announce.
-      this.flash(this.currentChordName(degree));
+      this.flash(this.tonalName(degree));
     }
     this.publish();
   }
@@ -154,7 +154,7 @@ export class SynthController {
     } else if (this.mode === 'PLAY' || this.mode === 'STRUM' || this.mode === 'REPEAT')
       this.triggerVoice(voiceId, degree);
     // ARP picks up the new held set on the next tick.
-    this.flash(this.currentChordName(degree));
+    this.flash(this.tonalName(degree));
     this.publish();
   }
 
@@ -566,6 +566,16 @@ export class SynthController {
   }
   private currentChordName(degree: Degree): string {
     return resolveChord(degree, this.key(), this.quality).name;
+  }
+  // LEAD mode sounds a SINGLE note (the chord root), so the OLED should name that note
+  // (e.g. "C4"), not the chord. Octave uses the C4 = MIDI 60 convention.
+  private leadNoteName(degree: Degree): string {
+    const note = leadNote(resolveChord(degree, this.key(), this.quality).notes);
+    return NOTE_NAMES[((note % 12) + 12) % 12] + (Math.floor(note / 12) - 1);
+  }
+  // The flashed name for a tonal pad: the single note in LEAD, else the chord name.
+  private tonalName(degree: Degree): string {
+    return this.mode === 'LEAD' ? this.leadNoteName(degree) : this.currentChordName(degree);
   }
   private flash(text: string, ms = 700): void {
     this.flashText = text;

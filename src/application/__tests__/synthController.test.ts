@@ -194,6 +194,14 @@ describe('LEAD mode', () => {
     c.releasePad('p1');
     expect(synth.off).toContain('lead');
   });
+
+  it('the OLED names the single NOTE, not the chord', () => {
+    switchMode('LEAD');
+    c.pressPad('p1', 1); // C major root = C4
+    expect(c.getState().screenBig).toBe('C4');
+    c.pressPad('p2', 5); // V chord root = G4
+    expect(c.getState().screenBig).toBe('G4');
+  });
 });
 
 describe('ARP mode', () => {

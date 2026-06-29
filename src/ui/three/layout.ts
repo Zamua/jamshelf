@@ -131,5 +131,7 @@ const LEFT_X = (-BODY.w / 2 + (KEY_WELL.x - KEY_WELL.w / 2)) / 2; // ~ -1.69
 export const BRAND = { x: LEFT_X, y: 1.34, text: 'HiClone' } as const;
 export const SPEAKER = { x: LEFT_X, y: 0.52, z: FRONT_Z, r: 0.5 } as const;
 export const KNOB = { x: LEFT_X, y: -0.8, z: FRONT_Z } as const;
+// The recessed joystick well: about the width of the cap, well inside the dot ring.
+export const KNOB_WELL_R = 0.29;
 export const JOY_DOTS = { count: 8, r: 0.46, dot: 0.022 } as const;
 export const MIC = { x: LEFT_X, y: -1.4, z: FRONT_Z, r: 0.03, labelY: -1.55 } as const;

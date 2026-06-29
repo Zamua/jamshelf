@@ -1,11 +1,8 @@
 import { useMemo } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
-import { BODY, BODY_RADIUS, FLOOR_Z, KEY_WELL, KNOB, WELL_DEPTH } from './layout';
+import { BODY, BODY_RADIUS, FLOOR_Z, KEY_WELL, KNOB, KNOB_WELL_R, WELL_DEPTH } from './layout';
 import { powerColor, type BodyTheme } from './palette';
-
-// Radius of the circular joystick well cut into the land (just inside the dot ring).
-const KNOB_WELL_R = 0.46;
 
 // Append a rounded-rectangle outline (centered at cx,cy) to a Shape or Path.
 function roundRect(p: THREE.Shape | THREE.Path, cx: number, cy: number, w: number, h: number, r: number) {

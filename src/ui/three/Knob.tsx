@@ -1,7 +1,7 @@
 import { useRef, useState, type RefObject } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
-import { WELL_DEPTH } from './layout';
+import { KNOB_WELL_R, WELL_DEPTH } from './layout';
 import type { DeviceHandlers } from './deviceProps';
 import { PALETTE, powerColor } from './palette';
 
@@ -102,14 +102,14 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
 
   return (
     <group ref={group} position={[x, y, z]}>
-      {/* dark dish basin, recessed in the cut well */}
+      {/* dark dish basin, recessed in the cut well (sized to the well) */}
       <mesh position={[0, 0, WELL_FLOOR + 0.05]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[RADIUS * 1.12, RADIUS * 0.9, 0.1, 44]} />
+        <cylinderGeometry args={[KNOB_WELL_R * 0.98, KNOB_WELL_R * 0.78, 0.1, 44]} />
         <meshStandardMaterial color={powerColor(basin, power)} metalness={0.3} roughness={0.6} />
       </mesh>
       {/* darker floor at the very bottom of the well */}
       <mesh position={[0, 0, WELL_FLOOR + 0.004]}>
-        <circleGeometry args={[RADIUS * 1.05, 36]} />
+        <circleGeometry args={[KNOB_WELL_R * 0.9, 36]} />
         <meshStandardMaterial
           color={new THREE.Color(powerColor(basin, power)).multiplyScalar(0.7).getStyle()}
           metalness={0.3}
@@ -118,14 +118,14 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
       </mesh>
       {/* thin rim framing the well opening, flush with the case face */}
       <mesh position={[0, 0, -0.012]}>
-        <torusGeometry args={[RADIUS * 1.16, 0.03, 14, 48]} />
+        <torusGeometry args={[KNOB_WELL_R, 0.026, 14, 48]} />
         <meshStandardMaterial color={powerColor(rim, power)} metalness={0.45} roughness={0.4} />
       </mesh>
 
       {/* tiltable cap rising OUT of the recessed dish (the only proud part) */}
       <group ref={pivot} position={[0, 0, CAP_Z]}>
         <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.22, 0.25, 0.2, 36]} />
+          <cylinderGeometry args={[0.2, 0.23, 0.2, 36]} />
           <meshStandardMaterial color={creamCap} metalness={0.08} roughness={0.4} />
         </mesh>
         {/* concave thumb dish on the cap face */}

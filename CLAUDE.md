@@ -185,7 +185,16 @@ downbeat (so a new layer never waits a whole loop to align). **Joystick DOWN = s
 (`toggleStop`, `useSynth` navLooper down-flick): halts all layers (OLED `STOPPED`); down
 again restarts them from the top (bar 1) via the retained per-layer `buffer`. Each layer
 is `{source, gain, buffer}` so it can be re-started (stop/resume, overdub count-in) and
-faded on delete.
+faded on delete. **Overdub capture is CONTIGUOUS** (accumulate blocks from the downbeat,
+truncate to one loop via `copyInto`) - NOT the old per-block phase-write off
+`playbackTime`, whose jitter left discontinuities a sharp drum hit exposed. **Zombie-track
+invariant**: `restartTracks` STOPS the current sources before recreating them, and
+`stopped` is reset to false on every (re)start (finalizeMaster/Overdub, count-in downbeat,
+startOverdub). Skipping either let a stale `stopped` flag send a stop to the resume branch,
+which recreated sources while the old ones kept playing UNTRACKED - an un-stoppable loop.
+Regression: `webAudioLooper.test.ts` "never leaves a zombie source". The synth output is
+`comp (glue) -> limiter (brickwall, -1.5dB / 20:1 / 0.5ms attack) -> destination` so stacked
+loop layers + live drums can't hard-clip (sample-drum playback gain also dropped 0.9->0.7).
 A metronome clicks while arming + recording (routed to loopSum so it is never captured),
 accenting every bar's downbeat anchored to the loop's first-note grid (NOT the overdub's
 own metronome anchor - keying off that dropped the accent on later tracks); its interval

@@ -115,10 +115,46 @@ then Playwright (software WebGL: `--use-gl=angle --use-angle=swiftshader`) via t
 screenshot-harness venv -> PIL side-by-side vs `scratchpad/ref/front-black.jpg`.
 Live preview deploy: `https://4jzmz9uv.hostthis.dev` (re-deploy in place).
 
+## Play modes + tempo clock (Phase 1, shipped)
+
+The red button opens a MODE menu (mirrors the gray KEY menu) selecting the play
+mode: PLAY / STRUM / ARP / DRONE / REPEAT / LEAD, plus the arp pattern, strum
+speed, rate, and BPM. Design is in `docs/SPEC.md` (Phase 1). Key pieces:
+
+- `domain/music/performance.ts`: PURE helpers (`PlayMode`/`ArpPattern`/`Rate`/
+  `StrumSpeed`, `arpOrder`, `leadNote`, `rateBeats`, `strumMs`). No timing/randomness.
+- `application/ports.ts` `Clock`: a BPM tick source (port, NOT domain). Impl is
+  `infrastructure/clock/intervalClock.ts`. The controller subscribes to ticks and
+  drives the arp/repeat through the pure helpers, so it is testable with a fake clock.
+- `SynthController`: per-mode pad dispatch + a ONE generalized menu engine (KEY +
+  MODE, context-dependent field set). The clock is gated on a pad being held, so it
+  starts phase-aligned to the first press (no first-note flam) and never idle-ticks.
+  DRONE latches (fixes the two-hand morph problem); LEAD is mono root; STRUM widens
+  the synth strum spread; ARP/REPEAT are clock-driven.
+- The menu renders on the OLED (no floating 2D panel). `useSynth` maps the joystick
+  to the morph (8 directions, with a centre dead-zone + angular gaps + hysteresis so
+  diagonals do not clip a neighbour) or to menu nav (latch hysteresis + axis-dominance
+  gating so wobble and up/down-vs-left/right confusion are gone).
+
+Touch/multitouch correctness lives in the UI lane: a shared `joyPointer` ref
+(`Device.tsx`) is set by the Knob and IGNORED by the Pads, so a finger that owns the
+joystick can never trigger a key (even dragged over one); iOS text-selection / callout
+/ magnifier are suppressed via CSS so a hold cannot strand the joystick.
+
+Tests: `domain/music/__tests__/performance.test.ts` + `application/__tests__/
+synthController.test.ts` (fake clock + spy synth). Run `npm run test`.
+
+## Roadmap (HiChord feature parity)
+
+Phase 1 (play modes) is shipped. Later phases, in rough priority: inversions + bass
+mode + joystick EXTENDED/CHROMATIC + a real sound menu; looper + sequencer
+(event-based); effects + more scales (pentatonic/blues need a pad-mapping tweak) +
+Web-MIDI; then drums, presets, chord-lock, games. The full gap analysis vs the real
+HiChord is the basis for these.
+
 ## Current state
 
-DDD skeleton + real Web Audio engine + the modeled/assembled 3D device (recessed
-well, 7 interleaved cream keycaps, octagon speaker, joystick morph, 3 menu
-buttons, top-edge hardware, 3D inspect mode) are all built and deployed. Domain
-is fully unit-tested. Active work is iterative look-matching against the photos.
-See `README.md` for the human-facing overview.
+DDD skeleton + real Web Audio engine + the modeled/assembled 3D device + Phase 1
+play modes are built, tested, and deployed (`https://4jzmz9uv.hostthis.dev`). Domain
++ controller are unit-tested. Active work: closing HiChord feature gaps (see roadmap)
+and iterative polish. See `README.md` for the human-facing overview.

@@ -38,8 +38,14 @@ const ITEMS: readonly Item[] = [
   },
   {
     chip: { label: 'RED', tone: 'red' },
-    title: 'Tempo',
-    body: 'Tap the red button in time with the beat to set the tempo (tap-tempo).',
+    title: 'Play modes',
+    body:
+      'The red button opens the mode menu on the screen. Joystick up or down picks a field, left or right changes it. Cycle the mode through Play, Strum, Arpeggio, Drone, Repeat and Lead, set the arp pattern or strum speed, and dial the BPM (which now drives strum, arp and repeat).',
+  },
+  {
+    title: 'Drone (hands-free)',
+    body:
+      'In Drone mode a chord latches on: tap a pad and it keeps playing on its own, so you can shape it with the joystick using your other hand. Tap the same pad to stop it, or another pad to switch chords.',
   },
   {
     title: 'Power',

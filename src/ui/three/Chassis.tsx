@@ -1,8 +1,11 @@
 import { useMemo } from 'react';
 import { RoundedBox } from '@react-three/drei';
 import * as THREE from 'three';
-import { BODY, BODY_RADIUS, FLOOR_Z, KEY_WELL, WELL_DEPTH } from './layout';
+import { BODY, BODY_RADIUS, FLOOR_Z, KEY_WELL, KNOB, WELL_DEPTH } from './layout';
 import { powerColor, type BodyTheme } from './palette';
+
+// Radius of the circular joystick well cut into the land (just inside the dot ring).
+const KNOB_WELL_R = 0.46;
 
 // Append a rounded-rectangle outline (centered at cx,cy) to a Shape or Path.
 function roundRect(p: THREE.Shape | THREE.Path, cx: number, cy: number, w: number, h: number, r: number) {
@@ -35,6 +38,12 @@ export function Chassis({ power, theme }: { power: boolean; theme: BodyTheme }) 
     const kw = new THREE.Path();
     roundRect(kw, KEY_WELL.x, KEY_WELL.y, KEY_WELL.w, KEY_WELL.h, 0.13);
     shape.holes.push(kw);
+
+    // the circular joystick well (so the dish reads as truly sunken; only the cap
+    // protrudes). Sits just inside the ring of direction dots.
+    const jw = new THREE.Path();
+    jw.absarc(KNOB.x, KNOB.y, KNOB_WELL_R, 0, Math.PI * 2, true);
+    shape.holes.push(jw);
 
     return new THREE.ExtrudeGeometry(shape, { depth: WELL_DEPTH, bevelEnabled: false });
   }, []);

@@ -1,6 +1,7 @@
 import { useRef, useState, type RefObject } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
+import { WELL_DEPTH } from './layout';
 import type { DeviceHandlers } from './deviceProps';
 import { PALETTE, powerColor } from './palette';
 
@@ -18,18 +19,25 @@ interface KnobProps {
   joyPointer: RefObject<number | null>;
 }
 
-const RADIUS = 0.36; // normalization radius: dragging this far == full deflection
+const RADIUS = 0.34; // normalization radius: dragging this far == full deflection
+const GRAB = 0.56; // radius of the (invisible) grab target around the cap
 const TRAVEL = 0.1; // how far the cap visually shifts at full deflection
 const TILT = 0.45; // how far the cap tilts (radians) at full deflection
 
-// The joystick: a cream cap in a recessed dish. Dragging emits a normalized
-// vector (x = right+, y = up+, clamped to the unit circle) via onJoyMove;
-// releasing springs the cap back to center and fires onJoyEnd. While dragging,
-// a large invisible plane in front of the device tracks the pointer so the drag
-// keeps following even when it slides off the small cap.
+// Local z levels (the group sits at FRONT_Z, so z=0 is the case face). The dish is
+// RECESSED into a cut well (Chassis cuts the hole); only the cap protrudes.
+const WELL_FLOOR = -WELL_DEPTH; // bottom of the joystick well
+const CAP_Z = 0.02; // cap pivot: base sits in the recess, top protrudes
+
+// The joystick: a cream cap protruding from a RECESSED dish. It is a FLOATING
+// joystick - the point where the finger lands becomes the centre (origin), and
+// deflection is measured RELATIVE to it, so a touch never instantly snaps to a
+// direction; you have to actually drag. While dragging, a large invisible plane in
+// front of the device tracks the pointer so the drag keeps following off the cap.
 export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobProps) {
   const group = useRef<THREE.Group>(null);
   const pivot = useRef<THREE.Group>(null);
+  const origin = useRef(new THREE.Vector2(0, 0)); // where the finger landed (the centre)
   const target = useRef(new THREE.Vector2(0, 0));
   const cur = useRef(new THREE.Vector2(0, 0));
   const [dragging, setDragging] = useState(false);
@@ -43,11 +51,11 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
 
   const apply = (e: ThreeEvent<PointerEvent>) => {
     if (!group.current || !owns(e)) return;
-    // Convert the world hit point into the knob's local frame (this divides out
-    // the device's responsive scale + any inspect rotation), then normalize.
+    // Local hit point (divides out the device's responsive scale + inspect rotation),
+    // measured RELATIVE to where the finger first landed, then normalized.
     const local = group.current.worldToLocal(e.point.clone());
-    let nx = local.x / RADIUS;
-    let ny = local.y / RADIUS;
+    let nx = (local.x - origin.current.x) / RADIUS;
+    let ny = (local.y - origin.current.y) / RADIUS;
     const m = Math.hypot(nx, ny);
     if (m > 1) {
       nx /= m;
@@ -58,12 +66,16 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
   };
 
   const start = (e: ThreeEvent<PointerEvent>) => {
-    if (joyPointer.current !== null) return; // a drag is already in progress
+    if (joyPointer.current !== null || !group.current) return; // a drag is in progress
     e.stopPropagation();
     joyPointer.current = e.pointerId;
+    // The landing point is the centre: zero deflection until the finger moves.
+    const local = group.current.worldToLocal(e.point.clone());
+    origin.current.set(local.x, local.y);
+    target.current.set(0, 0);
     handlers.resume();
     setDragging(true);
-    apply(e);
+    handlers.onJoyMove(0, 0);
   };
   const end = (e: ThreeEvent<PointerEvent>) => {
     if (!owns(e)) return; // a different finger - let it pass through to the pad
@@ -90,34 +102,49 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
 
   return (
     <group ref={group} position={[x, y, z]}>
-      {/* shallow dark dish basin (the cap sits slightly down inside it) */}
-      <mesh position={[0, 0, 0.035]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[RADIUS, RADIUS * 0.96, 0.07, 44]} />
-        <meshStandardMaterial color={powerColor(basin, power)} metalness={0.3} roughness={0.55} />
+      {/* dark dish basin, recessed in the cut well */}
+      <mesh position={[0, 0, WELL_FLOOR + 0.05]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[RADIUS * 1.12, RADIUS * 0.9, 0.1, 44]} />
+        <meshStandardMaterial color={powerColor(basin, power)} metalness={0.3} roughness={0.6} />
       </mesh>
-      {/* thin rim around the dish */}
-      <mesh position={[0, 0, 0.06]}>
-        <torusGeometry args={[RADIUS * 0.97, 0.032, 14, 44]} />
+      {/* darker floor at the very bottom of the well */}
+      <mesh position={[0, 0, WELL_FLOOR + 0.004]}>
+        <circleGeometry args={[RADIUS * 1.05, 36]} />
+        <meshStandardMaterial
+          color={new THREE.Color(powerColor(basin, power)).multiplyScalar(0.7).getStyle()}
+          metalness={0.3}
+          roughness={0.65}
+        />
+      </mesh>
+      {/* thin rim framing the well opening, flush with the case face */}
+      <mesh position={[0, 0, -0.012]}>
+        <torusGeometry args={[RADIUS * 1.16, 0.03, 14, 48]} />
         <meshStandardMaterial color={powerColor(rim, power)} metalness={0.45} roughness={0.4} />
       </mesh>
 
-      {/* tiltable cap rising out of the dish. Handlers live on the pivot group so
-          the whole cap face (including the proud thumb-dish circles) is grabbable. */}
-      <group ref={pivot} position={[0, 0, 0.15]} onPointerDown={start} onPointerUp={end} onPointerCancel={end}>
+      {/* tiltable cap rising OUT of the recessed dish (the only proud part) */}
+      <group ref={pivot} position={[0, 0, CAP_Z]}>
         <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.23, 0.25, 0.11, 36]} />
+          <cylinderGeometry args={[0.22, 0.25, 0.2, 36]} />
           <meshStandardMaterial color={creamCap} metalness={0.08} roughness={0.4} />
         </mesh>
         {/* concave thumb dish on the cap face */}
-        <mesh position={[0, 0, 0.06]}>
+        <mesh position={[0, 0, 0.1]}>
           <circleGeometry args={[0.13, 28]} />
           <meshStandardMaterial color={creamHi} metalness={0.08} roughness={0.35} />
         </mesh>
-        <mesh position={[0, 0, 0.063]}>
+        <mesh position={[0, 0, 0.103]}>
           <circleGeometry args={[0.042, 20]} />
           <meshStandardMaterial color={creamShadow} metalness={0.05} roughness={0.5} />
         </mesh>
       </group>
+
+      {/* large invisible grab target in front of the cap: pressing anywhere in the
+          dish grabs the stick (and that point becomes the floating centre). */}
+      <mesh position={[0, 0, 0.14]} onPointerDown={start} onPointerUp={end} onPointerCancel={end}>
+        <circleGeometry args={[GRAB, 36]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
 
       {/* invisible drag-tracking plane (only while dragging) */}
       {dragging && (

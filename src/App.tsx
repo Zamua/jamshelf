@@ -40,6 +40,17 @@ export default function App() {
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
         onPointerMissed={() => deviceHandlers.onJoyEnd()}
+        onCreated={({ gl }) => {
+          // The iOS selection loupe / magnifier on a held or double-tapped canvas is
+          // a wontfix Safari behaviour that CSS cannot suppress; the only reliable
+          // fix is to preventDefault the raw touch events on the canvas itself. R3F
+          // drives the device via Pointer Events, which fire independently of this,
+          // so taps + drags still work. Scoped to the canvas so the HTML buttons are
+          // unaffected.
+          const kill = (e: Event) => e.preventDefault();
+          gl.domElement.addEventListener('touchstart', kill, { passive: false });
+          gl.domElement.addEventListener('touchmove', kill, { passive: false });
+        }}
       >
         <ambientLight intensity={0.68} />
         <directionalLight position={[3, 5, 6]} intensity={1.3} />

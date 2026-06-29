@@ -155,6 +155,24 @@ deliberately chromatic); Bass mode (OFF/ROOT) as a KEY-menu field (`withBass`).
 Also shipped: Inversions (`invert`/`voiceChord` in `performance.ts`; yellow cycles
 the voice when idle, or the held chord's root/1st/2nd inversion when a pad is down).
 
+**Synth engine (`infrastructure/audio/webAudioSynth.ts`)**: subtractive AND 2-operator
+FM voices (a `Patch.engine` discriminator). Instruments: SAW/SINE/EPIANO(FM)/HX7(FM)/
+STRINGS/CLARINET/BELL(FM)/ORGAN/PLUCK. `SynthPort.noteOn` takes an optional per-note
+patch (the looper plays each track on its own instrument). Also a `drum(name)` method
+synthesizing percussion (no samples).
+
+**Looper (`application/looper.ts`)**: a 6-track EVENT looper (records the notes you
+play, each tagged with its instrument, and loops them). Driven by a `Ticker` port
+(`infrastructure/clock/rafTicker.ts`, RAF). The `RecordingSynth` decorator
+(`infrastructure/audio/recordingSynth.ts`) transparently captures live notes at the
+audio boundary while recording; the looper's playback talks to the REAL synth directly
+so it is never re-recorded. UI: joystick CLICK (tap, no drag) = record/stop/overdub,
+long-press = clear; the Knob detects tap vs hold vs drag and emits `onJoyClick`/
+`onJoyHold`. The OLED shows REC n / LOOP n. 5 looper unit tests (fake ticker + spy synth).
+
+**Drums (`DRUM` play mode)**: the 7 pads map to a synthesized kit (`drumForDegree`);
+drum hits flow through the RecordingSynth + Looper so beats loop.
+
 Touch hardening shipped:
 - shared `joyPointer` ref (joystick finger can't hit keys);
 - the joystick is a FLOATING stick - on touch-down the landing point becomes the
@@ -170,9 +188,10 @@ Touch hardening shipped:
   `onCreated`) - pads/joystick run on pointer events so they are unaffected. (CSS +
   selectstart/gesturestart + locked viewport are kept as extra layers.)
 
-Next, in rough priority: joystick EXTENDED/CHROMATIC modes; a real sound menu + more
-voices; looper + sequencer (event-based); effects + more scales (pentatonic/blues
-need a pad-mapping tweak) + Web-MIDI; then drums, presets, chord-lock, games.
+Next, in rough priority: effects (delay/chorus/tremolo/filter - the reverb bus exists);
+pentatonic + blues scales (need a pad-mapping tweak, they are not 7-note); joystick
+EXTENDED/CHROMATIC modes; a step sequencer; multiple drum kits (808/909); Web-MIDI;
+presets; chord-lock; games. The repo is private at github.com/Zamua/chord-synth.
 
 ## Current state
 

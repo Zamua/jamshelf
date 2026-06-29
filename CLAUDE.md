@@ -175,12 +175,30 @@ that joins after the tap, so loops are never re-recorded and overdubs layer clea
 idle -> armed (waiting; nothing recorded) -> rec (the FIRST key starts the master
 capture, no leading silence) -> play; play -> rec overdubs a new layer aligned to the
 loop boundary (whole-track, not per-note). Track 1 sets the loop length, SNAPPED to a
-whole number of beats so the metronome + later layers lock to it. A metronome clicks
-while arming + recording (routed to loopSum so it is never captured); its interval
-locks to the loop's own beat once a loop exists. 6 tracks, long-press = clear. The OLED
-shows LOOP ARMED / REC n / LOOP n. Controller calls `looper.noteStarted()` on every pad
-press (begins an armed take) + `looper.setBpm()`. 6 WebAudioLooper unit tests (fake
-AudioContext drives the capture/overdub/metronome logic) + controller wiring tests.
+whole number of BARS (`BEATS_PER_BAR=4`, round-to-nearest, min 1 bar) so a tail past the
+bar line rounds DOWN to a clean bar count and the metronome + later layers lock to it.
+A metronome clicks while arming + recording (routed to loopSum so it is never captured),
+accenting every bar's downbeat anchored to the loop's first-note grid (NOT the overdub's
+own metronome anchor - keying off that dropped the accent on later tracks); its interval
+locks to the loop's own beat once a loop exists. **Per-layer management** (`selectTrack`/
+contextual `clear`): while a loop plays + no pad is held, joystick LEFT/RIGHT picks the
+selected layer (`useSynth` `navTrack`, horizontal-only flick), long-press clears the
+SELECTED layer (master/layer-0 clears all, since it defines the length), and each layer
+is a `{source, gain, buffer}` track faded out on delete (no click). A `displayTimer`
+re-emits while playing so the OLED shows a live `BAR x.y` transport (bar.beat) on the big
+line, with `TRK sel/n loopBars` on the small line. 6 tracks. The OLED shows LOOP ARMED /
+REC n / BAR x.y + TRK n. Controller calls `looper.noteStarted()` on every pad press
+(begins an armed take) + `looper.setBpm()` + `selectLoopTrack()`. WebAudioLooper unit
+tests (fake AudioContext drives capture/overdub/metronome/select-clear) + controller
+wiring tests.
+
+**Knob multitouch (`ui/three/Knob.tsx`)**: the joystick owns its pointer via the shared
+`joyPointer` ref; the pads ignore that pointer. Because R3F's mesh-level pointerup for the
+joystick finger can be swallowed when a second finger (a held chord) is down and the
+release lands over a pad, a **window-level `pointerup`/`pointercancel` fallback** (keyed on
+`joyPointer.current`) force-ends the drag - the browser always fires it, so the stick can
+never stay stuck deflected. `WebAudioSynth` also resumes the AudioContext on
+`document` `visibilitychange` (backgrounding a tab suspends it).
 
 **Drums (`DRUM` play mode)**: the 7 pads map to a kit (`drumForDegree`). Drum hits are
 rendered audio like everything else, so they are captured by the audio looper too. Kits via the DRUM-mode KIT

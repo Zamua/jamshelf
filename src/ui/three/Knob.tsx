@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { KNOB_WELL_R, WELL_DEPTH } from './layout';
@@ -105,9 +105,11 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
     setDragging(true);
     handlers.onJoyMove(0, 0);
   };
-  const end = (e: ThreeEvent<PointerEvent>) => {
-    if (!owns(e)) return; // a different finger - let it pass through to the pad
-    e.stopPropagation();
+  // The shared release cleanup. Kept in a ref so a window-level pointerup fallback
+  // (below) can call the freshest closure without re-subscribing.
+  const finish = useRef(() => {});
+  finish.current = () => {
+    if (joyPointer.current === null) return; // already released
     joyPointer.current = null;
     setDragging(false);
     clearHoldTimer();
@@ -118,6 +120,29 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
     target.current.set(0, 0);
     handlers.onJoyEnd();
   };
+
+  const end = (e: ThreeEvent<PointerEvent>) => {
+    if (!owns(e)) return; // a different finger - let it pass through to the pad
+    e.stopPropagation();
+    finish.current();
+  };
+
+  // Safety net: with a second finger down (e.g. a chord held while the joystick is
+  // dragged), R3F's mesh-level pointerup for the joystick finger can be swallowed
+  // (the release lands over a pad), leaving the stick stuck deflected. The browser
+  // ALWAYS fires a window pointerup/pointercancel for the owning pointer, so end the
+  // drag from there. The ref-checked id makes this a no-op once R3F already ended.
+  useEffect(() => {
+    const onUp = (e: PointerEvent) => {
+      if (joyPointer.current !== null && e.pointerId === joyPointer.current) finish.current();
+    };
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [joyPointer]);
 
   useFrame((_, delta) => {
     cur.current.lerp(target.current, Math.min(1, delta * 14));

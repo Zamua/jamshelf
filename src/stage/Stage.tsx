@@ -51,6 +51,13 @@ const INSPECT_UP = new Vector3(0, 1, 0);
 const DURATION = 1.2; // seconds for the full shelf<->desk float
 const INSPECT_DURATION = 0.75; // seconds for the rise into / out of inspect
 
+// float-arc shaping (shelf <-> desk). The device must POP UP off the shelf before it pulls
+// forward, or its lower edge clips through the shelf plank while it's still over it. The lift
+// is FRONT-LOADED (sqrt -> peaks early at ~fe 0.25) so it clears the plank top first; the
+// forward bow is a later, symmetric arc that carries it out + down onto the desk.
+const FLOAT_LIFT = 1.3; // vertical pop up off the shelf (clears the plank)
+const FLOAT_BOW = 1.7; // forward bow off the shelf onto the desk
+
 interface Spin {
   x: number; // tilt (rotation about X), driven by vertical drag, clamped
   y: number; // turn (rotation about Y), driven by horizontal drag, unbounded (full spins)
@@ -161,8 +168,11 @@ function applyPose(
 ): void {
   if (device) {
     t1.lerpVectors(SHELF_POS, PLAY_POS, fe).lerp(INSPECT_POS, ie);
-    // float arc (lifts off the shelf, curves onto the desk); faded out for inspect
-    t1.z += Math.sin(fe * Math.PI) * 1.7 * (1 - ie);
+    // float arc: pop UP first (front-loaded, so it clears the shelf plank before pulling
+    // forward), then bow FORWARD onto the desk. Both fade out for inspect (ie).
+    const out = 1 - ie;
+    t1.y += Math.sin(Math.sqrt(fe) * Math.PI) * FLOAT_LIFT * out;
+    t1.z += Math.sin(fe * Math.PI) * FLOAT_BOW * out;
     device.position.copy(t1);
     const baseTilt = MathUtils.lerp(MathUtils.lerp(SHELF_TILT, PLAY_TILT, fe), INSPECT_TILT, ie);
     device.rotation.set(baseTilt + spin.x * ie, spin.y * ie, 0);

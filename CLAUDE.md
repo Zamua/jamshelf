@@ -122,6 +122,8 @@ mobile-first. (Paths below are relative to `src/instruments/hichord/`.)
 - DDD/TDD: domain stays pure and tested; cross-cutting concerns (audio, input) live in adapters; the core depends on ports, never on a vendor SDK.
 - React 19 + R3F v9 + three 0.185. vitest 4 needs `@rolldown/binding-darwin-arm64` (installed; reinstall it if `npm ci` drops the optional native dep).
 - Node 20.18 is a hair under Vite's preferred 20.19+ (warning only; builds + previews fine). Bump node if it ever bites.
+- **R3F `onClick` is DEAD on touch in this app.** `Stage`'s `onCreated` preventDefaults the raw `touchstart` (the iOS magnifier/loupe fix), which suppresses the synthetic `click` on touch devices. So any tappable mesh must fire on `onPointerUp`, NOT `onClick` (pointer events still fire). The shelf tap-to-open catcher hit this: onClick worked on desktop (mouse) so it passed in dev, but did nothing on a phone. Use `onPointerUp` for mesh taps.
+- **iOS home-indicator black bar (the bottom safe-area strip).** That strip is painted from the `html` box; with `height: 100%` the html box stops at the SMALL viewport, leaving the strip outside it, so it falls back to the UA's black canvas (we set `color-scheme: dark`). Fix: `html { min-height: 100lvh; overflow: hidden }` + a warm root `background` so the warm bg reaches down and covers the strip. Note `viewport-fit=cover` + an html background ALONE do not reach it. **Chromium/Playwright does NOT render the iOS home-indicator zone**, so emulation cannot catch or verify this - check a real iOS screenshot.
 
 ## Deploy
 

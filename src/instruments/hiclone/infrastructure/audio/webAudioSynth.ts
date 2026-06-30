@@ -104,15 +104,17 @@ const PATCHES: Record<PatchName, Patch> = {
   PLUCK: { ...BASE, osc1: 'sawtooth', cutoff: 3200, cutoffFloor: 800, filterEnv: true, q: 1.2, A: 0.002, D: 0.22, S: 0, R: 0.18 },
   // The "huge" supersaw family: a wide unison wall + sub + DRIVE grit + open filter
   // (the buzz lives in the high harmonics; a low cutoff or heavy reverb softens it).
-  // Detune is kept MODERATE: heavy detune beats/swirls (flangey on a mono speaker);
-  // the buzz comes from the open filter + drive, not the detune. Tighter = cleaner.
-  SUPER: { ...BASE, osc1: 'sawtooth', unison: 7, unisonDetune: 20, unisonSpread: 0.8, sub: 0.32, drive: 1.4, cutoff: 7200, q: 0.4, A: 0.015, D: 0.35, S: 0.85, R: 0.55, wet: 0.28 },
-  HUGE: { ...BASE, osc1: 'sawtooth', unison: 7, unisonDetune: 28, unisonSpread: 0.9, sub: 0.42, drive: 1.1, cutoff: 4600, q: 0.4, A: 0.4, D: 0.6, S: 0.92, R: 1.3, wet: 0.42 },
-  NEON: { ...BASE, osc1: 'sawtooth', unison: 5, unisonDetune: 15, unisonSpread: 0.7, sub: 0.28, drive: 1.7, cutoff: 7400, cutoffFloor: 2400, filterEnv: true, q: 0.9, A: 0.008, D: 0.4, S: 0.6, R: 0.5, wet: 0.26 },
-  // DnB basses: detuned-saw Reese growl + heavy sub + drive grit. Play them low (drop
-  // the OCTAVE) for the classic enormous bass. NEURO sweeps a resonant filter for movement.
-  REESE: { ...BASE, osc1: 'sawtooth', unison: 4, unisonDetune: 20, unisonSpread: 0.45, sub: 0.5, drive: 3, cutoff: 1500, q: 0.7, A: 0.01, D: 0.3, S: 0.85, R: 0.3, wet: 0.1 },
-  NEURO: { ...BASE, osc1: 'sawtooth', unison: 3, unisonDetune: 26, unisonSpread: 0.4, sub: 0.5, drive: 6, cutoff: 2600, cutoffFloor: 500, filterEnv: true, q: 3.5, A: 0.005, D: 0.35, S: 0.5, R: 0.3, wet: 0.12 },
+  // NO unison detune (unison 1), the same as BLOOM: any detuned stack beats/swirls
+  // (flangey + overpowering, especially on a mono phone speaker where the stereo spread
+  // collapses to nothing). The weight comes from the SUB + DRIVE + filter, not a detuned
+  // wall, so these stay fat without the phasing.
+  SUPER: { ...BASE, osc1: 'sawtooth', unison: 1, sub: 0.32, drive: 1.4, cutoff: 7200, q: 0.4, A: 0.015, D: 0.35, S: 0.85, R: 0.55, wet: 0.28 },
+  HUGE: { ...BASE, osc1: 'sawtooth', unison: 1, sub: 0.42, drive: 1.1, cutoff: 4600, q: 0.4, A: 0.4, D: 0.6, S: 0.92, R: 1.3, wet: 0.42 },
+  NEON: { ...BASE, osc1: 'sawtooth', unison: 1, sub: 0.28, drive: 1.7, cutoff: 7400, cutoffFloor: 2400, filterEnv: true, q: 0.9, A: 0.008, D: 0.4, S: 0.6, R: 0.5, wet: 0.26 },
+  // DnB basses: heavy sub + drive grit (no detune beating). Play them low (drop the
+  // OCTAVE) for the classic enormous bass. NEURO sweeps a resonant filter for movement.
+  REESE: { ...BASE, osc1: 'sawtooth', unison: 1, sub: 0.5, drive: 3, cutoff: 1500, q: 0.7, A: 0.01, D: 0.3, S: 0.85, R: 0.3, wet: 0.1 },
+  NEURO: { ...BASE, osc1: 'sawtooth', unison: 1, sub: 0.5, drive: 6, cutoff: 2600, cutoffFloor: 500, filterEnv: true, q: 3.5, A: 0.005, D: 0.35, S: 0.5, R: 0.3, wet: 0.12 },
   // BLOOM: a held, buzzy saw chord-stab that blooms UP in pitch on the attack (the
   // "sweeps in" sound). NO unison/detune (unison 1) = zero beating / flange / phasing.
   // "Fatter" without detune: a saw an OCTAVE UP (harmonic, no beating) + a strong sub +

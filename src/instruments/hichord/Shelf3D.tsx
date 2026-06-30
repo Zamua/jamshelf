@@ -1,6 +1,3 @@
-import { useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
-import type { Group } from 'three';
 import { Device } from './ui/three/Device';
 import type { DeviceHandlers } from './ui/three/deviceProps';
 import type { ViewModel } from './application/state';
@@ -60,17 +57,8 @@ const DISPLAY_VM: ViewModel = {
   menuRows: [],
 };
 
-// The HiClone as it sits on the shelf: the same 3D model, non-interactive, gently
-// swaying so its depth + metallic sheen read at a glance (a full spin would show the
-// plain back, so it sways around face-on instead).
+// The HiClone as it sits on the shelf: the same 3D model, non-interactive and static
+// (it is resting/propped on the shelf; the shelf scene's parallax gives the life).
 export default function Shelf3D() {
-  const g = useRef<Group>(null);
-  useFrame((state) => {
-    if (g.current) g.current.rotation.y = Math.sin(state.clock.elapsedTime * 0.5) * 0.42;
-  });
-  return (
-    <group ref={g}>
-      <Device vm={DISPLAY_VM} handlers={NOOP} />
-    </group>
-  );
+  return <Device vm={DISPLAY_VM} handlers={NOOP} />;
 }

@@ -13,12 +13,23 @@
     radial-gradient(120% 90% at 50% 36%, #1a2138 0%, #0c0f1a 52%, #06070c 100%);
 }
 
+/* Fade the device in over the stage's (dark) background when arriving from the shelf
+   zoom, so the transition reads as continuous rather than a hard cut. */
 .stage canvas {
+  animation: device-fade-in 0.55s ease-out;
   display: block;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
+}
+@keyframes device-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Meta controls (help / 3D inspect): small, corner-parked, out of the way. */

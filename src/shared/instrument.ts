@@ -17,6 +17,10 @@ export interface InstrumentManifest {
   // The full interactive play experience, LAZY-loaded so the instrument's (large)
   // audio + scene bundle only loads when you actually open it.
   readonly Play: LazyExoticComponent<ComponentType>;
+  // Warm the lazy `Play` chunk ahead of time (the shelf calls this so the device is
+  // ready by the time the zoom transition lands - no "loading" flash). The dynamic
+  // import is cached, so this + `Play` share one fetch.
+  readonly preload?: () => void;
   // A non-interactive 3D model for the shelf. Kept separate from `Play` so the shelf
   // can show the instrument without pulling in its audio engine. Omit for a
   // not-yet-built ("coming soon") slot.

@@ -2,13 +2,35 @@
   position: fixed;
   inset: 0;
   overflow: hidden;
+  /* a cozy, lamp-lit room: warm amber glow up top fading to a deep warm brown */
   background:
-    radial-gradient(120% 90% at 50% 18%, #1a2235 0%, #0c0f17 55%, #05060a 100%);
+    radial-gradient(130% 100% at 50% 12%, #5a3f2c 0%, #3a2418 38%, #20120c 72%, #160c08 100%);
   touch-action: none;
 }
 
 .shelf-stage canvas {
   display: block;
+}
+
+/* The zoom transition: a dark veil fades in as the camera dives into the instrument,
+   bridging the route swap so the play view (which fades in) feels continuous. */
+.shelf-fade {
+  position: fixed;
+  inset: 0;
+  background: #0c0f1a; /* matches the play view's dark bg so the bridge is seamless */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.55s ease-in;
+}
+.shelf-stage.is-zooming .shelf-fade {
+  opacity: 1;
+}
+/* the HTML chrome fades out quickly as the dive begins */
+.shelf-stage.is-zooming .shelf-title,
+.shelf-stage.is-zooming .shelf-caption,
+.shelf-stage.is-zooming .shelf-foot {
+  opacity: 0;
+  transition: opacity 0.28s ease-out;
 }
 
 /* jamshelf wordmark, top-center, sheared to lean right (matches the device brand). */

@@ -42,6 +42,24 @@ Adding an instrument = drop a folder under `instruments/<id>/` exposing an
 `jamshelf`, store `looper`), so each groovebox keeps its own memory and they never collide.
 Deploy is still ONE hostthis static site (`4jzmz9uv`, SPA fallback serves `/<id>` deep links).
 
+## The shelf scene (`src/shelf/Shelf.tsx`)
+
+A **cozy, lamp-lit room** (warm-brown radial CSS bg + a warm `hemisphereLight` + amber
+`pointLight`s layered over the shared `StudioLights` so the device keeps its metallic
+sheen). The HiClone rests on a **wooden shelf plank**, **propped back at an angle**
+(`PROP_TILT`, the face tilts up toward the viewer) against a warm back wall. The scene
+tilts gently toward the pointer (`Parallax`) for life; the device model is static (it's
+resting). All shelf text (title / caption / footer) is **HTML overlay**, never in-scene
+drei `<Text>` (no font to fetch -> no troika CDN stall).
+
+**Tap = an animated dive into play, NOT a hard cut:** `open()` sets `zooming`, and over
+`ZOOM_MS` (~620ms) the `CameraRig` lerps the camera INTO the device while the `Hero`
+un-tilts to face-on and a dark CSS veil (`.shelf-fade`, color matched to the play view's
+bg) fades in; at the end it `navigate()`s to `/<id>`, where the play view's canvas
+fade-in (`device-fade-in`) completes the bridge. **The instrument's lazy chunk is
+PREFETCHED** on shelf mount (`manifest.preload()`), so the dive lands on a ready device
+instead of a "loading" flash. Tune the cozy look + the dive in `Shelf.tsx` / `Shelf.css`.
+
 --- everything below is the HiClone instrument (under `src/instruments/hichord/`) ---
 
 ## The HiClone instrument (DDD, dependency rule points inward)

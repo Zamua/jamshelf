@@ -1,6 +1,6 @@
-import { useRef } from 'react';
-import { Canvas, useFrame, type ThreeEvent } from '@react-three/fiber';
-import { Group, Vector3, MathUtils } from 'three';
+import { useLayoutEffect, useRef } from 'react';
+import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
+import { Group, Vector3, MathUtils, type Camera } from 'three';
 import { Device } from '../instruments/hichord/ui/three/Device';
 import type { DeviceHandlers } from '../instruments/hichord/ui/three/deviceProps';
 import type { ViewModel } from '../instruments/hichord/application/state';
@@ -11,22 +11,22 @@ import { StudioLights } from '../shared/StudioLights';
 // viewed top-down). Everything below lerps between these by an eased progress, so the
 // device floats off the shelf onto the desk while the camera swings overhead - one move,
 // no cut.
-// shelf: device RESTS on the plank (bottom edge on the plank top, no clip), propped back
-// and toward the front of the plank so the shelf lip doesn't hide its base.
-const SHELF_POS = new Vector3(0, 2.18, 0.55);
+// shelf: device RESTS on the plank (its bottom edge sits ON the plank top, fully visible
+// above it - no sinking through), propped back.
+const SHELF_POS = new Vector3(0, 2.62, 0.15);
 const SHELF_TILT = 0.3;
 const SHELF_SCALE = 0.82;
 // desk: device lies PERFECTLY FLAT, face up, well forward on the desk (clear of the wall).
 const PLAY_POS = new Vector3(0, -2.0, 2.1);
 const PLAY_TILT = -Math.PI / 2;
-const PLAY_SCALE = 0.95;
+const PLAY_SCALE = 1.0;
 
 const SHELF_CAM = new Vector3(0, 2.7, 8.9);
 const SHELF_TGT = new Vector3(0, 2.05, 0);
 // PERFECTLY top-down: an ~84deg look straight DOWN at the flat device, so the face reads
 // fronto-parallel (essentially the old head-on play view, now on the desk). Just shy of a
 // true 90deg so the up-vector stays +Y (an exactly-vertical camera is degenerate).
-const PLAY_CAM = new Vector3(0, 6.9, 3.75);
+const PLAY_CAM = new Vector3(0, 5.7, 3.35);
 const PLAY_TGT = new Vector3(0, -2.0, 2.1);
 
 const DURATION = 1.2; // seconds for the full float
@@ -62,14 +62,10 @@ function Room() {
         <meshStandardMaterial color="#4a3122" roughness={0.96} metalness={0} />
       </mesh>
       {/* wall shelf (up high) - its top sits just under the device's resting bottom */}
-      <group position={[0, 1.62, -0.55]}>
+      <group position={[0, 1.95, -0.55]}>
         <mesh>
           <boxGeometry args={[9.4, 0.42, 2.5]} />
           <meshStandardMaterial color="#6e4a2f" roughness={0.72} metalness={0.04} />
-        </mesh>
-        <mesh position={[0, 0.05, 1.25]}>
-          <boxGeometry args={[9.4, 0.34, 0.05]} />
-          <meshStandardMaterial color="#7e5636" roughness={0.6} metalness={0.05} />
         </mesh>
       </group>
       {/* desk surface (low, in front) - the device lies flat on it */}
@@ -88,27 +84,35 @@ function Room() {
 
 // Drives the ONE continuous move: advances a progress toward the target (shelf=0,
 // play=1) and lerps the camera + the device group between the two poses every frame.
+// Pose the camera + device at eased progress `e`. Used by the render loop AND once
+// before the first paint (so the very first frame is already posed - no unposed/clipping
+// flash at the device's default origin).
+function applyPose(camera: Camera, device: Group | null, e: number, tmp: Vector3): void {
+  camera.position.lerpVectors(SHELF_CAM, PLAY_CAM, e);
+  camera.lookAt(tmp.lerpVectors(SHELF_TGT, PLAY_TGT, e));
+  if (device) {
+    device.position.lerpVectors(SHELF_POS, PLAY_POS, e);
+    // arc FORWARD (toward the viewer) mid-float, so the device lifts off the shelf and
+    // floats out + down onto the desk in a graceful curve instead of dropping through it.
+    device.position.z += Math.sin(e * Math.PI) * 1.7;
+    device.rotation.x = MathUtils.lerp(SHELF_TILT, PLAY_TILT, e);
+    device.scale.setScalar(MathUtils.lerp(SHELF_SCALE, PLAY_SCALE, e));
+  }
+}
+
 function Rig({ target, deviceRef }: { target: number; deviceRef: React.RefObject<Group | null> }) {
   const raw = useRef(target); // snap to the initial mode (deep-links don't animate in)
   const tmp = useRef(new Vector3());
+  const { camera } = useThree();
+  // pose everything before the first paint
+  useLayoutEffect(() => {
+    applyPose(camera, deviceRef.current, eased(raw.current), tmp.current);
+  }, [camera, deviceRef]);
   useFrame((state, dt) => {
     const step = dt / DURATION;
     if (raw.current < target) raw.current = Math.min(target, raw.current + step);
     else if (raw.current > target) raw.current = Math.max(target, raw.current - step);
-    const e = eased(raw.current);
-
-    state.camera.position.lerpVectors(SHELF_CAM, PLAY_CAM, e);
-    state.camera.lookAt(tmp.current.lerpVectors(SHELF_TGT, PLAY_TGT, e));
-
-    const d = deviceRef.current;
-    if (d) {
-      d.position.lerpVectors(SHELF_POS, PLAY_POS, e);
-      // arc FORWARD (toward the viewer) mid-float, so the device lifts off the shelf and
-      // floats out + down onto the desk in a graceful curve instead of dropping through it.
-      d.position.z += Math.sin(e * Math.PI) * 1.7;
-      d.rotation.x = MathUtils.lerp(SHELF_TILT, PLAY_TILT, e);
-      d.scale.setScalar(MathUtils.lerp(SHELF_SCALE, PLAY_SCALE, e));
-    }
+    applyPose(state.camera, deviceRef.current, eased(raw.current), tmp.current);
   });
   return null;
 }

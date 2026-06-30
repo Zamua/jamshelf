@@ -64,7 +64,10 @@ no fade, no cut.** A `Rig` advances one progress toward the target (shelf=0/play
 device group's position / x-rotation / scale, every frame. The float **arcs forward**
 (`position.z += sin(progress*PI)*1.7`) so the device lifts off the shelf and curves out +
 down onto the desk instead of dropping through the shelf. Because the canvas is mounted ONCE
-at the app root (`Experience`) and only `mode` changes, nothing ever remounts.
+at the app root (`Experience`) and only `mode` changes, nothing ever remounts. The pose is
+applied by `applyPose()` from BOTH the `useFrame` loop AND a `useLayoutEffect` that runs once
+before the first paint - else the first painted frame shows the device at its un-posed default
+origin (a clip flash through the room) before the loop kicks in.
 
 `Experience` cross-fades the HTML chrome (shelf caption <-> play tools+back) as the device
 floats, and gates device interactivity: the device only becomes playable `FLOAT_MS` (~1.25s)

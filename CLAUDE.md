@@ -90,8 +90,11 @@ structural facts, learned by iterating against the official photos in
   trade head-on brightness vs sheen gradient (too bright = flat white).
 - **Top-edge ports** (`TopEdge.tsx`, jack + USB-C) must sit slightly PROUD of the slab's
   top face (`TOP_Y`), never flush/coplanar with it - coplanar faces z-fight (shimmer in
-  the 3D inspect view). The wordmark font is upright Poppins (`brandFont.ts`); the old
-  rounded Baloo read as slanted.
+  the 3D inspect view). The `HiClone` wordmark (`Brand.tsx`) is Poppins (`brandFont.ts`)
+  SHEARED to lean right (oblique): an inner group's matrix is `makeShear(0,0,SLANT,0,0,0)`
+  with `matrixAutoUpdate` off (the outer group carries the position), so it slants without
+  bundling a separate italic font. The old rounded Baloo was replaced because it read as
+  accidentally slanted; this is a deliberate, controlled rightward lean.
 - **4-column grid**: the 4 top cells (OLED + 3 menu buttons) are SQUARES that
   share the column centers + width (`COLS`, `KEY_W`) of the 4 bottom keys, so they
   line up vertically. The 3 sharp (top) keys sit at the gaps BETWEEN columns; each
@@ -154,20 +157,28 @@ speed, rate, and BPM. Design is in `docs/SPEC.md` (Phase 1). Key pieces:
   to the morph (8 directions, with a centre dead-zone + angular gaps + hysteresis so
   diagonals do not clip a neighbour) or to menu nav (latch hysteresis + axis-dominance
   gating so wobble and up/down-vs-left/right confusion are gone).
-- **OLED menu = a SCROLLING list at a fixed readable font, NOT wrapped text.** The ViewModel
-  exposes the open menu as `menuRows: {label, value, active}[]` (the controller maps `fields()`
-  to rows; empty when closed). `Screen.tsx` (`MenuList`) renders rows at a constant pitch
-  (`baseFont = h*0.14`, readable) and only draws the WINDOW of rows that fit the glass, kept
-  around the cursor so the active field is always visible; off-screen rows are occluded by
-  simply not being rendered (no bleed over the bezel). `▲`/`▼` chevrons hint more rows above /
-  below. An over-long single row (ARP's `PATTERN UPDOWN`) shrinks just enough to stay on ONE
-  line instead of wrapping. History: this replaced (a) the original approach of joining the
-  non-active fields into one `screenSmall` string + drei `Text` `maxWidth`-wrap, which
-  overflowed + overlapped once GLIDE made the KEY menu 6 fields, and (b) a first fix that
-  auto-SHRANK the font to fit all rows - which the user found too small to read. The fixed
-  readable font + scroll/occlude is what they asked for. `screenBig`/`screenSmall` remain for
-  the NON-menu OLED (key/chord + patch/mode, loop transport). Mono `OLED_FONT` (ShareTechMono)
-  makes the leading-space cursor column align.
+- **OLED menu = a TOP-ALIGNED SCROLLING list at a fixed readable font, NOT wrapped text.** The
+  ViewModel exposes the open menu as `menuRows: {label, value, active}[]` (the controller maps
+  `fields()` to rows; empty when closed). `Screen.tsx` (`MenuList`) renders rows at a constant
+  pitch (`baseFont = h*0.14`, readable), the first row at a FIXED y near the glass top
+  (`top = gh*0.46 - lineStep/2`) so a menu whose field count changes (the MODE menu: PLAY=2
+  rows, ARP=4) does NOT shift its rows up/down when you cycle it (was centered -> jumped). Only
+  the WINDOW of rows that fit the glass is drawn, kept around the cursor so the active field is
+  always visible; off-screen rows are occluded by simply not being rendered (no bleed over the
+  bezel). An over-long single row (ARP's `PATTERN UPDOWN`) shrinks just enough to stay on ONE
+  line instead of wrapping. **Scroll-hint chevrons are TRIANGLE MESHES (`Chevron`), NOT font
+  glyphs**: ShareTechMono has no `▲`/`▼` (U+25B2/25BC), and a MISSING glyph makes
+  troika-three-text fetch a fallback font from a CDN - a stalled request that leaves iOS
+  Safari's tab loading-bar spinning (the canonical "bundle the font locally" gotcha, here
+  triggered by a glyph the bundled font lacks). History: this layout replaced (a) the original
+  one-line `screenSmall` + drei `Text` `maxWidth`-wrap that overflowed + overlapped once GLIDE
+  made the KEY menu 6 fields, and (b) a first fix that auto-SHRANK the font to fit all rows -
+  too small to read. `screenBig`/`screenSmall` remain for the NON-menu OLED (key/chord +
+  patch/mode, loop transport). Mono `OLED_FONT` makes the leading-space cursor column align.
+- **Pressing yellow (sound) while a menu is open CLOSES the menu** (`pressSound` -> `closeMenu`
+  first) so the OLED shows the instrument (or inversion) flashing instead of staying on the
+  KEY/MODE menu list - the three top buttons (gray KEY menu, red MODE menu, yellow sound) are
+  peers, so invoking yellow leaves menu mode.
 
 Touch/multitouch correctness lives in the UI lane: a shared `joyPointer` ref
 (`Device.tsx`) is set by the Knob and IGNORED by the Pads, so a finger that owns the

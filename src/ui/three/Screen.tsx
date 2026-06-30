@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import { DoubleSide } from 'three';
 import { Text, RoundedBox } from '@react-three/drei';
 import { PALETTE } from './palette';
 import { WELL_DEPTH } from './layout';
@@ -127,9 +129,13 @@ function MenuList({
     start = Math.min(Math.max(activeIndex - Math.floor(maxVisible / 2), 0), n - maxVisible);
   }
   const visible = rows.slice(start, start + maxVisible);
-  const top = ((visible.length - 1) / 2) * lineStep; // center the window block
+  // TOP-aligned: the first row sits at a FIXED y near the glass top regardless of how
+  // many rows the menu has, so cycling a field that changes the field count (e.g. the
+  // MODE menu: PLAY has 2 rows, ARP has 4) never shifts the rows up/down.
+  const top = gh * 0.46 - lineStep * 0.5;
   const moreAbove = start > 0;
   const moreBelow = start + maxVisible < n;
+  const chevSize = baseFont * 0.32;
 
   return (
     <>
@@ -152,30 +158,41 @@ function MenuList({
           </Text>
         );
       })}
-      {moreAbove && (
-        <Text
-          font={OLED_FONT}
-          position={[gw * 0.4, gh * 0.46, GLASS_Z]}
-          fontSize={baseFont * 0.5}
-          color={dimColor}
-          anchorX="center"
-          anchorY="middle"
-        >
-          ▲
-        </Text>
-      )}
-      {moreBelow && (
-        <Text
-          font={OLED_FONT}
-          position={[gw * 0.4, -gh * 0.46, GLASS_Z]}
-          fontSize={baseFont * 0.5}
-          color={dimColor}
-          anchorX="center"
-          anchorY="middle"
-        >
-          ▼
-        </Text>
-      )}
+      {moreAbove && <Chevron x={gw * 0.42} y={gh * 0.46} size={chevSize} up color={dimColor} />}
+      {moreBelow && <Chevron x={gw * 0.42} y={-gh * 0.46} size={chevSize} up={false} color={dimColor} />}
     </>
+  );
+}
+
+// A scroll-hint triangle drawn as GEOMETRY, not a font glyph: ShareTechMono has no
+// ▲/▼ glyphs, and a missing glyph makes troika-three-text fetch a fallback font from a
+// CDN (a stalled request that leaves iOS Safari's tab loading-bar spinning).
+function Chevron({
+  x,
+  y,
+  size,
+  up,
+  color,
+}: {
+  x: number;
+  y: number;
+  size: number;
+  up: boolean;
+  color: string;
+}) {
+  const verts = useMemo(
+    () =>
+      up
+        ? new Float32Array([-size, -size, 0, size, -size, 0, 0, size, 0])
+        : new Float32Array([-size, size, 0, size, size, 0, 0, -size, 0]),
+    [size, up],
+  );
+  return (
+    <mesh position={[x, y, GLASS_Z]} frustumCulled={false}>
+      <bufferGeometry>
+        <bufferAttribute attach="attributes-position" args={[verts, 3]} />
+      </bufferGeometry>
+      <meshBasicMaterial color={color} side={DoubleSide} toneMapped={false} />
+    </mesh>
   );
 }

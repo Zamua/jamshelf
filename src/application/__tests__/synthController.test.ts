@@ -351,6 +351,15 @@ describe('menus', () => {
     expect(c.getState().menuRows).toEqual([]);
   });
 
+  it('pressing yellow (sound) closes an open menu and flashes the instrument', () => {
+    c.toggleMenu('KEY');
+    expect(c.getState().menuOpen).toBe(true);
+    c.pressSound(); // yellow with no pad held -> cycle the sound
+    expect(c.getState().menuOpen).toBe(false); // left the menu...
+    expect(c.getState().menuRows).toEqual([]);
+    expect(c.getState().screenBig).toBe(c.getState().patch); // ...and flashed the new patch
+  });
+
   it('MODE menu exposes mode-specific fields (PATTERN+RATE only for ARP)', () => {
     switchMode('ARP');
     c.toggleMenu('MODE');

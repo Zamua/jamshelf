@@ -315,6 +315,9 @@ export class SynthController {
   // Yellow button: with a pad held (or a drone latched), cycle the chord INVERSION
   // (root / 1st / 2nd), like the real device; otherwise cycle the synth voice.
   pressSound(): void {
+    // Yellow is the sound action, not a menu: if a menu is open, leave it so the OLED
+    // shows the instrument (or inversion) flashing instead of staying on the menu.
+    this.closeMenu();
     if (this.held.size > 0 || this.latched !== null) this.cycleInversion();
     else this.cyclePatch();
   }

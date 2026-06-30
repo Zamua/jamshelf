@@ -19,7 +19,7 @@ import {
 } from './layout';
 import { BODY_THEMES, PALETTE, isLightBody, powerColor } from './palette';
 import { OLED_FONT } from './font';
-import { BRAND_FONT } from './brandFont';
+import { Brand } from './Brand';
 import { Chassis } from './Chassis';
 import { Pad } from './Pad';
 import { Screen } from './Screen';
@@ -132,18 +132,15 @@ export function Device({ vm, handlers }: DeviceProps) {
         mic
       </Text>
 
-      {/* HiClone branding, top-left (rounded wordmark font) */}
-      <Text
-        font={BRAND_FONT}
-        position={[BRAND.x, BRAND.y, FRONT_Z + 0.01]}
-        fontSize={0.26}
+      {/* HiClone branding, top-left: an upright Poppins wordmark sheared to lean right */}
+      <Brand
+        x={BRAND.x}
+        y={BRAND.y}
+        z={FRONT_Z + 0.01}
         color={brandColor}
-        anchorX="center"
-        anchorY="middle"
-        letterSpacing={0.005}
-      >
-        {BRAND.text}
-      </Text>
+        fontSize={0.26}
+        text={BRAND.text}
+      />
 
       <MenuButton
         x={MENU.gray}

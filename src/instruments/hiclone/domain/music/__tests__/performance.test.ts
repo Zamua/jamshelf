@@ -12,6 +12,7 @@ import {
   invert,
   voiceChord,
   drumForDegree,
+  drumLabel,
 } from '../performance';
 
 describe('performance value sets', () => {
@@ -119,5 +120,19 @@ describe('drumForDegree', () => {
     expect(drumForDegree(3)).toBe('SNARE');
     expect(drumForDegree(4)).toBe('HAT');
     expect(drumForDegree(7)).toBe('OPENHAT');
+  });
+});
+
+describe('drumLabel', () => {
+  it('sample kits label a pad by its actual sound (file basename), not the synth role', () => {
+    expect(drumLabel(6, 'TRAP')).toBe('CLAP'); // the RIDE slot holds a clap
+    expect(drumLabel(2, 'TRAP')).toBe('808');
+    expect(drumLabel(4, 'TRAP')).toBe('HIHAT');
+    expect(drumLabel(1, 'TRAP')).toBe('KICK');
+  });
+  it('synth kits fall back to the pad role name', () => {
+    expect(drumLabel(6, 'TIGHT')).toBe('RIDE');
+    expect(drumLabel(1, 'BOX808')).toBe('KICK');
+    expect(drumLabel(4, 'BOX909')).toBe('HAT');
   });
 });

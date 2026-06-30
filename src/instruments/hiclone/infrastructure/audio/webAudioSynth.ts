@@ -1,4 +1,5 @@
 import type { DrumName, DrumKit } from '../../domain/music';
+import { SAMPLE_KIT_PADS } from '../../domain/music';
 import type { PatchName, SynthPort } from '../../application/ports';
 
 // Per-kit tuning factors applied to the base drum recipes (kick pitch + decay,
@@ -521,10 +522,14 @@ export class WebAudioSynth implements SynthPort {
     if (this.kitLoading.has(kit) || !this.ctx) return;
     this.kitLoading.add(kit);
     const pads: DrumName[] = ['KICK', 'KICK2', 'SNARE', 'HAT', 'TOM', 'RIDE', 'OPENHAT'];
+    // The file basename per slot is the sound's name (== the OLED label), which may differ
+    // from the slot's role (e.g. TRAP's RIDE slot is `clap.mp3`). Cache stays keyed by slot.
+    const files = SAMPLE_KIT_PADS[kit];
     await Promise.all(
-      pads.map(async (n) => {
+      pads.map(async (n, i) => {
+        const base = files ? files[i] : n.toLowerCase();
         try {
-          const res = await fetch(`drums/${folder}/${n.toLowerCase()}.mp3`);
+          const res = await fetch(`drums/${folder}/${base}.mp3`);
           const arr = await res.arrayBuffer();
           const buf = await this.ctx!.decodeAudioData(arr);
           this.sampleCache.set(`${kit}:${n}`, buf);

@@ -3,18 +3,18 @@ Free to use, modify and redistribute, no attribution required. From Freesound.or
 
 TRAP
   kick     "Kick (24)"             by Rippleys_Circus
-  kick2    "808 Altered Beast - A" by 8bitmyketison
+  808      "808 Altered Beast - A" by 8bitmyketison
   snare    "Trap Snare 1"          by nbmusic098
-  hat      "HI-HAT closed PO-12"   by jannevse
+  hihat    "HI-HAT closed PO-12"   by jannevse
   tom      "JH Big Tom 1"          by Johnnie_Holiday
-  ride     "drumhit_Clap4"         by DigitalUnderglow
+  clap     "drumhit_Clap4"         by DigitalUnderglow
   openhat  "Dance Open Hat"        by Teyloh
 
 LOFI
   kick     "lo-fi kick 2"          by reathance
   kick2    "lo-fi kick 1"          by reathance
   snare    "Lil Lofi Snare 3"      by deadrobotmusic
-  hat      "LoFi KO HiHat closed"  by Uberproduktion
-  tom      "lofi perc pick"        by deadrobotmusic
-  ride     "lo-fi perc 3"          by reathance
-  openhat  "lo-fi perc 4"          by reathance
+  hihat    "LoFi KO HiHat closed"  by Uberproduktion
+  perc     "lofi perc pick"        by deadrobotmusic
+  perc2    "lo-fi perc 3"          by reathance
+  perc3    "lo-fi perc 4"          by reathance

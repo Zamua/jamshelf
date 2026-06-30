@@ -7,6 +7,7 @@ import {
   strumMs,
   voiceChord,
   drumForDegree,
+  drumLabel,
   fxHasDelay,
   fxHasChorus,
   FX_MODES,
@@ -210,7 +211,7 @@ export class SynthController {
     this.looper.noteStarted(); // if the looper is armed, this first key begins the take
 
     if (this.mode === 'DRUM') {
-      this.flash(drumForDegree(degree));
+      this.flash(drumLabel(degree, this.drumKit)); // the sound's name (sample kits) / role (synth)
     } else if (!(this.mode === 'DRONE' && this.latched === null)) {
       // DRONE: pressing the latched pad again just silences it - nothing to announce.
       this.flash(this.tonalName(degree));

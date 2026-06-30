@@ -33,6 +33,23 @@ export function drumForDegree(degree: Degree): DrumName {
 export type DrumKit = 'TIGHT' | 'BOX808' | 'BOX909' | 'TRAP' | 'LOFI';
 export const DRUM_KITS: readonly DrumKit[] = ['TIGHT', 'BOX808', 'BOX909', 'TRAP', 'LOFI'];
 
+// Sample kits name each pad after the ACTUAL sound (its file basename), because a slot can
+// hold a sound that does not match its synth role - e.g. the TRAP "ride" slot is a clap. 7
+// names in DRUM_PADS slot order; the file is `drums/<kit>/<name>.mp3` and the OLED shows the
+// name. Synth kits (TIGHT/BOX808/BOX909) have no files and fall back to the role name.
+export const SAMPLE_KIT_PADS: Partial<Record<DrumKit, readonly string[]>> = {
+  TRAP: ['kick', '808', 'snare', 'hihat', 'tom', 'clap', 'openhat'],
+  LOFI: ['kick', 'kick2', 'snare', 'hihat', 'perc', 'perc2', 'perc3'],
+};
+
+// The label the OLED flashes for a pad: the sample name (sample kits) or the synth voice
+// name (synth kits), upper-cased to match the OLED style.
+export function drumLabel(degree: Degree, kit: DrumKit): string {
+  const i = (degree - 1) % DRUM_PADS.length;
+  const pads = SAMPLE_KIT_PADS[kit];
+  return (pads ? pads[i] : DRUM_PADS[i]).toUpperCase();
+}
+
 // Global effects: a tempo-synced delay and/or a chorus (reverb is always on).
 export type FxMode = 'OFF' | 'DELAY' | 'CHORUS' | 'BOTH';
 export const FX_MODES: readonly FxMode[] = ['OFF', 'DELAY', 'CHORUS', 'BOTH'];

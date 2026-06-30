@@ -64,9 +64,14 @@ animate:
 **Tapping the shelved device floats it to the desk in ONE continuous move - no route swap,
 no fade, no cut.** A `Rig` advances one progress toward the target (shelf=0/play=1) and
 **smootherstep**-eases everything: it `lerpVectors` the camera position + target, and the
-device group's position / x-rotation / scale, every frame. The float **arcs forward**
-(`position.z += sin(progress*PI)*1.7`) so the device lifts off the shelf and curves out +
-down onto the desk instead of dropping through the shelf. Because the canvas is mounted ONCE
+device group's position / x-rotation / scale, every frame. The float **pops UP then bows
+FORWARD**: a FRONT-LOADED lift (`position.y += sin(sqrt(fe)*PI)*FLOAT_LIFT`, peaks early ~fe
+0.25) raises the device off the shelf so its lower edge clears the plank top BEFORE it pulls
+out, then a later symmetric forward bow (`position.z += sin(fe*PI)*FLOAT_BOW`) carries it out
++ down onto the desk. Without the lift the device's bottom clipped through the shelf plank
+(it dropped straight down while still over it); the sqrt front-loads the lift so net `y` rises
+ABOVE the shelf rest at low `fe`, and the smootherstep on `fe` keeps the onset velocity zero
+(no snap). Both arcs fade out for inspect (`*(1-ie)`). Because the canvas is mounted ONCE
 at the app root (`Experience`) and only `mode` changes, nothing ever remounts. The pose is
 applied by `applyPose()` from BOTH the `useFrame` loop AND a `useLayoutEffect` that runs once
 before the first paint - else the first painted frame shows the device at its un-posed default

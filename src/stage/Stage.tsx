@@ -1,9 +1,9 @@
 import { useLayoutEffect, useRef } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Group, Vector3, MathUtils, type Camera } from 'three';
-import { Device } from '../instruments/hichord/ui/three/Device';
-import type { DeviceHandlers } from '../instruments/hichord/ui/three/deviceProps';
-import type { ViewModel } from '../instruments/hichord/application/state';
+import { Device } from '../instruments/hiclone/ui/three/Device';
+import type { DeviceHandlers } from '../instruments/hiclone/ui/three/deviceProps';
+import type { ViewModel } from '../instruments/hiclone/application/state';
 import { StudioLights } from '../shared/StudioLights';
 
 // The two ends of the one continuous move. progress 0 = resting on the shelf (propped,

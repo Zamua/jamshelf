@@ -3,7 +3,7 @@
 // manifest no longer carries a separate display model or play component. When a second
 // instrument lands, this is also where the stage will learn which device to mount.
 export interface InstrumentManifest {
-  // URL slug AND storage namespace (stable, lowercase, no spaces), e.g. 'hichord'.
+  // URL slug AND storage namespace (stable, lowercase, no spaces), e.g. 'hiclone'.
   readonly id: string;
   // Display name on the shelf + the route, e.g. 'HiClone'.
   readonly name: string;

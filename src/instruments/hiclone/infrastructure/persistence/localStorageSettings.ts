@@ -1,5 +1,23 @@
 import type { SettingsSnapshot, SettingsStore } from '../../application/persistence';
 
+// One-time migration for a renamed instrument namespace: copy the settings saved under a
+// former namespace to the current one so an id rename doesn't orphan an existing install's
+// durable prefs. No-op if nothing is stored under the old namespace or the new one already
+// has state. (Recorded loops in IndexedDB are ephemeral and intentionally not migrated.)
+export function migrateSettingsNamespace(oldNs: string, newNs: string): void {
+  try {
+    const ls = globalThis.localStorage;
+    if (!ls) return;
+    const oldKey = `jamshelf/${oldNs}/settings`;
+    const old = ls.getItem(oldKey);
+    if (old === null) return;
+    if (ls.getItem(`jamshelf/${newNs}/settings`) === null) ls.setItem(`jamshelf/${newNs}/settings`, old);
+    ls.removeItem(oldKey);
+  } catch {
+    /* storage disabled - nothing to migrate */
+  }
+}
+
 // Persists the durable settings to Web Storage, NAMESPACED per instrument
 // (`jamshelf/<id>/settings`) so each instrument on the shelf keeps its own state and
 // they never collide. Every access is guarded: storage can be absent (SSR), disabled

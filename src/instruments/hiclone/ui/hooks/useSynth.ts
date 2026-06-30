@@ -4,7 +4,7 @@ import type { ViewModel } from '../../application/state';
 import { WebAudioSynth } from '../../infrastructure/audio/webAudioSynth';
 import { WebAudioLooper } from '../../infrastructure/audio/webAudioLooper';
 import { IntervalClock } from '../../infrastructure/clock/intervalClock';
-import { LocalStorageSettingsStore } from '../../infrastructure/persistence/localStorageSettings';
+import { LocalStorageSettingsStore, migrateSettingsNamespace } from '../../infrastructure/persistence/localStorageSettings';
 import { IndexedDbLooperStore } from '../../infrastructure/persistence/indexedDbLooper';
 import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
@@ -87,10 +87,11 @@ export function useSynth() {
     // loops it back through a separate (untapped) bus, so each recorded layer is
     // frozen and unaffected by later sound / play-mode changes.
     const realSynth = new WebAudioSynth();
-    // Persistence is namespaced to this instrument ('hichord') so each instrument on
+    // Persistence is namespaced to this instrument ('hiclone') so each instrument on
     // the shelf keeps its own state: loops in IndexedDB (audio is too big for
     // localStorage), durable settings in localStorage. Both restore on reload / PWA reopen.
-    const ns = 'hichord';
+    const ns = 'hiclone';
+    migrateSettingsNamespace('hichord', ns); // carry prefs from the instrument's former id
     const looper = new WebAudioLooper(realSynth, new IndexedDbLooperStore(ns));
     return new SynthController(realSynth, new IntervalClock(), looper, new LocalStorageSettingsStore(ns));
   }, []);

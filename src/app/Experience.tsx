@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Stage } from '../stage/Stage';
 import { EyeIcon } from './EyeIcon';
-import { useSynth } from '../instruments/hichord/ui/hooks/useSynth';
-import { BODY_THEMES } from '../instruments/hichord/ui/three/palette';
-import { Manual } from '../instruments/hichord/ui/components/Manual';
-import type { DeviceHandlers } from '../instruments/hichord/ui/three/deviceProps';
+import { useSynth } from '../instruments/hiclone/ui/hooks/useSynth';
+import { BODY_THEMES } from '../instruments/hiclone/ui/three/palette';
+import { Manual } from '../instruments/hiclone/ui/components/Manual';
+import type { DeviceHandlers } from '../instruments/hiclone/ui/three/deviceProps';
 import { INSTRUMENTS, instrumentById } from '../instruments/registry';
 import './experience.css';
 

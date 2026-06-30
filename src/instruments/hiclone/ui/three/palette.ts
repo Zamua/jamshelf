@@ -1,6 +1,6 @@
 import { Color } from 'three';
 
-// Cosmic Blue HiChord palette (hex). Single source of truth for the 3D lane.
+// Cosmic Blue HiClone body palette (hex). Single source of truth for the 3D lane.
 export const PALETTE = {
   bodyBlue: '#1f41d6',
   rimHi: '#5e7dff',

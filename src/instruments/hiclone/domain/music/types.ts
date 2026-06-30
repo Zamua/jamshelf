@@ -1,4 +1,4 @@
-// Pure domain types for the chord-synth music model. No I/O, no framework imports.
+// Pure domain types for the HiClone music model. No I/O, no framework imports.
 
 // Pitch class 0..11 where C = 0, C# = 1, ... B = 11.
 export type PitchClass = number;

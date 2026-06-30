@@ -67,7 +67,7 @@ export type BassMode = 'OFF' | 'ROOT';
 export const BASS_MODES: readonly BassMode[] = ['OFF', 'ROOT'];
 
 // Portamento / glide: a single mono note slides in pitch from the previous note
-// instead of jumping (best in LEAD). OFF, then three speeds (HiChord-style toggle).
+// instead of jumping (best in LEAD). OFF, then three speeds (toggle + speed).
 export type GlideMode = 'OFF' | 'SLOW' | 'MED' | 'FAST';
 export const GLIDE_MODES: readonly GlideMode[] = ['OFF', 'SLOW', 'MED', 'FAST'];
 // Glide time in seconds for each mode (0 = off).

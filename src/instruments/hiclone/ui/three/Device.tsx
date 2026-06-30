@@ -28,7 +28,7 @@ import { Speaker } from './Speaker';
 import { MenuButton } from './MenuButton';
 import { TopEdge } from './TopEdge';
 
-// The real modeled HiChord-style device, assembled from component meshes in a
+// The modeled HiClone device, assembled from component meshes in a
 // landscape group. Purely presentational: it renders the ViewModel and fires raw
 // input through the handlers.
 export function Device({ vm, handlers }: DeviceProps) {

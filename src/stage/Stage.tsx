@@ -52,8 +52,42 @@ const DURATION = 1.2; // seconds for the full shelf<->desk float
 const INSPECT_DURATION = 0.75; // seconds for the rise into / out of inspect
 
 interface Spin {
-  x: number;
-  y: number;
+  x: number; // tilt (rotation about X), driven by vertical drag, clamped
+  y: number; // turn (rotation about Y), driven by horizontal drag, unbounded (full spins)
+  vx: number; // angular velocity (rad/s) set by the drag input; the coast runs on this
+  vy: number;
+  dragging: boolean; // true while a finger is on it; the coast only runs once let go
+}
+
+// spin momentum tuning
+const SPIN_TILT_MIN = -1.2;
+const SPIN_TILT_MAX = 1.2;
+const SPIN_FRICTION = 0.95; // velocity retained per 60fps-frame after release (-> ~1s coast)
+const SPIN_MAX_V = 14; // rad/s cap so a hard flick doesn't spin absurdly fast
+const SPIN_HOLD_DECAY = 0.9; // velocity bled per frame WHILE held, so a stop-then-lift doesn't fling
+
+// One spin step per frame. The INPUT layer (Experience) owns position + velocity while a finger
+// is down (velocity from real pointer-event timing); here we only (a) bleed velocity while the
+// finger rests so a held pause kills the fling, and (b) once released, integrate the carried
+// velocity and decay it toward rest - the floaty coast.
+function stepSpin(spin: Spin, dt: number): void {
+  if (spin.dragging) {
+    const hold = Math.pow(SPIN_HOLD_DECAY, dt * 60);
+    spin.vx *= hold;
+    spin.vy *= hold;
+    return;
+  }
+  spin.vx = MathUtils.clamp(spin.vx, -SPIN_MAX_V, SPIN_MAX_V);
+  spin.vy = MathUtils.clamp(spin.vy, -SPIN_MAX_V, SPIN_MAX_V);
+  spin.y += spin.vy * dt;
+  const nx = MathUtils.clamp(spin.x + spin.vx * dt, SPIN_TILT_MIN, SPIN_TILT_MAX);
+  if (nx === spin.x) spin.vx = 0; // hit the tilt clamp -> stop pressing into it
+  spin.x = nx;
+  const keep = Math.pow(SPIN_FRICTION, dt * 60); // frame-rate independent decay
+  spin.vx *= keep;
+  spin.vy *= keep;
+  if (Math.abs(spin.vx) < 1e-3) spin.vx = 0;
+  if (Math.abs(spin.vy) < 1e-3) spin.vy = 0;
 }
 
 // smootherstep (ease-in-out, zero velocity + accel at both ends) for a soft float
@@ -174,6 +208,7 @@ function Rig({
   useFrame((state, dt) => {
     advance(fRaw, floatTarget, dt / DURATION);
     advance(iRaw, inspectTarget, dt / INSPECT_DURATION);
+    stepSpin(spinRef.current, dt); // coast the inspect spin (input layer sets pos+velocity)
     applyPose(state.camera, deviceRef.current, eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current, t2.current, tUp.current);
   });
   return null;

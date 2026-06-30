@@ -51,9 +51,10 @@ export function Experience() {
   }, [valid, navigate]);
 
   // Eye button: float the device up + let the user spin it. `spin` holds the drag-accumulated
-  // rotation (x = tilt, y = turn), read every frame by the stage; reset each time inspect opens.
+  // rotation (x = tilt, y = turn) plus its angular velocity (vx/vy) so a flick coasts; the
+  // stage reads + advances it every frame. Reset each time inspect opens.
   const [inspect, setInspect] = useState(false);
-  const spin = useRef({ x: 0, y: 0 });
+  const spin = useRef({ x: 0, y: 0, vx: 0, vy: 0, dragging: false });
 
   // The device only becomes interactive once it has landed on the desk (after the float).
   const [interactive, setInteractive] = useState(mode === 'play');
@@ -69,24 +70,44 @@ export function Experience() {
 
   const toggleInspect = () => {
     setInspect((on) => {
-      if (!on) spin.current = { x: 0, y: 0 }; // entering: start un-spun
+      if (!on) spin.current = { x: 0, y: 0, vx: 0, vy: 0, dragging: false }; // start at rest
       return !on;
     });
   };
 
   // Drag-to-spin while inspecting: a horizontal drag turns the device, a vertical drag tilts it.
-  const drag = useRef<{ x: number; y: number } | null>(null);
+  // We set BOTH position and angular velocity here (velocity from the real pointer-event timing,
+  // so it survives the release), then drop `dragging` so the stage coasts on that velocity and
+  // decays it - the floaty momentum. Holding still bleeds the velocity (in the stage), so a
+  // stop-then-lift doesn't fling.
+  const TURN_SENS = 0.01; // rad per px, horizontal -> turn
+  const TILT_SENS = 0.008; // rad per px, vertical -> tilt
+  const drag = useRef<{ x: number; y: number; t: number } | null>(null);
   const onDragStart = (e: React.PointerEvent) => {
-    drag.current = { x: e.clientX, y: e.clientY };
+    drag.current = { x: e.clientX, y: e.clientY, t: e.timeStamp };
+    spin.current.dragging = true;
+    spin.current.vx = 0; // catch a coasting device: grabbing stops it
+    spin.current.vy = 0;
   };
   const onDragMove = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    spin.current.y += (e.clientX - drag.current.x) * 0.01;
-    spin.current.x = Math.max(-1.2, Math.min(1.2, spin.current.x + (e.clientY - drag.current.y) * 0.008));
-    drag.current = { x: e.clientX, y: e.clientY };
+    const d = drag.current;
+    if (!d) return;
+    const dyaw = (e.clientX - d.x) * TURN_SENS;
+    const nx = Math.max(-1.2, Math.min(1.2, spin.current.x + (e.clientY - d.y) * TILT_SENS));
+    const dpitch = nx - spin.current.x; // actually-applied tilt (after the clamp)
+    spin.current.y += dyaw;
+    spin.current.x = nx;
+    const dtS = (e.timeStamp - d.t) / 1000;
+    if (dtS > 0) {
+      // exponential-smoothed velocity tracks the recent motion (rad/s)
+      spin.current.vy = spin.current.vy * 0.4 + (dyaw / dtS) * 0.6;
+      spin.current.vx = spin.current.vx * 0.4 + (dpitch / dtS) * 0.6;
+    }
+    drag.current = { x: e.clientX, y: e.clientY, t: e.timeStamp };
   };
   const onDragEnd = () => {
     drag.current = null;
+    spin.current.dragging = false; // release -> the stage coasts on the carried velocity
   };
 
   const deviceHandlers = useMemo<DeviceHandlers>(

@@ -18,7 +18,7 @@ import { StudioLights } from '../shared/StudioLights';
 // At scale 0.82 + tilt 0.3 the lowest world point is ~0.73 below the pivot; the plank top
 // is at 2.16, so the pivot sits at 2.16 + 0.73 ~ 2.9.
 const SHELF_POS = new Vector3(0, 3.04, -0.35);
-const SHELF_TILT = 0.42;
+const SHELF_TILT = -0.32;
 const SHELF_SCALE = 0.82;
 // desk: device lies PERFECTLY FLAT, face up. Flat + scale 1, its lowest point is ~0.22
 // below the pivot; the desk top is at -2.34, so the pivot sits at -2.34 + 0.22 ~ -2.12.

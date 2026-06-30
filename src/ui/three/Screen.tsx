@@ -17,10 +17,9 @@ interface ScreenProps {
 }
 
 const GLASS_Z = WELL_DEPTH - 0.018;
-// ShareTechMono advance width per character, in ems (used to keep the widest menu
-// row inside the glass: font size is capped by both the row height AND this budget).
-const MONO_ADVANCE = 0.62;
-const ROW_BUDGET = 16; // chars the widest menu row must fit (">PATTERN UPDOWN" etc.)
+// ShareTechMono advance width per character, in ems (used to shrink an over-long
+// single row so it fits the glass width WITHOUT wrapping to a second line).
+const MONO_ADVANCE = 0.6;
 
 // The OLED: a black panel filling its square recess, with amber text on emissive
 // glass set just below the face so it reads as a sunken display. In normal use the
@@ -93,11 +92,12 @@ export function Screen({ big, small, menuRows, power, x, y, z, w, h }: ScreenPro
   );
 }
 
-// A fitted vertical menu: N evenly-spaced rows centered in the glass. The font size
-// is the min of a per-row height fit and a horizontal char budget, so neither a tall
-// menu (6-field KEY) nor a wide one (ARP's PATTERN row) clips. The cursor row (`>`)
-// is bright amber; the rest are dim. A leading space on inactive rows keeps the mono
-// columns aligned with the cursor.
+// A scrolling vertical menu at a fixed, readable row height. Rows are rendered at a
+// constant pitch; only the ones that fit the glass are drawn (a window around the
+// cursor), so a long menu (6-field KEY) never overflows - the off-screen rows are
+// occluded by simply not rendering them, instead of bleeding over the bezel. An
+// over-long single row (ARP's PATTERN value) shrinks just enough to stay on ONE line
+// rather than wrapping. Tiny chevrons hint when there are more rows above / below.
 function MenuList({
   rows,
   power,
@@ -111,31 +111,71 @@ function MenuList({
   gh: number;
   h: number;
 }) {
-  const n = rows.length;
-  const usableH = gh * 0.84;
-  const rowStep = usableH / n;
-  const fontSize = Math.min(h * 0.16, rowStep * 0.64, gw / (ROW_BUDGET * MONO_ADVANCE));
-  const top = ((n - 1) / 2) * rowStep; // y of the first row (block vertically centered)
-  const leftPad = gw * 0.08;
+  const baseFont = h * 0.14; // readable; matches the pre-scroll OLED text size
+  const lineStep = baseFont * 1.12; // tight enough to show 5 of the 6 KEY rows at once
+  const usableW = gw * 0.88;
+  const leftPad = gw * 0.06;
   const activeColor = power ? PALETTE.amber : '#1c1f25';
   const dimColor = power ? '#8a5f28' : '#15181d';
 
+  const n = rows.length;
+  const maxVisible = Math.max(1, Math.floor((gh * 0.96) / lineStep));
+  const activeIndex = Math.max(0, rows.findIndex((r) => r.active));
+  // Window the rows around the cursor so the active field is always on screen.
+  let start = 0;
+  if (n > maxVisible) {
+    start = Math.min(Math.max(activeIndex - Math.floor(maxVisible / 2), 0), n - maxVisible);
+  }
+  const visible = rows.slice(start, start + maxVisible);
+  const top = ((visible.length - 1) / 2) * lineStep; // center the window block
+  const moreAbove = start > 0;
+  const moreBelow = start + maxVisible < n;
+
   return (
     <>
-      {rows.map((r, i) => (
+      {visible.map((r, i) => {
+        const text = `${r.active ? '>' : ' '}${r.label} ${r.value}`;
+        // shrink an over-long row to keep it on one line (no wrap, no bleed)
+        const fontSize = Math.min(baseFont, usableW / (text.length * MONO_ADVANCE));
+        return (
+          <Text
+            key={r.label}
+            font={OLED_FONT}
+            position={[-gw / 2 + leftPad, top - i * lineStep, GLASS_Z]}
+            fontSize={fontSize}
+            color={r.active ? activeColor : dimColor}
+            anchorX="left"
+            anchorY="middle"
+            letterSpacing={0.02}
+          >
+            {text}
+          </Text>
+        );
+      })}
+      {moreAbove && (
         <Text
-          key={r.label}
           font={OLED_FONT}
-          position={[-gw / 2 + leftPad, top - i * rowStep, GLASS_Z]}
-          fontSize={fontSize}
-          color={r.active ? activeColor : dimColor}
-          anchorX="left"
+          position={[gw * 0.4, gh * 0.46, GLASS_Z]}
+          fontSize={baseFont * 0.5}
+          color={dimColor}
+          anchorX="center"
           anchorY="middle"
-          letterSpacing={0.02}
         >
-          {`${r.active ? '>' : ' '}${r.label} ${r.value}`}
+          ▲
         </Text>
-      ))}
+      )}
+      {moreBelow && (
+        <Text
+          font={OLED_FONT}
+          position={[gw * 0.4, -gh * 0.46, GLASS_Z]}
+          fontSize={baseFont * 0.5}
+          color={dimColor}
+          anchorX="center"
+          anchorY="middle"
+        >
+          ▼
+        </Text>
+      )}
     </>
   );
 }

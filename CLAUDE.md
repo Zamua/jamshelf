@@ -151,17 +151,20 @@ speed, rate, and BPM. Design is in `docs/SPEC.md` (Phase 1). Key pieces:
   to the morph (8 directions, with a centre dead-zone + angular gaps + hysteresis so
   diagonals do not clip a neighbour) or to menu nav (latch hysteresis + axis-dominance
   gating so wobble and up/down-vs-left/right confusion are gone).
-- **OLED menu = a FITTED vertical list, NOT wrapped text.** The ViewModel exposes the open
-  menu as `menuRows: {label, value, active}[]` (the controller maps `fields()` to rows;
-  empty when closed). `Screen.tsx` lays them out as N evenly-spaced rows centered in the
-  glass, the cursor row (`>`) bright amber and the rest dim. Row font size = `min(height
-  fit, horizontal char budget)` so neither a TALL menu (6-field KEY) nor a WIDE one (ARP's
-  `PATTERN` row) clips. This replaced the old approach of joining the non-active fields into
-  one `screenSmall` string and letting drei `Text` `maxWidth`-wrap it - which overflowed the
-  screen + overlapped the big line once the field count grew (the GLIDE field tipped the KEY
-  menu to 6 fields). `screenBig`/`screenSmall` remain for the NON-menu OLED (key/chord +
-  patch/mode, loop transport). Mono `OLED_FONT` (ShareTechMono) makes the leading-space
-  cursor column align.
+- **OLED menu = a SCROLLING list at a fixed readable font, NOT wrapped text.** The ViewModel
+  exposes the open menu as `menuRows: {label, value, active}[]` (the controller maps `fields()`
+  to rows; empty when closed). `Screen.tsx` (`MenuList`) renders rows at a constant pitch
+  (`baseFont = h*0.14`, readable) and only draws the WINDOW of rows that fit the glass, kept
+  around the cursor so the active field is always visible; off-screen rows are occluded by
+  simply not being rendered (no bleed over the bezel). `▲`/`▼` chevrons hint more rows above /
+  below. An over-long single row (ARP's `PATTERN UPDOWN`) shrinks just enough to stay on ONE
+  line instead of wrapping. History: this replaced (a) the original approach of joining the
+  non-active fields into one `screenSmall` string + drei `Text` `maxWidth`-wrap, which
+  overflowed + overlapped once GLIDE made the KEY menu 6 fields, and (b) a first fix that
+  auto-SHRANK the font to fit all rows - which the user found too small to read. The fixed
+  readable font + scroll/occlude is what they asked for. `screenBig`/`screenSmall` remain for
+  the NON-menu OLED (key/chord + patch/mode, loop transport). Mono `OLED_FONT` (ShareTechMono)
+  makes the leading-space cursor column align.
 
 Touch/multitouch correctness lives in the UI lane: a shared `joyPointer` ref
 (`Device.tsx`) is set by the Knob and IGNORED by the Pads, so a finger that owns the

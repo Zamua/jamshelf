@@ -11,23 +11,32 @@ import { StudioLights } from '../shared/StudioLights';
 // viewed top-down). Everything below lerps between these by an eased progress, so the
 // device floats off the shelf onto the desk while the camera swings overhead - one move,
 // no cut.
-// shelf: device RESTS on the plank (its bottom edge sits ON the plank top, fully visible
-// above it - no sinking through), propped back.
-const SHELF_POS = new Vector3(0, 2.62, 0.15);
+// Device local bbox (measured): ~2.41 wide x 1.76 tall x 0.45 deep, pivot ~centered.
+// Used to rest the device exactly on the shelf/desk instead of eyeballing.
+
+// shelf: device RESTS on the plank (its bottom edge sits ON the plank top), propped back.
+// At scale 0.82 + tilt 0.3 the lowest world point is ~0.73 below the pivot; the plank top
+// is at 2.16, so the pivot sits at 2.16 + 0.73 ~ 2.9.
+const SHELF_POS = new Vector3(0, 2.9, 0.15);
 const SHELF_TILT = 0.3;
 const SHELF_SCALE = 0.82;
-// desk: device lies PERFECTLY FLAT, face up, well forward on the desk (clear of the wall).
-const PLAY_POS = new Vector3(0, -2.0, 2.1);
+// desk: device lies PERFECTLY FLAT, face up. Flat + scale 1, its lowest point is ~0.22
+// below the pivot; the desk top is at -2.34, so the pivot sits at -2.34 + 0.22 ~ -2.12.
+const PLAY_POS = new Vector3(0, -2.12, 2.2);
 const PLAY_TILT = -Math.PI / 2;
 const PLAY_SCALE = 1.0;
 
-const SHELF_CAM = new Vector3(0, 2.7, 8.9);
-const SHELF_TGT = new Vector3(0, 2.05, 0);
-// PERFECTLY top-down: an ~84deg look straight DOWN at the flat device, so the face reads
-// fronto-parallel (essentially the old head-on play view, now on the desk). Just shy of a
-// true 90deg so the up-vector stays +Y (an exactly-vertical camera is degenerate).
-const PLAY_CAM = new Vector3(0, 5.7, 3.35);
-const PLAY_TGT = new Vector3(0, -2.0, 2.1);
+const SHELF_CAM = new Vector3(0, 2.9, 9.0);
+const SHELF_TGT = new Vector3(0, 2.72, 0);
+const SHELF_UP = new Vector3(0, 1, 0);
+// PERFECTLY top-down = the old head-on view, now on the desk: camera directly above the
+// flat device looking straight DOWN (distance ~7, matching the old play framing), so the
+// face is fronto-parallel / 2D, no perspective skew. The up-vector swings from +Y to -Z so
+// the camera's "up" stays perpendicular to the straight-down view (an exactly-vertical
+// camera with +Y up is degenerate; with -Z up it is fine).
+const PLAY_CAM = new Vector3(0, 5.15, 2.2);
+const PLAY_TGT = new Vector3(0, -2.12, 2.2);
+const PLAY_UP = new Vector3(0, 0, -1);
 
 const DURATION = 1.2; // seconds for the full float
 
@@ -87,8 +96,10 @@ function Room() {
 // Pose the camera + device at eased progress `e`. Used by the render loop AND once
 // before the first paint (so the very first frame is already posed - no unposed/clipping
 // flash at the device's default origin).
-function applyPose(camera: Camera, device: Group | null, e: number, tmp: Vector3): void {
+function applyPose(camera: Camera, device: Group | null, e: number, tmp: Vector3, tmpUp: Vector3): void {
   camera.position.lerpVectors(SHELF_CAM, PLAY_CAM, e);
+  // swing the up-vector +Y -> -Z so the camera can look straight down at the desk
+  camera.up.copy(tmpUp.lerpVectors(SHELF_UP, PLAY_UP, e).normalize());
   camera.lookAt(tmp.lerpVectors(SHELF_TGT, PLAY_TGT, e));
   if (device) {
     device.position.lerpVectors(SHELF_POS, PLAY_POS, e);
@@ -103,16 +114,20 @@ function applyPose(camera: Camera, device: Group | null, e: number, tmp: Vector3
 function Rig({ target, deviceRef }: { target: number; deviceRef: React.RefObject<Group | null> }) {
   const raw = useRef(target); // snap to the initial mode (deep-links don't animate in)
   const tmp = useRef(new Vector3());
+  const tmpUp = useRef(new Vector3());
   const { camera } = useThree();
-  // pose everything before the first paint
+  // pose everything before the first paint (matrices forced current so the FIRST 3D frame
+  // is already posed - no unposed/clipping flash, no edge-on flash)
   useLayoutEffect(() => {
-    applyPose(camera, deviceRef.current, eased(raw.current), tmp.current);
+    applyPose(camera, deviceRef.current, eased(raw.current), tmp.current, tmpUp.current);
+    camera.updateMatrixWorld();
+    deviceRef.current?.updateMatrixWorld(true);
   }, [camera, deviceRef]);
   useFrame((state, dt) => {
     const step = dt / DURATION;
     if (raw.current < target) raw.current = Math.min(target, raw.current + step);
     else if (raw.current > target) raw.current = Math.max(target, raw.current - step);
-    applyPose(state.camera, deviceRef.current, eased(raw.current), tmp.current);
+    applyPose(state.camera, deviceRef.current, eased(raw.current), tmp.current, tmpUp.current);
   });
   return null;
 }
@@ -153,7 +168,7 @@ export function Stage({ mode, vm, handlers, onShelfTap }: StageProps) {
             device's own pads are inert here (handlers are no-ops until it lands) */}
         {mode === 'shelf' && (
           <mesh onPointerDown={stop} onClick={onShelfTap}>
-            <sphereGeometry args={[3.1, 16, 16]} />
+            <sphereGeometry args={[2.4, 16, 16]} />
             <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>
         )}

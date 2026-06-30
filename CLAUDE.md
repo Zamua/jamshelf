@@ -12,53 +12,69 @@ into the shelf-of-instruments shape on 2026-06-30.
 
 ```
 src/
-  app/App.tsx          ROUTER: / -> Shelf, /<id> -> instrument (lazy, code-split),
-                       * -> shelf. /rig/<uuid> (two segments) slots in later, no collision.
-                       Renders the shared back-to-shelf chrome around each instrument.
-  shelf/Shelf.tsx      the 3D shelf scene (instruments on pedestals; tap -> navigate).
-                       All TEXT is HTML overlay (no in-scene font -> no troika CDN stall).
-  shared/              cross-instrument code (only extract here once a 2nd use exists):
-    instrument.ts      InstrumentManifest (id, name, blurb, hasMemory, lazy Play, Shelf3D, accent)
-    StudioLights.tsx   the metallic-sheen lighting rig, shared by the shelf + the play scene
+  app/App.tsx          BrowserRouter > Experience (thin shell). Real URLs (/ , /<id>,
+                       future /rig/<uuid>) for deep-linking, but the ROUTE only sets a mode.
+  app/Experience.tsx   the composition root: useSynth() (the live HiClone), reads the route
+                       -> mode 'shelf'|'play', renders the persistent <Stage> + the HTML
+                       chrome (shelf caption / play tools+back) CROSS-FADED, gates device
+                       interactivity until it lands, owns the Manual.
+  stage/Stage.tsx      THE ONE PERSISTENT CANVAS. The shelf + the play view are the SAME
+                       scene at two ends of a continuous move: the device floats off a wall
+                       shelf, arcs forward + down onto a desk, while the camera swings to a
+                       3/4 top-down desk view. One smootherstep-eased progress lerps the
+                       device pose + the camera between SHELF and PLAY. NOTHING remounts ->
+                       no cut. Warm cozy room throughout (no warm->cold shift).
+  shared/
+    instrument.ts      InstrumentManifest = shelf metadata only (id, name, blurb, hasMemory, accent)
+    StudioLights.tsx   the metallic-sheen lighting rig (the Stage adds warm lamps on top)
   instruments/
-    registry.ts        INSTRUMENTS[] + instrumentById() - the shelf + router read this
+    registry.ts        INSTRUMENTS[] + instrumentById() - the Experience reads this
     hichord/           the HiClone instrument (its own DDD stack, below)
-      Hichord.tsx      the play experience (default-exported, lazy-loaded by the manifest)
-      Shelf3D.tsx      the non-interactive display model for the shelf (Device + static vm)
-      manifest.ts      the HiClone's InstrumentManifest
+      manifest.ts      the HiClone's shelf metadata
       domain/music/    PURE music theory (types, scales, chords, performance). Unit-tested.
       application/     ports.ts (SynthPort/Clock), state.ts (ViewModel), persistence.ts
                        (SettingsStore/LooperStore ports + coerceSettings), synthController.ts
       infrastructure/  audio/{webAudioSynth,nullSynth,webAudioLooper}, clock/intervalClock,
                        persistence/{localStorageSettings,indexedDbLooper} (NAMESPACED per instrument)
-      ui/              three/Device.tsx + parts, deviceProps.ts, components/, hooks/useSynth.ts
+      ui/              three/Device.tsx + parts, deviceProps.ts, components/Manual, hooks/useSynth.ts
 ```
 
-Adding an instrument = drop a folder under `instruments/<id>/` exposing an
-`InstrumentManifest` (a lazy `Play` component + a `Shelf3D` display model) and append it to
-`registry.ts`. `Play` is lazy so an instrument's audio engine + scene only load when opened
-(the HiClone splits into its own chunk). **Persistence is namespaced per instrument**
-(`jamshelf/<id>/settings` in localStorage; one IndexedDB record per instrument in db
-`jamshelf`, store `looper`), so each groovebox keeps its own memory and they never collide.
-Deploy is still ONE hostthis static site (`4jzmz9uv`, SPA fallback serves `/<id>` deep links).
+**Single instrument for now: `Stage` + `Experience` import the HiClone's `Device` + `useSynth`
+directly** (the continuity needs the SAME live device on the shelf AND the desk, so the old
+lazy-`Play`/`Shelf3D`-per-route split was dropped). When a 2nd instrument lands, generalize the
+Stage to mount the route-selected instrument's device. **Persistence is namespaced per
+instrument** (`jamshelf/<id>/settings` in localStorage; one IndexedDB record per instrument in
+db `jamshelf`, store `looper`), so each groovebox keeps its own memory. Deploy is still ONE
+hostthis static site (`4jzmz9uv`, SPA fallback serves `/<id>` deep links; a cold deep-link
+snaps straight to the play pose, no float).
 
-## The shelf scene (`src/shelf/Shelf.tsx`)
+## The stage = ONE continuous scene, shelf <-> desk (`src/stage/Stage.tsx`)
 
-A **cozy, lamp-lit room** (warm-brown radial CSS bg + a warm `hemisphereLight` + amber
-`pointLight`s layered over the shared `StudioLights` so the device keeps its metallic
-sheen). The HiClone rests on a **wooden shelf plank**, **propped back at an angle**
-(`PROP_TILT`, the face tilts up toward the viewer) against a warm back wall. The scene
-tilts gently toward the pointer (`Parallax`) for life; the device model is static (it's
-resting). All shelf text (title / caption / footer) is **HTML overlay**, never in-scene
-drei `<Text>` (no font to fetch -> no troika CDN stall).
+A **cozy, lamp-lit room** (warm CSS bg behind the alpha canvas + `WarmLights`: a warm
+`hemisphereLight` + amber `pointLight`s, incl. a desk lamp, layered over `StudioLights` so
+the metal keeps its sheen). The room holds a **wooden wall-shelf up high** and a **wooden
+desk below**. The HiClone is the SAME live `<Device>` throughout; only its pose + the camera
+animate:
+- **shelf end (progress 0):** propped back on the wall-shelf (`SHELF_TILT`), camera at eye level head-on.
+- **play end (progress 1):** lying near-flat on the desk (`PLAY_TILT ~ -90deg`), camera in a 3/4 look DOWN (~54deg) so it reads as a device on your desk in perspective.
 
-**Tap = an animated dive into play, NOT a hard cut:** `open()` sets `zooming`, and over
-`ZOOM_MS` (~620ms) the `CameraRig` lerps the camera INTO the device while the `Hero`
-un-tilts to face-on and a dark CSS veil (`.shelf-fade`, color matched to the play view's
-bg) fades in; at the end it `navigate()`s to `/<id>`, where the play view's canvas
-fade-in (`device-fade-in`) completes the bridge. **The instrument's lazy chunk is
-PREFETCHED** on shelf mount (`manifest.preload()`), so the dive lands on a ready device
-instead of a "loading" flash. Tune the cozy look + the dive in `Shelf.tsx` / `Shelf.css`.
+**Tapping the shelved device floats it to the desk in ONE continuous move - no route swap,
+no fade, no cut.** A `Rig` advances one progress toward the target (shelf=0/play=1) and
+**smootherstep**-eases everything: it `lerpVectors` the camera position + target, and the
+device group's position / x-rotation / scale, every frame. The float **arcs forward**
+(`position.z += sin(progress*PI)*1.7`) so the device lifts off the shelf and curves out +
+down onto the desk instead of dropping through the shelf. Because the canvas is mounted ONCE
+at the app root (`Experience`) and only `mode` changes, nothing ever remounts.
+
+`Experience` cross-fades the HTML chrome (shelf caption <-> play tools+back) as the device
+floats, and gates device interactivity: the device only becomes playable `FLOAT_MS` (~1.25s)
+after entering play (so taps mid-float don't fire notes); on the shelf a tap hits an
+invisible catcher that calls `onShelfTap` (navigate to play). A cold deep-link to `/<id>`
+snaps to the play pose (the `Rig`'s progress ref initializes to the target, no animation).
+
+History: this REPLACED a first cut where the shelf + the play view were two separate canvases
+bridged by a camera-dive + dark fade + route swap - which still read as a jump cut (warm shelf
+-> cold play stage). Unifying into one persistent canvas is what makes it truly seamless.
 
 --- everything below is the HiClone instrument (under `src/instruments/hichord/`) ---
 

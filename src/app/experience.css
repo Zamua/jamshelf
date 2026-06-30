@@ -1,0 +1,141 @@
+:root {
+  color-scheme: dark;
+}
+
+/* The cozy room sits behind the (alpha) canvas; the canvas fills most of it, this warm
+   wash shows through the edges. Same warmth on the shelf AND the desk - no cold stage. */
+.experience {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: radial-gradient(130% 100% at 50% 14%, #5a3f2c 0%, #3a2418 40%, #20120c 74%, #160c08 100%);
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* HTML chrome over the canvas. Both overlays stay mounted and CROSS-FADE as the device
+   floats between the shelf and the desk, so the chrome swap is seamless too. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+}
+.overlay.is-on {
+  opacity: 1;
+}
+.overlay.is-on button {
+  pointer-events: auto;
+}
+
+/* ---- shelf chrome ---- */
+.shelf-title {
+  position: absolute;
+  top: env(safe-area-inset-top, 0);
+  left: 0;
+  right: 0;
+  padding-top: 22px;
+  text-align: center;
+  font: 700 26px/1 system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  color: #f4ecdf;
+  transform: skewX(-9deg);
+}
+.shelf-title span {
+  color: #f0a93a;
+}
+.shelf-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  font-family: system-ui, sans-serif;
+}
+.shelf-name {
+  font-size: 30px;
+  font-weight: 700;
+  color: #fbf4e8;
+}
+.shelf-blurb {
+  font-size: 13px;
+  color: #c9b49a;
+  max-width: 80vw;
+  text-align: center;
+}
+.shelf-play {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f0a93a;
+}
+.shelf-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0));
+  text-align: center;
+  font: 500 11px/1 system-ui, sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #8a7256;
+}
+
+/* ---- play chrome ---- */
+.back-to-shelf {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0));
+  left: calc(12px + env(safe-area-inset-left, 0));
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(30, 20, 12, 0.55);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 220, 180, 0.12);
+  color: #f4ecdf;
+  font-size: 26px;
+  line-height: 1;
+  padding-bottom: 3px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tools {
+  position: absolute;
+  top: calc(14px + env(safe-area-inset-top, 0));
+  right: calc(14px + env(safe-area-inset-right, 0));
+  display: flex;
+  gap: 8px;
+}
+.tool-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(30, 20, 12, 0.55);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 220, 180, 0.12);
+  color: #f4ecdf;
+  font: 600 16px/1 system-ui, sans-serif;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tool-btn.is-active {
+  background: rgba(240, 169, 58, 0.35);
+}
+.tool-swatch {
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+}

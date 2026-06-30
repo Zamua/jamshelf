@@ -1,8 +1,8 @@
-# chord-synth
+# jamshelf
 
-A playable, 3D chord synthesizer that runs in the browser. Press the pads to play the seven chords that always sound good together in your chosen key, morph them live with the joystick, and rotate the device in 3D to inspect it. Inspired by the HiChord pocket chord synth; this is an independent, unbranded homage.
+A 3D **shelf of playable instruments** in the browser. The shelf displays each instrument as a 3D model; tap one to open and play it. Pick up the **HiClone**, a chord groovebox: press the pads to play the seven chords that always sound good together in your chosen key, morph them live with the joystick, loop and layer, and rotate the device in 3D to inspect it. Inspired by the HiChord pocket chord synth; this is an independent, unbranded homage.
 
-Built with **React + react-three-fiber + TypeScript + Vite**, organized with domain-driven design (a pure music-theory core, a Web Audio adapter behind a port, and a 3D UI).
+Built with **React + react-three-fiber + TypeScript + Vite + react-router**, organized with domain-driven design. Each instrument is a self-contained module (a pure music-theory core, a Web Audio adapter behind a port, and a 3D UI) lazy-loaded on demand; the shelf renders from an instrument registry. More instruments (and, later, linked multi-instrument "jam" sessions) to come.
 
 ## Run it
 

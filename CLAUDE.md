@@ -1,36 +1,55 @@
-# chord-synth — working notes
+# jamshelf — working notes
 
-A playable, 3D chord synthesizer in the browser, inspired by the HiChord (Pocket Audio) but unbranded. React + react-three-fiber + TypeScript + Vite, organized with DDD.
+**jamshelf** is a 3D "shelf" of playable browser instruments: the shelf at `/` displays
+the instruments as 3D models; tapping one opens it at `/<id>` to play. The first (and
+currently only) instrument is the **HiClone**, a chord groovebox inspired by the HiChord
+(Pocket Audio), unbranded. React + react-three-fiber + TypeScript + Vite + react-router,
+organized with DDD. Future: multi-instrument "rig" configurations at `/rig/<uuid>` (the
+same UUID becomes a multiplayer jam room). Was the `chord-synth` repo; renamed + restructured
+into the shelf-of-instruments shape on 2026-06-30.
 
-## What it is
-
-7 chord pads play the 7 diatonic chords of a chosen key + scale ("no wrong notes"). A joystick morphs the held chord live; gray/yellow/red menu buttons set key/scale/octave, sound, and tempo. The device is a real 3D model you can rotate and inspect. Multi-touch, mobile-first.
-
-## Architecture (DDD, dependency rule points inward)
+## Top-level structure (the jamshelf framework)
 
 ```
 src/
-  domain/music/        PURE music theory. No I/O, no framework. Fully unit-tested.
-    types.ts           value objects (PitchClass, Degree, ScaleName, Quality, KeyState, Chord)
-    scales.ts          SCALES interval sets, SCALE_LABELS/ORDER, PAD_LAYOUT, NOTE_NAMES
-    chords.ts          degreeToMidiNotes, qualityOffsets, nameChord, resolveChord, midiToFreq
-  application/         use-cases + ports. Depends on domain only.
-    ports.ts           SynthPort (audio output contract) + PatchName
-    state.ts           ViewModel (the observable UI state) + MenuField
-    persistence.ts     SettingsStore + LooperStore PORTS, SettingsSnapshot/SerializedLooper, coerceSettings (pure)
-    synthController.ts SynthController: owns musical state, orchestrates domain + SynthPort, publishes ViewModel
-  infrastructure/      adapters implementing ports. Depends on application contracts.
-    audio/webAudioSynth.ts  WebAudioSynth implements SynthPort (the real synth engine)
-    audio/nullSynth.ts      no-op SynthPort for tests/SSR
-    persistence/localStorageSettings.ts  SettingsStore -> localStorage
-    persistence/indexedDbLooper.ts       LooperStore -> IndexedDB (binary audio)
-  ui/                  React + R3F. Depends on application (via hooks) + domain types.
-    three/Device.tsx        the 3D device (assembled from component meshes)
-    three/deviceProps.ts    DeviceProps + DeviceHandlers (the 3D<->logic contract)
-    components/             2D overlays (manual, etc.)
-    hooks/useSynth.ts       React adapter: owns SynthController, mirrors ViewModel, exposes DeviceHandlers
-  App.tsx              composition root: wires useSynth -> Canvas -> Device
+  app/App.tsx          ROUTER: / -> Shelf, /<id> -> instrument (lazy, code-split),
+                       * -> shelf. /rig/<uuid> (two segments) slots in later, no collision.
+                       Renders the shared back-to-shelf chrome around each instrument.
+  shelf/Shelf.tsx      the 3D shelf scene (instruments on pedestals; tap -> navigate).
+                       All TEXT is HTML overlay (no in-scene font -> no troika CDN stall).
+  shared/              cross-instrument code (only extract here once a 2nd use exists):
+    instrument.ts      InstrumentManifest (id, name, blurb, hasMemory, lazy Play, Shelf3D, accent)
+    StudioLights.tsx   the metallic-sheen lighting rig, shared by the shelf + the play scene
+  instruments/
+    registry.ts        INSTRUMENTS[] + instrumentById() - the shelf + router read this
+    hichord/           the HiClone instrument (its own DDD stack, below)
+      Hichord.tsx      the play experience (default-exported, lazy-loaded by the manifest)
+      Shelf3D.tsx      the non-interactive display model for the shelf (Device + static vm)
+      manifest.ts      the HiClone's InstrumentManifest
+      domain/music/    PURE music theory (types, scales, chords, performance). Unit-tested.
+      application/     ports.ts (SynthPort/Clock), state.ts (ViewModel), persistence.ts
+                       (SettingsStore/LooperStore ports + coerceSettings), synthController.ts
+      infrastructure/  audio/{webAudioSynth,nullSynth,webAudioLooper}, clock/intervalClock,
+                       persistence/{localStorageSettings,indexedDbLooper} (NAMESPACED per instrument)
+      ui/              three/Device.tsx + parts, deviceProps.ts, components/, hooks/useSynth.ts
 ```
+
+Adding an instrument = drop a folder under `instruments/<id>/` exposing an
+`InstrumentManifest` (a lazy `Play` component + a `Shelf3D` display model) and append it to
+`registry.ts`. `Play` is lazy so an instrument's audio engine + scene only load when opened
+(the HiClone splits into its own chunk). **Persistence is namespaced per instrument**
+(`jamshelf/<id>/settings` in localStorage; one IndexedDB record per instrument in db
+`jamshelf`, store `looper`), so each groovebox keeps its own memory and they never collide.
+Deploy is still ONE hostthis static site (`4jzmz9uv`, SPA fallback serves `/<id>` deep links).
+
+--- everything below is the HiClone instrument (under `src/instruments/hichord/`) ---
+
+## The HiClone instrument (DDD, dependency rule points inward)
+
+7 chord pads play the 7 diatonic chords of a chosen key + scale ("no wrong notes"). A
+joystick morphs the held chord live; gray/yellow/red menu buttons set key/scale/octave,
+sound, and tempo. The device is a real 3D model you can rotate and inspect. Multi-touch,
+mobile-first. (Paths below are relative to `src/instruments/hichord/`.)
 
 **The contracts that keep lanes decoupled** (do not break these casually):
 - `SynthPort` — what the controller calls; what audio adapters implement. Voice groups keyed by an opaque `voiceId` (one chord = one group). `noteOn` with the same id REPLACES the group (a fresh attack); `retune` slides a SOUNDING group to new pitches WITHOUT re-attacking (the LEGATO joystick morph - overlapping notes glide ~25ms, added notes swell in, dropped notes release out). The live morph + inversions + key/scale edits of a held chord all go through `retune` so they never re-pluck; `retune` falls back to `noteOn` if the id is not currently held.
@@ -83,7 +102,7 @@ structural facts, learned by iterating against the official photos in
   the hole. Also: surface-mounted bits (speaker dots, mic) sit at `FRONT_Z + ~0.012`;
   if you re-enable an extrude bevel the land front creeps proud and hides them.
 - **Metallic look**: the case is `metalness ~0.78 / roughness ~0.28` and reflects a
-  drei `<Environment>` built from `<Lightformer>` panels in `App.tsx` (a bright overhead
+  drei `<Environment>` built from `<Lightformer>` panels in `shared/StudioLights.tsx` (a bright overhead
   bar + a soft frontal fill + side panels) - NO CDN HDR (preset envs fetch from a CDN;
   this is local). Without an env map a high-metalness surface reads as dead dark grey;
   the lightformers are the brushed-aluminium sheen. Tune the FRONTAL panel intensity to
@@ -121,7 +140,7 @@ structural facts, learned by iterating against the official photos in
   (cycled by `swapColor()`, exposed on the ViewModel); the UI maps it modulo the
   theme count - NO hex colors leak into the application layer. Chassis/Speaker/Knob
   + the joystick dots take their colors from the resolved theme; cream keys, accent
-  buttons and the screen are fixed. A round swatch button in `App.tsx` cycles it.
+  buttons and the screen are fixed. A round swatch button in `Hichord.tsx` cycles it.
 - All geometry lives in `layout.ts` (`KEY_WELL`, `SCREEN`, `MENU`, `SPEAKER`,
   `MIC`, `KNOB`, `COLS`, `KEY_W`, `BLOCK.gap`, `BRAND`, `JOY_DOTS`, `PAD`,
   `padSpecs()`). Tune there.
@@ -358,13 +377,13 @@ Touch hardening shipped:
   cap width, inside the dot ring); only the cap protrudes; aux + USB-C are flush
   recessed holes (PWR slider + VOL wheel still protrude);
 - iOS magnifier/loupe is a Safari wontfix that CSS canNOT stop; the canonical fix is
-  `preventDefault` on the canvas's raw `touchstart`/`touchmove` (in `App.tsx`
+  `preventDefault` on the canvas's raw `touchstart`/`touchmove` (in `Hichord.tsx`
   `onCreated`) - pads/joystick run on pointer events so they are unaffected. (CSS +
   selectstart/gesturestart + locked viewport are kept as extra layers.)
 
 Next, in rough priority: joystick EXTENDED/CHROMATIC modes (richer voicings + key
 modulation); a step sequencer; Web-MIDI out; presets; chord-lock; more effects
-(tremolo/filter/flanger); games. The repo is private at github.com/Zamua/chord-synth.
+(tremolo/filter/flanger); games. The repo is private at github.com/Zamua/jamshelf.
 
 ## Persistence (local only; survives reload + PWA reopen)
 
@@ -373,7 +392,7 @@ Storage / IndexedDB directly (swapping the backing store = one new adapter + one
 line in `useSynth`):
 
 - **Durable settings -> `SettingsStore` -> localStorage** (`LocalStorageSettingsStore`,
-  key `chord-synth/settings`). The `SettingsSnapshot` is the durable musical state ONLY
+  key `jamshelf/<id>/settings`, e.g. `jamshelf/hichord/settings`). The `SettingsSnapshot` is the durable musical state ONLY
   (key/scale/octave/patch/bpm/volume/theme/mode/arp+rate/strum/bass/fx/glide/drumKit/
   inversion) - never transient state (held pads, morph quality, menu, power, transport).
   The controller `restoreSettings` on construct + `maybeSave()` from `publish()` (a single
@@ -381,8 +400,8 @@ line in `useSynth`):
   **Validation is a PURE function `coerceSettings(raw, fallback)`** (not buried in the
   controller): every field is checked against its domain value set / clamped to range, so
   a stale or hand-edited payload can never set invalid state - it falls back per-field.
-- **Recorded loops -> `LooperStore` -> IndexedDB** (`IndexedDbLooperStore`, db `chord-synth`,
-  store `looper`, key `state`). Audio is seconds of stereo Float32 per layer (megabytes) =
+- **Recorded loops -> `LooperStore` -> IndexedDB** (`IndexedDbLooperStore`, db `jamshelf`,
+  store `looper`, key = the instrument namespace e.g. `hichord`). Audio is seconds of stereo Float32 per layer (megabytes) =
   too big for localStorage, so it lives in IndexedDB (stores typed arrays natively, large
   quota). `WebAudioLooper.serialize()` snapshots every layer's PCM + loop geometry;
   `persist()` saves on each track-set change (finalizeMaster/Overdub, layer delete) and

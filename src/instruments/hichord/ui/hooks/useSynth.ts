@@ -87,10 +87,12 @@ export function useSynth() {
     // loops it back through a separate (untapped) bus, so each recorded layer is
     // frozen and unaffected by later sound / play-mode changes.
     const realSynth = new WebAudioSynth();
-    // The recorded loops persist to IndexedDB (audio is too big for localStorage) and
-    // come back stopped on reload; the durable settings persist to localStorage.
-    const looper = new WebAudioLooper(realSynth, new IndexedDbLooperStore());
-    return new SynthController(realSynth, new IntervalClock(), looper, new LocalStorageSettingsStore());
+    // Persistence is namespaced to this instrument ('hichord') so each instrument on
+    // the shelf keeps its own state: loops in IndexedDB (audio is too big for
+    // localStorage), durable settings in localStorage. Both restore on reload / PWA reopen.
+    const ns = 'hichord';
+    const looper = new WebAudioLooper(realSynth, new IndexedDbLooperStore(ns));
+    return new SynthController(realSynth, new IntervalClock(), looper, new LocalStorageSettingsStore(ns));
   }, []);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());
   const menuLatched = useRef(false); // one nav step per flick out of the dead-zone

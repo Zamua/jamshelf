@@ -1,0 +1,82 @@
+.shelf-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 18%, #1a2235 0%, #0c0f17 55%, #05060a 100%);
+  touch-action: none;
+}
+
+.shelf-stage canvas {
+  display: block;
+}
+
+/* jamshelf wordmark, top-center, sheared to lean right (matches the device brand). */
+.shelf-title {
+  position: absolute;
+  top: env(safe-area-inset-top, 0);
+  left: 0;
+  right: 0;
+  padding-top: 22px;
+  text-align: center;
+  font:
+    700 26px/1 system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  color: #eef2fb;
+  transform: skewX(-9deg);
+  pointer-events: none;
+  user-select: none;
+}
+.shelf-title span {
+  color: #f0a93a;
+}
+
+/* Tappable caption block, lower third. */
+.shelf-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(64px + env(safe-area-inset-bottom, 0));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  font-family: system-ui, sans-serif;
+}
+.shelf-name {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.005em;
+  color: #f4f7fe;
+}
+.shelf-blurb {
+  font-size: 13px;
+  color: #93a0ba;
+  max-width: 80vw;
+  text-align: center;
+}
+.shelf-play {
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #f0a93a;
+}
+
+.shelf-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0));
+  text-align: center;
+  font: 500 11px/1 system-ui, sans-serif;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #586074;
+  pointer-events: none;
+}

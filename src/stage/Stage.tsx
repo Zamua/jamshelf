@@ -38,7 +38,23 @@ const PLAY_CAM = new Vector3(0, 5.15, 2.2);
 const PLAY_TGT = new Vector3(0, -2.12, 2.2);
 const PLAY_UP = new Vector3(0, 0, -1);
 
-const DURATION = 1.2; // seconds for the full float
+// inspect: the eye button floats the device UP off the desk to a centered presentation
+// pose, tilted toward the viewer; the user drags to SPIN it (the device rotates in place;
+// the camera stays put, so there is no camera-control handoff).
+const INSPECT_POS = new Vector3(0, 0.4, 2.2);
+const INSPECT_TILT = -0.42; // stood up from flat, leaning slightly back toward the viewer
+const INSPECT_SCALE = 0.92;
+const INSPECT_CAM = new Vector3(0, 1.3, 9.7);
+const INSPECT_TGT = new Vector3(0, 0.4, 2.2);
+const INSPECT_UP = new Vector3(0, 1, 0);
+
+const DURATION = 1.2; // seconds for the full shelf<->desk float
+const INSPECT_DURATION = 0.75; // seconds for the rise into / out of inspect
+
+interface Spin {
+  x: number;
+  y: number;
+}
 
 // smootherstep (ease-in-out, zero velocity + accel at both ends) for a soft float
 function eased(t: number): number {
@@ -96,55 +112,89 @@ function Room() {
 // Pose the camera + device at eased progress `e`. Used by the render loop AND once
 // before the first paint (so the very first frame is already posed - no unposed/clipping
 // flash at the device's default origin).
-function applyPose(camera: Camera, device: Group | null, e: number, tmp: Vector3, tmpUp: Vector3): void {
-  camera.position.lerpVectors(SHELF_CAM, PLAY_CAM, e);
-  // swing the up-vector +Y -> -Z so the camera can look straight down at the desk
-  camera.up.copy(tmpUp.lerpVectors(SHELF_UP, PLAY_UP, e).normalize());
-  camera.lookAt(tmp.lerpVectors(SHELF_TGT, PLAY_TGT, e));
+// Blend pose across THREE poses: shelf <-(fe)-> play, then that <-(ie)-> inspect. `spin`
+// is the user's drag rotation, applied only as it inspects (scaled by ie). Used by the
+// render loop AND once before the first paint (so the first frame is already posed).
+function applyPose(
+  camera: Camera,
+  device: Group | null,
+  fe: number,
+  ie: number,
+  spin: Spin,
+  t1: Vector3,
+  t2: Vector3,
+  tUp: Vector3,
+): void {
   if (device) {
-    device.position.lerpVectors(SHELF_POS, PLAY_POS, e);
-    // arc FORWARD (toward the viewer) mid-float, so the device lifts off the shelf and
-    // floats out + down onto the desk in a graceful curve instead of dropping through it.
-    device.position.z += Math.sin(e * Math.PI) * 1.7;
-    device.rotation.x = MathUtils.lerp(SHELF_TILT, PLAY_TILT, e);
-    device.scale.setScalar(MathUtils.lerp(SHELF_SCALE, PLAY_SCALE, e));
+    t1.lerpVectors(SHELF_POS, PLAY_POS, fe).lerp(INSPECT_POS, ie);
+    // float arc (lifts off the shelf, curves onto the desk); faded out for inspect
+    t1.z += Math.sin(fe * Math.PI) * 1.7 * (1 - ie);
+    device.position.copy(t1);
+    const baseTilt = MathUtils.lerp(MathUtils.lerp(SHELF_TILT, PLAY_TILT, fe), INSPECT_TILT, ie);
+    device.rotation.set(baseTilt + spin.x * ie, spin.y * ie, 0);
+    device.scale.setScalar(MathUtils.lerp(MathUtils.lerp(SHELF_SCALE, PLAY_SCALE, fe), INSPECT_SCALE, ie));
   }
+  t2.lerpVectors(SHELF_CAM, PLAY_CAM, fe).lerp(INSPECT_CAM, ie);
+  camera.position.copy(t2);
+  // up swings +Y -> -Z for the straight-down desk view, then back to +Y for inspect
+  camera.up.copy(tUp.lerpVectors(SHELF_UP, PLAY_UP, fe).lerp(INSPECT_UP, ie).normalize());
+  t1.lerpVectors(SHELF_TGT, PLAY_TGT, fe).lerp(INSPECT_TGT, ie);
+  camera.lookAt(t1);
 }
 
-function Rig({ target, deviceRef }: { target: number; deviceRef: React.RefObject<Group | null> }) {
-  const raw = useRef(target); // snap to the initial mode (deep-links don't animate in)
-  const tmp = useRef(new Vector3());
-  const tmpUp = useRef(new Vector3());
+function advance(p: { current: number }, target: number, step: number): void {
+  if (p.current < target) p.current = Math.min(target, p.current + step);
+  else if (p.current > target) p.current = Math.max(target, p.current - step);
+}
+
+function Rig({
+  floatTarget,
+  inspectTarget,
+  spinRef,
+  deviceRef,
+}: {
+  floatTarget: number;
+  inspectTarget: number;
+  spinRef: React.RefObject<Spin>;
+  deviceRef: React.RefObject<Group | null>;
+}) {
+  const fRaw = useRef(floatTarget); // snap to the initial mode (deep-links don't animate in)
+  const iRaw = useRef(inspectTarget);
+  const t1 = useRef(new Vector3());
+  const t2 = useRef(new Vector3());
+  const tUp = useRef(new Vector3());
   const { camera } = useThree();
   // pose everything before the first paint (matrices forced current so the FIRST 3D frame
   // is already posed - no unposed/clipping flash, no edge-on flash)
   useLayoutEffect(() => {
-    applyPose(camera, deviceRef.current, eased(raw.current), tmp.current, tmpUp.current);
+    applyPose(camera, deviceRef.current, eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current, t2.current, tUp.current);
     camera.updateMatrixWorld();
     deviceRef.current?.updateMatrixWorld(true);
-  }, [camera, deviceRef]);
+  }, [camera, deviceRef, spinRef]);
   useFrame((state, dt) => {
-    const step = dt / DURATION;
-    if (raw.current < target) raw.current = Math.min(target, raw.current + step);
-    else if (raw.current > target) raw.current = Math.max(target, raw.current - step);
-    applyPose(state.camera, deviceRef.current, eased(raw.current), tmp.current, tmpUp.current);
+    advance(fRaw, floatTarget, dt / DURATION);
+    advance(iRaw, inspectTarget, dt / INSPECT_DURATION);
+    applyPose(state.camera, deviceRef.current, eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current, t2.current, tUp.current);
   });
   return null;
 }
 
 interface StageProps {
   mode: 'shelf' | 'play';
+  inspect: boolean; // eye button: float the device up + let the user spin it
+  spinRef: React.RefObject<Spin>; // the user's drag-spin (applied while inspecting)
   vm: ViewModel;
   handlers: DeviceHandlers; // real handlers when interactive, no-ops otherwise
   onShelfTap: () => void; // tap the shelved instrument -> float it to the desk
 }
 
-// The ONE persistent canvas behind the whole app. The shelf and the play view are the
-// same scene at two ends of a continuous move; only `mode` (and the resulting camera +
-// device pose) changes. Mounted once at the app root so nothing ever remounts -> no cut.
-export function Stage({ mode, vm, handlers, onShelfTap }: StageProps) {
+// The ONE persistent canvas behind the whole app. The shelf, the desk play view, and the
+// raised inspect pose are the same scene; only `mode` + `inspect` (and the resulting camera
+// + device pose) change. Mounted once at the app root so nothing ever remounts -> no cut.
+export function Stage({ mode, inspect, spinRef, vm, handlers, onShelfTap }: StageProps) {
   const deviceRef = useRef<Group>(null);
-  const target = mode === 'play' ? 1 : 0;
+  const floatTarget = mode === 'play' ? 1 : 0;
+  const inspectTarget = inspect ? 1 : 0;
   const stop = (e: ThreeEvent<PointerEvent>) => e.stopPropagation();
 
   return (
@@ -173,7 +223,7 @@ export function Stage({ mode, vm, handlers, onShelfTap }: StageProps) {
           </mesh>
         )}
       </group>
-      <Rig target={target} deviceRef={deviceRef} />
+      <Rig floatTarget={floatTarget} inspectTarget={inspectTarget} spinRef={spinRef} deviceRef={deviceRef} />
     </Canvas>
   );
 }

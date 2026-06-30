@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Stage } from '../stage/Stage';
+import { EyeIcon } from './EyeIcon';
 import { useSynth } from '../instruments/hichord/ui/hooks/useSynth';
 import { BODY_THEMES } from '../instruments/hichord/ui/three/palette';
 import { Manual } from '../instruments/hichord/ui/components/Manual';
@@ -49,6 +50,11 @@ export function Experience() {
     if (!valid) navigate('/', { replace: true });
   }, [valid, navigate]);
 
+  // Eye button: float the device up + let the user spin it. `spin` holds the drag-accumulated
+  // rotation (x = tilt, y = turn), read every frame by the stage; reset each time inspect opens.
+  const [inspect, setInspect] = useState(false);
+  const spin = useRef({ x: 0, y: 0 });
+
   // The device only becomes interactive once it has landed on the desk (after the float).
   const [interactive, setInteractive] = useState(mode === 'play');
   useEffect(() => {
@@ -57,14 +63,38 @@ export function Experience() {
       return () => clearTimeout(t);
     }
     setInteractive(false);
+    setInspect(false); // leaving play closes inspect
     setManualOpen(false);
   }, [mode]);
+
+  const toggleInspect = () => {
+    setInspect((on) => {
+      if (!on) spin.current = { x: 0, y: 0 }; // entering: start un-spun
+      return !on;
+    });
+  };
+
+  // Drag-to-spin while inspecting: a horizontal drag turns the device, a vertical drag tilts it.
+  const drag = useRef<{ x: number; y: number } | null>(null);
+  const onDragStart = (e: React.PointerEvent) => {
+    drag.current = { x: e.clientX, y: e.clientY };
+  };
+  const onDragMove = (e: React.PointerEvent) => {
+    if (!drag.current) return;
+    spin.current.y += (e.clientX - drag.current.x) * 0.01;
+    spin.current.x = Math.max(-1.2, Math.min(1.2, spin.current.x + (e.clientY - drag.current.y) * 0.008));
+    drag.current = { x: e.clientX, y: e.clientY };
+  };
+  const onDragEnd = () => {
+    drag.current = null;
+  };
 
   const deviceHandlers = useMemo<DeviceHandlers>(
     () => ({ ...handlers, onHelpToggle: () => setManualOpen((o) => !o) }),
     [handlers],
   );
-  const stageHandlers = interactive ? deviceHandlers : NOOP_HANDLERS;
+  // No playing while inspecting (you're looking at it, not playing it).
+  const stageHandlers = interactive && !inspect ? deviceHandlers : NOOP_HANDLERS;
 
   const play = () => {
     handlers.resume(); // build + unlock audio on the first gesture
@@ -74,7 +104,19 @@ export function Experience() {
 
   return (
     <div className="experience">
-      <Stage mode={mode} vm={vm} handlers={stageHandlers} onShelfTap={play} />
+      <Stage mode={mode} inspect={inspect} spinRef={spin} vm={vm} handlers={stageHandlers} onShelfTap={play} />
+
+      {/* drag-to-spin surface, only while inspecting (sits under the chrome buttons) */}
+      {inspect && (
+        <div
+          className="inspect-drag"
+          onPointerDown={onDragStart}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onPointerLeave={onDragEnd}
+          onPointerCancel={onDragEnd}
+        />
+      )}
 
       {/* shelf chrome */}
       <div className={'overlay shelf-chrome' + (mode === 'shelf' ? ' is-on' : '')}>
@@ -107,6 +149,14 @@ export function Experience() {
             aria-pressed={manualOpen}
           >
             ?
+          </button>
+          <button
+            className={'tool-btn' + (inspect ? ' is-active' : '')}
+            onClick={toggleInspect}
+            aria-label="Inspect the device in 3D"
+            aria-pressed={inspect}
+          >
+            <EyeIcon />
           </button>
         </div>
       </div>

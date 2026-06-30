@@ -123,6 +123,8 @@
 .tool-btn {
   width: 44px;
   height: 44px;
+  display: grid;
+  place-items: center;
   border-radius: 12px;
   background: rgba(30, 20, 12, 0.55);
   backdrop-filter: blur(8px);
@@ -131,6 +133,17 @@
   font: 600 16px/1 system-ui, sans-serif;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* full-screen drag surface for inspect (sits under the chrome buttons by DOM order). */
+.inspect-drag {
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+  cursor: grab;
+}
+.inspect-drag:active {
+  cursor: grabbing;
 }
 .tool-btn.is-active {
   background: rgba(240, 169, 58, 0.35);

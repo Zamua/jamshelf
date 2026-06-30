@@ -56,7 +56,7 @@ the metal keeps its sheen). The room holds a **wooden wall-shelf up high** and a
 desk below**. The HiClone is the SAME live `<Device>` throughout; only its pose + the camera
 animate:
 - **shelf end (progress 0):** propped back on the wall-shelf (`SHELF_TILT`), camera at eye level head-on.
-- **play end (progress 1):** lying near-flat on the desk (`PLAY_TILT ~ -90deg`), camera in a 3/4 look DOWN (~54deg) so it reads as a device on your desk in perspective.
+- **play end (progress 1):** lying PERFECTLY FLAT on the desk (`PLAY_TILT = -90deg`), camera an ~84deg look straight DOWN so the face reads fronto-parallel - the old head-on play view, now on the desk. (NB: an EXACTLY 90deg camera is degenerate - the up-vector goes parallel to the view and the device renders edge-on; ~84deg with up `+Y` avoids it and is visually indistinguishable.) The device RESTS on the shelf/desk: tune `SHELF_POS.y` + the plank `y` so the bottom edge sits ON the plank (not sunk through it), and `PLAY_SCALE` + the camera distance so the flat face fills the frame.
 
 **Tapping the shelved device floats it to the desk in ONE continuous move - no route swap,
 no fade, no cut.** A `Rig` advances one progress toward the target (shelf=0/play=1) and

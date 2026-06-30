@@ -11,19 +11,23 @@ import { StudioLights } from '../shared/StudioLights';
 // viewed top-down). Everything below lerps between these by an eased progress, so the
 // device floats off the shelf onto the desk while the camera swings overhead - one move,
 // no cut.
-const SHELF_POS = new Vector3(0, 1.5, 0);
-const PLAY_POS = new Vector3(0, -1.74, 0.6);
-const SHELF_TILT = 0.34; // propped back on the shelf
-const PLAY_TILT = -Math.PI / 2 + 0.08; // lying near-flat on the desk, face up
+// shelf: device RESTS on the plank (bottom edge on the plank top, no clip), propped back
+// and toward the front of the plank so the shelf lip doesn't hide its base.
+const SHELF_POS = new Vector3(0, 2.18, 0.55);
+const SHELF_TILT = 0.3;
 const SHELF_SCALE = 0.82;
-const PLAY_SCALE = 1.02;
+// desk: device lies PERFECTLY FLAT, face up, well forward on the desk (clear of the wall).
+const PLAY_POS = new Vector3(0, -2.0, 2.1);
+const PLAY_TILT = -Math.PI / 2;
+const PLAY_SCALE = 0.95;
 
-const SHELF_CAM = new Vector3(0, 1.3, 8.7);
-const SHELF_TGT = new Vector3(0, 1.45, 0);
-// a 3/4 look DOWN at the desk (~54 deg below horizontal), so the device reads as lying
-// on the desk in perspective in front of you, not floating head-on.
-const PLAY_CAM = new Vector3(0, 4.7, 5.4);
-const PLAY_TGT = new Vector3(0, -1.7, 0.25);
+const SHELF_CAM = new Vector3(0, 2.7, 8.9);
+const SHELF_TGT = new Vector3(0, 2.05, 0);
+// PERFECTLY top-down: an ~84deg look straight DOWN at the flat device, so the face reads
+// fronto-parallel (essentially the old head-on play view, now on the desk). Just shy of a
+// true 90deg so the up-vector stays +Y (an exactly-vertical camera is degenerate).
+const PLAY_CAM = new Vector3(0, 6.9, 3.75);
+const PLAY_TGT = new Vector3(0, -2.0, 2.1);
 
 const DURATION = 1.2; // seconds for the full float
 
@@ -57,25 +61,25 @@ function Room() {
         <planeGeometry args={[48, 34]} />
         <meshStandardMaterial color="#4a3122" roughness={0.96} metalness={0} />
       </mesh>
-      {/* wall shelf (up high) */}
-      <group position={[0, 0.95, -0.7]}>
+      {/* wall shelf (up high) - its top sits just under the device's resting bottom */}
+      <group position={[0, 1.62, -0.55]}>
         <mesh>
-          <boxGeometry args={[9.4, 0.4, 2.4]} />
+          <boxGeometry args={[9.4, 0.42, 2.5]} />
           <meshStandardMaterial color="#6e4a2f" roughness={0.72} metalness={0.04} />
         </mesh>
-        <mesh position={[0, 0.04, 1.2]}>
-          <boxGeometry args={[9.4, 0.32, 0.05]} />
+        <mesh position={[0, 0.05, 1.25]}>
+          <boxGeometry args={[9.4, 0.34, 0.05]} />
           <meshStandardMaterial color="#7e5636" roughness={0.6} metalness={0.05} />
         </mesh>
       </group>
-      {/* desk surface (low, in front) */}
-      <mesh position={[0, -2.35, 1.4]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[26, 16]} />
+      {/* desk surface (low, in front) - the device lies flat on it */}
+      <mesh position={[0, -2.34, 1.6]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[30, 18]} />
         <meshStandardMaterial color="#5e3f29" roughness={0.82} metalness={0.05} />
       </mesh>
       {/* a soft warm pool of light on the desk under the play position */}
-      <mesh position={[0, -2.32, 0.6]} rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[3.4, 56]} />
+      <mesh position={[0, -2.31, 0.35]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[3.6, 56]} />
         <meshBasicMaterial color="#ffb463" transparent opacity={0.1} toneMapped={false} />
       </mesh>
     </group>

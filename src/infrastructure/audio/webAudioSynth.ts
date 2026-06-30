@@ -42,6 +42,10 @@ interface Patch {
   unisonSpread?: number; // 0..1 stereo pan spread of the unison
   sub?: number; // gain of a sine one octave below (0 / undefined = none)
   drive?: number; // soft-clip waveshaper amount before the filter (grit; Reese/neuro bass)
+  // pitch-attack envelope: the note starts `pitchAttack` semitones BELOW the target and
+  // glides up to it over `pitchAttackTime` (the supersaw-stab "bloom" on note-on).
+  pitchAttack?: number; // semitones below at onset (0 / undefined = none)
+  pitchAttackTime?: number; // ramp time in seconds (default 0.06)
   // FM params (2-op): a modulator at carrier*ratio modulates the carrier frequency,
   // its depth (index) enveloped from peak -> sustain over fmDecay (the "FM pluck").
   carrier: Wave;
@@ -108,6 +112,9 @@ const PATCHES: Record<PatchName, Patch> = {
   // the OCTAVE) for the classic enormous bass. NEURO sweeps a resonant filter for movement.
   REESE: { ...BASE, osc1: 'sawtooth', unison: 4, unisonDetune: 20, unisonSpread: 0.45, sub: 0.5, drive: 3, cutoff: 1500, q: 0.7, A: 0.01, D: 0.3, S: 0.85, R: 0.3, wet: 0.1 },
   NEURO: { ...BASE, osc1: 'sawtooth', unison: 3, unisonDetune: 26, unisonSpread: 0.4, sub: 0.5, drive: 6, cutoff: 2600, cutoffFloor: 500, filterEnv: true, q: 3.5, A: 0.005, D: 0.35, S: 0.5, R: 0.3, wet: 0.12 },
+  // BLOOM: a held, lightly-buzzy supersaw chord-stab that blooms UP in pitch on the
+  // attack (the "sweeps in" sound). Low detune so it stays clean (no flange/wobble).
+  BLOOM: { ...BASE, osc1: 'sawtooth', unison: 5, unisonDetune: 14, unisonSpread: 0.6, sub: 0.25, drive: 1.2, pitchAttack: 1.5, pitchAttackTime: 0.07, cutoff: 4800, q: 0.4, A: 0.012, D: 0.3, S: 0.85, R: 0.45, wet: 0.25 },
 };
 
 // A soft-clip (tanh) waveshaper curve for the `drive` grit (amount ~3-8).
@@ -537,13 +544,31 @@ export class WebAudioSynth implements SynthPort {
     return impulse;
   }
 
-  // Set an oscillator's frequency at t0, or (portamento) glide it from `from` to the
-  // target over glideSec. Each osc passes its own scaled `from` so unison/sub/FM ride
-  // the slide together. exponentialRamp needs strictly-positive values.
-  private glideFreq(param: AudioParam, target: number, from: number | undefined, t0: number): void {
-    if (from !== undefined && this.glideSec > 0) {
+  // Set an oscillator's frequency at t0. Two onset shapes can ramp it up to the target:
+  //  - PORTAMENTO (glide): from the previous note's pitch (`glideFrom`, already scaled
+  //    for this osc) over glideSec - applies to a re-triggered mono note.
+  //  - PITCH-ATTACK bloom: from `pitchAttack` semitones below the target over
+  //    pitchAttackTime - a per-note onset on every note. Glide wins if both are active.
+  // exponentialRamp needs strictly-positive values.
+  private setVoiceFreq(
+    param: AudioParam,
+    target: number,
+    glideFrom: number | undefined,
+    patch: Patch,
+    t0: number,
+  ): void {
+    let from: number | undefined;
+    let rampTime = 0;
+    if (glideFrom !== undefined && this.glideSec > 0) {
+      from = glideFrom;
+      rampTime = this.glideSec;
+    } else if (patch.pitchAttack) {
+      from = target * Math.pow(2, -patch.pitchAttack / 12);
+      rampTime = patch.pitchAttackTime ?? 0.06;
+    }
+    if (from !== undefined && rampTime > 0) {
       param.setValueAtTime(Math.max(1, from), t0);
-      param.exponentialRampToValueAtTime(Math.max(1, target), t0 + this.glideSec);
+      param.exponentialRampToValueAtTime(Math.max(1, target), t0 + rampTime);
     } else {
       param.setValueAtTime(target, t0);
     }
@@ -584,10 +609,10 @@ export class WebAudioSynth implements SynthPort {
       // which gives the bright attack + mellowing decay of FM E.pianos / bells.
       const carrier = ctx.createOscillator();
       carrier.type = patch.carrier;
-      this.glideFreq(carrier.frequency, freq, glideFrom, t0);
+      this.setVoiceFreq(carrier.frequency, freq, glideFrom, patch, t0);
       const mod = ctx.createOscillator();
       mod.type = patch.modWave;
-      this.glideFreq(mod.frequency, freq * patch.fmRatio, glideFrom && glideFrom * patch.fmRatio, t0);
+      this.setVoiceFreq(mod.frequency, freq * patch.fmRatio, glideFrom && glideFrom * patch.fmRatio, patch, t0);
       const modGain = ctx.createGain();
       const peak = Math.max(1, patch.fmIndex * freq);
       modGain.gain.setValueAtTime(peak, t0);
@@ -611,7 +636,7 @@ export class WebAudioSynth implements SynthPort {
       for (let i = 0; i < unison; i++) {
         const o = ctx.createOscillator();
         o.type = patch.osc1;
-        this.glideFreq(o.frequency, freq, glideFrom, t0);
+        this.setVoiceFreq(o.frequency, freq, glideFrom, patch, t0);
         // spread the unison across the detune; a lone osc keeps the classic +half-spread
         const det = unison > 1 ? (i / (unison - 1) - 0.5) * spread : patch.detune * 0.5;
         o.detune.setValueAtTime(det, t0);
@@ -635,7 +660,7 @@ export class WebAudioSynth implements SynthPort {
       if (patch.osc2 && unison === 1) {
         const osc2 = ctx.createOscillator();
         osc2.type = patch.osc2;
-        this.glideFreq(osc2.frequency, freq * patch.osc2ratio, glideFrom && glideFrom * patch.osc2ratio, t0);
+        this.setVoiceFreq(osc2.frequency, freq * patch.osc2ratio, glideFrom && glideFrom * patch.osc2ratio, patch, t0);
         osc2.detune.setValueAtTime(patch.detune * -0.5, t0); // half the spread, -
         const og = ctx.createGain();
         og.gain.value = patch.osc2gain;
@@ -650,7 +675,7 @@ export class WebAudioSynth implements SynthPort {
       if (patch.sub) {
         const sub = ctx.createOscillator();
         sub.type = 'sine';
-        this.glideFreq(sub.frequency, freq / 2, glideFrom && glideFrom / 2, t0);
+        this.setVoiceFreq(sub.frequency, freq / 2, glideFrom && glideFrom / 2, patch, t0);
         const sg = ctx.createGain();
         sg.gain.value = patch.sub;
         sub.connect(sg);

@@ -136,7 +136,7 @@ describe('looper wiring', () => {
     looper.emit();
     expect(c.getState().screenBig).not.toBe('STOPPED');
     expect(c.getState().screenBig).toBe('C MAJ');
-    expect(c.getState().screenSmall).toBe('STOP 1 LOOP');
+    expect(c.getState().screenSmall).toBe('STOP 1');
 
     // Entering the stop via looperStop() flashes STOPPED once (then it auto-reverts).
     looper.stopped = false; // so toggleStop flips it back to true

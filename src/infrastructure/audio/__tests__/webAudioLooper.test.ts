@@ -1,6 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebAudioLooper } from '../webAudioLooper';
 import type { WebAudioSynth } from '../webAudioSynth';
+import type { LooperStore, SerializedLooper } from '../../../application/persistence';
+
+// An in-memory LooperStore: keeps the last saved state and replays it on load, so a
+// round-trip (record -> persist -> "reload" a fresh looper -> restore) is testable.
+class FakeLooperStore implements LooperStore {
+  saved: SerializedLooper | null = null;
+  clears = 0;
+  load(): Promise<SerializedLooper | null> {
+    return Promise.resolve(this.saved);
+  }
+  save(state: SerializedLooper): void {
+    this.saved = state;
+  }
+  clear(): void {
+    this.saved = null;
+    this.clears++;
+  }
+}
+// flush the looper's async store.load().then(restore) (a microtask, not a timer)
+const flushMicrotasks = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
 
 // A minimal fake Web Audio graph: enough surface for the looper to record, loop,
 // overdub, and click a metronome, with hand-driven time + audio blocks. This pins
@@ -321,6 +344,43 @@ describe('WebAudioLooper', () => {
     expect(looper.view().mode).toBe('idle');
     expect(looper.view().trackCount).toBe(0);
     expect(ctx.sources[0].stopped).toBe(true);
+  });
+
+  it('persists recorded loops and restores them STOPPED on reload', async () => {
+    const store = new FakeLooperStore();
+    const makeWithStore = () => {
+      const ctx = new FakeCtx();
+      const synth = {
+        audioGraph: () => ({ ctx, live: new FakeNode(), loopOut: new FakeGain() }),
+      } as unknown as WebAudioSynth;
+      return { looper: new WebAudioLooper(synth, store), ctx };
+    };
+
+    // record a 2-layer loop -> it is saved to the store
+    const a = makeWithStore();
+    a.looper.setBpm(120);
+    recordMaster(a.looper, a.ctx, { playBlocks: 40 }); // first sample ~0.5
+    recordOverdub(a.looper, a.ctx, 0.3, 50);
+    expect(store.saved?.tracks).toHaveLength(2);
+    expect(store.saved?.loopBars).toBe(1);
+
+    // "reload": a fresh looper sharing the store restores the layers, STOPPED
+    const b = makeWithStore();
+    await flushMicrotasks(); // let the async load().then(restore) run
+    const v = b.looper.view();
+    expect(v.mode).toBe('play');
+    expect(v.trackCount).toBe(2);
+    expect(v.stopped).toBe(true); // halted until the user starts it
+    expect(v.loopBars).toBe(1);
+    // the restored master's audio round-tripped (first sample ~0.5)
+    expect(b.ctx.sources[0].buffer!.getChannelData(0)[0]).toBeCloseTo(0.5);
+
+    // clearing the master wipes the persisted state too
+    b.looper.toggleStop(); // un-stop -> play, so selectTrack/clear are active
+    while (b.looper.view().selected !== 0) b.looper.selectTrack(-1); // to the master
+    b.looper.clear(); // master clear = wipe everything
+    expect(store.saved).toBe(null);
+    expect(store.clears).toBeGreaterThan(0);
   });
 
   it('routes the metronome to loopOut only (never into the recorded live tap)', () => {

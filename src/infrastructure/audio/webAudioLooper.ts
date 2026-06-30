@@ -1,4 +1,5 @@
 import type { AudioLooper, LooperMode, LooperView } from '../../application/ports';
+import type { LooperStore, SerializedLooper } from '../../application/persistence';
 import type { WebAudioSynth } from './webAudioSynth';
 
 // An AUDIO loop recorder: it records the synth's rendered output (not note events)
@@ -76,9 +77,17 @@ export class WebAudioLooper implements AudioLooper {
   private lastBeatKey = -1;
 
   private listeners = new Set<() => void>();
+  private readonly store: LooperStore | null;
 
-  constructor(synth: WebAudioSynth) {
+  constructor(synth: WebAudioSynth, store?: LooperStore) {
     this.synth = synth;
+    this.store = store ?? null;
+    // Reload any saved loops (async). They come back STOPPED so nothing blasts on open
+    // (and iOS won't play audio before a gesture anyway); a joystick-down starts them.
+    if (this.store)
+      void this.store.load().then((data) => {
+        if (data) this.restore(data);
+      });
   }
 
   onChange(cb: () => void): void {
@@ -222,6 +231,7 @@ export class WebAudioLooper implements AudioLooper {
       const [t] = this.tracks.splice(this.selected, 1);
       this.stopTrack(t, true); // fade out so deleting a layer doesn't click
       this.selected = Math.min(this.selected, this.tracks.length - 1);
+      this.persist();
       this.emit();
       return;
     }
@@ -245,6 +255,7 @@ export class WebAudioLooper implements AudioLooper {
     this.countdown = 0;
     this.stopMetronome();
     this.stopDisplayTimer();
+    this.store?.clear(); // wiped everything -> drop the persisted loops too
     this.emit();
   }
 
@@ -303,6 +314,7 @@ export class WebAudioLooper implements AudioLooper {
     this.stopped = false;
     this.stopMetronome();
     this.startDisplayTimer();
+    this.persist();
   }
 
   // Overdub with a 4-beat count-in: silence the existing layers, click 4 times, then
@@ -400,18 +412,77 @@ export class WebAudioLooper implements AudioLooper {
     this.mode = 'play';
     this.stopped = false;
     this.stopMetronome();
+    this.persist();
   }
 
   private startLoop(buf: AudioBuffer, at: number): Track {
+    const { source, gain } = this.makeLayer(buf);
+    source.start(at);
+    return { source, gain, buffer: buf };
+  }
+  // Build a layer's source + per-layer gain wired to the loop bus, WITHOUT starting it
+  // (a restored loop comes up stopped; startLoop adds the `start`).
+  private makeLayer(buf: AudioBuffer): { source: AudioBufferSourceNode; gain: GainNode } {
     const ctx = this.ctx!;
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
+    const source = ctx.createBufferSource();
+    source.buffer = buf;
+    source.loop = true;
     const gain = ctx.createGain();
-    src.connect(gain);
+    source.connect(gain);
     gain.connect(this.loopOut!);
-    src.start(at);
-    return { source: src, gain, buffer: buf };
+    return { source, gain };
+  }
+
+  // --- persistence (the recorded loops, to a LooperStore / IndexedDB) ----------
+  // Snapshot every layer's PCM + the loop geometry. Null when there is nothing to keep.
+  private serialize(): SerializedLooper | null {
+    if (!this.ctx || this.tracks.length === 0 || this.loopLenSamples === 0) return null;
+    return {
+      v: 1,
+      sampleRate: this.ctx.sampleRate,
+      loopLenSamples: this.loopLenSamples,
+      loopBeats: this.loopBeats,
+      loopBars: this.loopBars,
+      bpm: this.bpm,
+      tracks: this.tracks.map((t) => ({
+        channels: [
+          new Float32Array(t.buffer.getChannelData(0)),
+          new Float32Array(t.buffer.getChannelData(1)),
+        ],
+      })),
+    };
+  }
+  private persist(): void {
+    if (!this.store) return;
+    const state = this.serialize();
+    if (state) this.store.save(state);
+    else this.store.clear();
+  }
+  // Rebuild the saved layers into AudioBuffers and come up STOPPED (loaded, halted): the
+  // user pulls the joystick down to start them. Skipped if a fresh recording already
+  // started (a race between the async load and the user hitting record).
+  private restore(data: SerializedLooper): void {
+    if (this.mode !== 'idle' || this.tracks.length > 0) return;
+    if (!this.ensureGraph() || !this.ctx) return;
+    const ctx = this.ctx;
+    this.loopLenSamples = data.loopLenSamples;
+    this.loopBeats = data.loopBeats;
+    this.loopBars = data.loopBars;
+    this.bpm = data.bpm;
+    for (const t of data.tracks) {
+      const buf = ctx.createBuffer(2, data.loopLenSamples, data.sampleRate);
+      buf.getChannelData(0).set(t.channels[0].subarray(0, data.loopLenSamples));
+      buf.getChannelData(1).set(t.channels[1].subarray(0, data.loopLenSamples));
+      // an idle (un-started) source: the stopped state holds the buffer; a restart
+      // (joystick-down) recreates a playing source from it.
+      const { source, gain } = this.makeLayer(buf);
+      this.tracks.push({ source, gain, buffer: buf });
+    }
+    this.selected = this.tracks.length - 1;
+    this.recTrack = -1;
+    this.mode = 'play';
+    this.stopped = true; // halted until the user starts them
+    this.emit();
   }
 
   // The next loop boundary (a multiple of the loop length from the anchor) at or

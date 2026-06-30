@@ -38,7 +38,7 @@ import {
 } from '../domain/music';
 import { PATCH_ORDER, type AudioLooper, type Clock, type PatchName, type SynthPort } from './ports';
 import type { Listener, MenuKind, MenuRow, ViewModel } from './state';
-import type { SettingsSnapshot, SettingsStore } from './persistence';
+import { coerceSettings, type SettingsSnapshot, type SettingsStore } from './persistence';
 
 const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS', 'FX', 'GLIDE'] as const;
 const PLAY_STRUM_MS = 4; // near-zero spread for the plain PLAY mode
@@ -139,31 +139,28 @@ export class SynthController {
       inversion: this.inversion,
     };
   }
-  // Apply a stored snapshot, VALIDATING every field against the known value sets so a
-  // stale / corrupt payload can never set an invalid state (unknown values keep the
-  // default). Pure field assignment - the constructor applies the side effects after.
-  private restoreSettings(s: SettingsSnapshot): void {
-    const pick = <T>(val: unknown, allowed: readonly T[], dflt: T): T =>
-      allowed.includes(val as T) ? (val as T) : dflt;
-    const num = (val: unknown, lo: number, hi: number, dflt: number): number =>
-      typeof val === 'number' && Number.isFinite(val) ? Math.min(hi, Math.max(lo, val)) : dflt;
-    this.root = Math.round(num(s.root, 0, 11, this.root)) % 12;
-    this.scale = pick(s.scale, SCALE_ORDER, this.scale);
-    this.octave = Math.round(num(s.octave, -2, 2, this.octave));
-    this.patch = pick(s.patch, PATCH_ORDER, this.patch);
-    this.bpm = Math.round(num(s.bpm, 40, 240, this.bpm));
-    this.volume = num(s.volume, 0, 1, this.volume);
-    this.themeIndex = Math.max(0, Math.round(num(s.themeIndex, 0, 999, this.themeIndex)));
-    this.mode = pick(s.mode, PLAY_MODES, this.mode);
-    this.arpPattern = pick(s.arpPattern, ARP_PATTERNS, this.arpPattern);
-    this.arpRate = pick(s.arpRate, RATES, this.arpRate);
-    this.repeatRate = pick(s.repeatRate, RATES, this.repeatRate);
-    this.strumSpeed = pick(s.strumSpeed, STRUM_SPEEDS, this.strumSpeed);
-    this.bass = pick(s.bass, BASS_MODES, this.bass);
-    this.fx = pick(s.fx, FX_MODES, this.fx);
-    this.glide = pick(s.glide, GLIDE_MODES, this.glide);
-    this.drumKit = pick(s.drumKit, DRUM_KITS, this.drumKit);
-    this.inversion = Math.round(num(s.inversion, 0, INVERSIONS - 1, this.inversion));
+  // Reconstitute the durable settings from a stored payload. Validation/clamping is a
+  // pure function (coerceSettings) so this is just field mapping; the constructor
+  // applies the side effects (patch/volume/fx/glide/tempo/strum) afterward.
+  private restoreSettings(raw: unknown): void {
+    const s = coerceSettings(raw, this.snapshotSettings());
+    this.root = s.root;
+    this.scale = s.scale;
+    this.octave = s.octave;
+    this.patch = s.patch;
+    this.bpm = s.bpm;
+    this.volume = s.volume;
+    this.themeIndex = s.themeIndex;
+    this.mode = s.mode;
+    this.arpPattern = s.arpPattern;
+    this.arpRate = s.arpRate;
+    this.repeatRate = s.repeatRate;
+    this.strumSpeed = s.strumSpeed;
+    this.bass = s.bass;
+    this.fx = s.fx;
+    this.glide = s.glide;
+    this.drumKit = s.drumKit;
+    this.inversion = s.inversion;
   }
   // Write the settings out when they actually change (called on every publish; the
   // de-dupe means a joystick morph or transport tick does not hit storage).
@@ -727,10 +724,11 @@ export class SynthController {
     if (lv.mode === 'play') {
       if (lv.stopped) {
         // Halted: STOPPED flashed once (looperStop); after it fades, show the live
-        // key/scale so nothing obstructs the OLED, with a compact paused-loops marker.
+        // key/scale so nothing obstructs the OLED, with a compact one-line marker
+        // (`STOP n` = n halted layers) that fits without wrapping.
         return {
           big: flashing ? this.flashText : keyScale,
-          small: `STOP ${lv.trackCount} LOOP${lv.trackCount === 1 ? '' : 'S'}`,
+          small: `STOP ${lv.trackCount}`,
         };
       }
       // big line is the live transport (bar.beat), flashing to chord names as you

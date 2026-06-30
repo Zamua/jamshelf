@@ -20,6 +20,14 @@ Then open the printed local URL. Held best in landscape; multi-touch on a phone 
 - **Gray** opens the key menu (root, scale, octave). **Yellow** cycles the sound. **Red** is tap-tempo.
 - **3D** button rotates the device for inspection; **?** opens the in-app guide.
 
+## Saved state
+
+Your settings (key, scale, octave, sound, fx, glide, tempo, drum kit, volume, shell color, ...)
+and your recorded loops persist locally and come back on reload, including when installed as a
+PWA. Settings live in `localStorage`; the loop audio lives in IndexedDB (it is too large for
+`localStorage`). Restored loops come back paused: pull the joystick down to start them. Nothing
+leaves the device.
+
 ## Scripts
 
 | | |

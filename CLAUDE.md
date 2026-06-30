@@ -17,10 +17,13 @@ src/
   application/         use-cases + ports. Depends on domain only.
     ports.ts           SynthPort (audio output contract) + PatchName
     state.ts           ViewModel (the observable UI state) + MenuField
+    persistence.ts     SettingsStore + LooperStore PORTS, SettingsSnapshot/SerializedLooper, coerceSettings (pure)
     synthController.ts SynthController: owns musical state, orchestrates domain + SynthPort, publishes ViewModel
   infrastructure/      adapters implementing ports. Depends on application contracts.
     audio/webAudioSynth.ts  WebAudioSynth implements SynthPort (the real synth engine)
     audio/nullSynth.ts      no-op SynthPort for tests/SSR
+    persistence/localStorageSettings.ts  SettingsStore -> localStorage
+    persistence/indexedDbLooper.ts       LooperStore -> IndexedDB (binary audio)
   ui/                  React + R3F. Depends on application (via hooks) + domain types.
     three/Device.tsx        the 3D device (assembled from component meshes)
     three/deviceProps.ts    DeviceProps + DeviceHandlers (the 3D<->logic contract)
@@ -351,6 +354,36 @@ Touch hardening shipped:
 Next, in rough priority: joystick EXTENDED/CHROMATIC modes (richer voicings + key
 modulation); a step sequencer; Web-MIDI out; presets; chord-lock; more effects
 (tremolo/filter/flanger); games. The repo is private at github.com/Zamua/chord-synth.
+
+## Persistence (local only; survives reload + PWA reopen)
+
+Two narrow PORTS in `application/persistence.ts`, so the app/domain never touch Web
+Storage / IndexedDB directly (swapping the backing store = one new adapter + one wiring
+line in `useSynth`):
+
+- **Durable settings -> `SettingsStore` -> localStorage** (`LocalStorageSettingsStore`,
+  key `chord-synth/settings`). The `SettingsSnapshot` is the durable musical state ONLY
+  (key/scale/octave/patch/bpm/volume/theme/mode/arp+rate/strum/bass/fx/glide/drumKit/
+  inversion) - never transient state (held pads, morph quality, menu, power, transport).
+  The controller `restoreSettings` on construct + `maybeSave()` from `publish()` (a single
+  seam; de-duped via `lastSavedJson` so a joystick morph or transport tick never writes).
+  **Validation is a PURE function `coerceSettings(raw, fallback)`** (not buried in the
+  controller): every field is checked against its domain value set / clamped to range, so
+  a stale or hand-edited payload can never set invalid state - it falls back per-field.
+- **Recorded loops -> `LooperStore` -> IndexedDB** (`IndexedDbLooperStore`, db `chord-synth`,
+  store `looper`, key `state`). Audio is seconds of stereo Float32 per layer (megabytes) =
+  too big for localStorage, so it lives in IndexedDB (stores typed arrays natively, large
+  quota). `WebAudioLooper.serialize()` snapshots every layer's PCM + loop geometry;
+  `persist()` saves on each track-set change (finalizeMaster/Overdub, layer delete) and
+  `store.clear()` on a full wipe. On construct the looper async-loads + `restore()`s the
+  layers **STOPPED** (mode `play`, `stopped: true`) so nothing blasts on open and iOS's
+  no-audio-before-gesture rule is respected; a joystick-down starts them. Restore is a
+  no-op if a fresh recording already began (a race guard).
+
+Both stores are fully guarded (absent / disabled / over-quota / corrupt -> degrade to "no
+saved state", never throw). Tests: `persistence.test.ts` (coerce + controller save/restore
+with a `MemorySettingsStore`), `webAudioLooper.test.ts` "persists + restores STOPPED" (fake
+`LooperStore` round-trip); the real IndexedDB adapter + restore-on-load was browser-verified.
 
 ## Current state
 

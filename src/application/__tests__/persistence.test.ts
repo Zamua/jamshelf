@@ -1,11 +1,55 @@
 import { describe, it, expect } from 'vitest';
 import { SynthController } from '../synthController';
 import { FakeAudioLooper, FakeClock, MemorySettingsStore, SpySynth } from './fakes';
-import type { SettingsSnapshot } from '../persistence';
+import { coerceSettings, type SettingsSnapshot } from '../persistence';
 
 function make(store?: MemorySettingsStore) {
   return new SynthController(new SpySynth(), new FakeClock(), new FakeAudioLooper(), store);
 }
+
+const DEFAULTS: SettingsSnapshot = {
+  v: 1,
+  root: 0,
+  scale: 'MAJOR',
+  octave: 0,
+  patch: 'SAW',
+  bpm: 120,
+  volume: 0.8,
+  themeIndex: 0,
+  mode: 'PLAY',
+  arpPattern: 'UP',
+  arpRate: '1/8',
+  repeatRate: '1/8',
+  strumSpeed: 'MED',
+  bass: 'OFF',
+  fx: 'OFF',
+  glide: 'OFF',
+  drumKit: 'TIGHT',
+  inversion: 0,
+};
+
+describe('coerceSettings (pure validation)', () => {
+  it('keeps valid fields and clamps numbers into range', () => {
+    const s = coerceSettings(
+      { ...DEFAULTS, scale: 'DORIAN', patch: 'NEON', octave: 9, volume: -1, bpm: 1000 },
+      DEFAULTS,
+    );
+    expect(s.scale).toBe('DORIAN');
+    expect(s.patch).toBe('NEON');
+    expect(s.octave).toBe(2); // clamped to [-2, 2]
+    expect(s.volume).toBe(0); // clamped to [0, 1]
+    expect(s.bpm).toBe(240); // clamped to [40, 240]
+  });
+
+  it('falls back for unknown enums and non-objects', () => {
+    expect(coerceSettings({ scale: 'NOPE', mode: 'ZZ' }, DEFAULTS)).toMatchObject({
+      scale: 'MAJOR',
+      mode: 'PLAY',
+    });
+    expect(coerceSettings(null, DEFAULTS)).toEqual(DEFAULTS);
+    expect(coerceSettings('garbage', DEFAULTS)).toEqual(DEFAULTS);
+  });
+});
 
 describe('settings persistence', () => {
   it('saves durable settings to the store as they change', () => {

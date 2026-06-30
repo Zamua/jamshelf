@@ -5,6 +5,7 @@ import { WebAudioSynth } from '../../infrastructure/audio/webAudioSynth';
 import { WebAudioLooper } from '../../infrastructure/audio/webAudioLooper';
 import { IntervalClock } from '../../infrastructure/clock/intervalClock';
 import { LocalStorageSettingsStore } from '../../infrastructure/persistence/localStorageSettings';
+import { IndexedDbLooperStore } from '../../infrastructure/persistence/indexedDbLooper';
 import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
 
@@ -86,9 +87,9 @@ export function useSynth() {
     // loops it back through a separate (untapped) bus, so each recorded layer is
     // frozen and unaffected by later sound / play-mode changes.
     const realSynth = new WebAudioSynth();
-    const looper = new WebAudioLooper(realSynth);
-    // Persist the durable settings (key/scale/octave/patch/fx/glide/mode/bpm/theme/...)
-    // to localStorage so a reload - including a reopened PWA - restores them.
+    // The recorded loops persist to IndexedDB (audio is too big for localStorage) and
+    // come back stopped on reload; the durable settings persist to localStorage.
+    const looper = new WebAudioLooper(realSynth, new IndexedDbLooperStore());
     return new SynthController(realSynth, new IntervalClock(), looper, new LocalStorageSettingsStore());
   }, []);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());

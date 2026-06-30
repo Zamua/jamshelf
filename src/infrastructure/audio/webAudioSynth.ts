@@ -379,10 +379,14 @@ export class WebAudioSynth implements SynthPort {
       const tryResume = () => {
         if (ctx.state !== 'running') void ctx.resume();
       };
+      // Only fight a suspend while the page is VISIBLE (don't keep audio running in a
+      // backgrounded tab); the gesture + visibility handlers bring it back on return.
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') tryResume();
       });
-      ctx.addEventListener('statechange', tryResume);
+      ctx.addEventListener('statechange', () => {
+        if (document.visibilityState === 'visible') tryResume();
+      });
       for (const ev of ['pointerdown', 'touchstart', 'keydown'])
         window.addEventListener(ev, tryResume, { passive: true });
     }

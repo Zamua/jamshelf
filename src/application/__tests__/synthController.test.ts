@@ -385,9 +385,21 @@ describe('menus', () => {
     c.pressSound(); // nothing held -> cycle the synth voice
     expect(c.getState().patch).not.toBe(patch0);
     c.pressPad('p1', 1); // C major triad, root position (lowest = C4 = 60)
-    c.pressSound(); // a pad is held -> cycle to 1st inversion (lowest = E4 = 64)
-    expect(synth.lastOn().id).toBe('p1');
-    expect(synth.lastOn().freqs[0]).toBeCloseTo(midiToFreq(64));
+    c.pressSound(); // a pad is held -> cycle to 1st inversion (lowest = E4 = 64), LEGATO
+    expect(synth.lastRetune().id).toBe('p1'); // retuned in place, NOT re-attacked
+    expect(synth.lastRetune().freqs[0]).toBeCloseTo(midiToFreq(64));
+  });
+
+  it('the joystick morph retunes a held chord legato (no re-attack)', () => {
+    c.pressPad('p1', 1); // C major triad -> one noteOn
+    const onsBefore = synth.on.length;
+    c.setQuality('7th'); // morph the held chord
+    // morph re-voices via retune, NOT a fresh noteOn (no re-pluck)
+    expect(synth.on.length).toBe(onsBefore);
+    expect(synth.lastRetune().id).toBe('p1');
+    expect(synth.lastRetune().freqs).toHaveLength(4); // Cmaj7 = 4 notes
+    c.springToTriad(); // releasing the stick morphs back, also legato
+    expect(synth.lastRetune().freqs).toHaveLength(3);
   });
 
   it('pressing the same menu button closes it; the other switches', () => {

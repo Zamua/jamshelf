@@ -543,14 +543,20 @@ export class SynthController {
   private triggerVoice(voiceId: string, degree: Degree): void {
     this.synth.noteOn(voiceId, this.voiced(degree).map(midiToFreq));
   }
-  private triggerLead(): void {
+  // LEGATO re-voice of a SOUNDING pad: retune in place (no re-attack) - the chord morph.
+  private retuneVoice(voiceId: string, degree: Degree): void {
+    this.synth.retune(voiceId, this.voiced(degree).map(midiToFreq));
+  }
+  private triggerLead(legato = false): void {
     const last = [...this.held.values()].pop();
     if (last === undefined) {
       this.synth.noteOff(LEAD_ID);
       return;
     }
     const chord = resolveChord(last, this.key(), this.quality);
-    this.synth.noteOn(LEAD_ID, [midiToFreq(leadNote(chord.notes))]);
+    const freq = midiToFreq(leadNote(chord.notes));
+    if (legato) this.synth.retune(LEAD_ID, [freq]);
+    else this.synth.noteOn(LEAD_ID, [freq]);
   }
   // Union of every held pad's chord notes (for the arpeggiator), sorted.
   private heldNotes(): Midi[] {
@@ -559,22 +565,23 @@ export class SynthController {
       for (const n of resolveChord(degree, this.key(), this.quality).notes) set.add(n);
     return [...set].sort((a, b) => a - b);
   }
-  // Re-voice whatever is currently sounding (after a morph or key edit).
+  // Re-voice whatever is currently sounding (after a morph or key edit). Uses the LEGATO
+  // retune (no re-attack) so morphing/editing a held chord slides in place, not re-plucks.
   private revoiceHeld(): void {
     if (!this.power || this.inspect) return;
     switch (this.mode) {
       case 'DRONE':
-        if (this.latched !== null) this.triggerVoice(DRONE_ID, this.latched);
+        if (this.latched !== null) this.retuneVoice(DRONE_ID, this.latched);
         return;
       case 'LEAD':
-        this.triggerLead();
+        this.triggerLead(true); // legato
         return;
       case 'ARP':
         return; // the next tick re-reads the held set with the new quality/key
       case 'REPEAT':
       case 'PLAY':
       case 'STRUM':
-        for (const [voiceId, degree] of this.held) this.triggerVoice(voiceId, degree);
+        for (const [voiceId, degree] of this.held) this.retuneVoice(voiceId, degree);
         return;
     }
   }

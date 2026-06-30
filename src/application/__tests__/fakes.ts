@@ -121,6 +121,14 @@ export class SpySynth implements SynthPort {
     this.on.push({ id, freqs: [...freqs], patch });
     this.sounding.add(id);
   }
+  retunes: OnCall[] = [];
+  retune(id: string, freqs: number[], patch?: PatchName): void {
+    this.retunes.push({ id, freqs: [...freqs], patch });
+    this.sounding.add(id);
+  }
+  lastRetune(): OnCall {
+    return this.retunes[this.retunes.length - 1];
+  }
   noteOff(id: string): void {
     this.off.push(id);
     this.sounding.delete(id);

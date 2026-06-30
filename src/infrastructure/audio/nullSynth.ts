@@ -5,6 +5,7 @@ import type { PatchName, SynthPort } from '../../application/ports';
 export class NullSynth implements SynthPort {
   resume(): void {}
   noteOn(_voiceId: string, _freqs: number[], _patch?: PatchName): void {}
+  retune(_voiceId: string, _freqs: number[], _patch?: PatchName): void {}
   noteOff(_voiceId: string): void {}
   releaseAll(): void {}
   setPatch(_patch: PatchName): void {}

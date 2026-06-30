@@ -110,6 +110,9 @@ export interface SynthPort {
   // overrides the current voice for THIS group only (the looper plays each track
   // with its own instrument without disturbing the live patch).
   noteOn(voiceId: string, freqs: number[], patch?: PatchName): void;
+  // Retune a SOUNDING voice group to new pitches WITHOUT re-attacking (the legato chord
+  // morph). Falls back to noteOn if the group is not currently held.
+  retune(voiceId: string, freqs: number[], patch?: PatchName): void;
   // Release a voice group's envelope.
   noteOff(voiceId: string): void;
   // Release every sounding voice immediately (used by power-off).

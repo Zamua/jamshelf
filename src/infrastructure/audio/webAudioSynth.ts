@@ -139,6 +139,8 @@ const TINY = 0.0001; // amplitude floor (avoids zero for ramps + click-free stop
 interface Voice {
   id: string; // owning chord/group id (for registry bookkeeping)
   oscs: OscillatorNode[];
+  oscRatios: number[]; // each osc's frequency / fundamental (for legato retune)
+  fund: number; // current fundamental frequency (for the retune glide start)
   vca: GainNode;
   nodes: AudioNode[]; // every node to disconnect on cleanup (filter, vca, sends)
   release: number; // this voice's release time (s)
@@ -208,6 +210,48 @@ export class WebAudioSynth implements SynthPort {
 
   setGlide(seconds: number): void {
     this.glideSec = Math.max(0, seconds);
+  }
+
+  // LEGATO morph: retune a SOUNDING voice group to new pitches WITHOUT re-attacking the
+  // envelopes. The overlapping notes glide to their new pitch (~25ms, click-free); added
+  // notes (e.g. triad -> 7th) attack in; dropped notes release out. Falls back to a normal
+  // noteOn if the group is not currently held.
+  retune(voiceId: string, freqs: number[], patchName?: PatchName): void {
+    const group = this.groups.get(voiceId);
+    if (!group || group.length === 0 || !this.ctx) {
+      this.noteOn(voiceId, freqs, patchName);
+      return;
+    }
+    const ctx = this.ctx;
+    const t = ctx.currentTime + 0.005;
+    const slide = 0.025; // short pitch glide so the morph slides instead of jumping
+    const oldLen = group.length;
+    const common = Math.min(oldLen, freqs.length);
+    for (let i = 0; i < common; i++) {
+      const v = group[i];
+      const f = freqs[i];
+      v.oscs.forEach((o, k) => {
+        const from = Math.max(1, v.fund * v.oscRatios[k]);
+        const to = Math.max(1, f * v.oscRatios[k]);
+        o.frequency.cancelScheduledValues(t);
+        o.frequency.setValueAtTime(from, t);
+        o.frequency.exponentialRampToValueAtTime(to, t + slide);
+      });
+      v.fund = f;
+    }
+    // added notes -> new voices, attacked normally (they swell in)
+    const patch = PATCHES[patchName ?? this.patchName];
+    for (let i = common; i < freqs.length; i++) {
+      const v = this.makeVoice(voiceId, freqs[i], t, patch);
+      group.push(v);
+      this.active.push(v);
+    }
+    // dropped notes -> release the extras
+    if (freqs.length < oldLen) {
+      for (let i = freqs.length; i < oldLen; i++) this.releaseVoice(group[i], group[i].release);
+      group.length = freqs.length;
+    }
+    this.stealIfNeeded();
   }
 
   noteOff(voiceId: string): void {
@@ -591,6 +635,7 @@ export class WebAudioSynth implements SynthPort {
   private makeVoice(id: string, freq: number, t0: number, patch: Patch, glideFrom?: number): Voice {
     const ctx = this.ctx!;
     const oscs: OscillatorNode[] = [];
+    const oscRatios: number[] = []; // each osc's freq / fundamental, for legato retune
     const nodes: AudioNode[] = [];
 
     // Lowpass biquad shared by both oscillators of this voice.
@@ -638,6 +683,7 @@ export class WebAudioSynth implements SynthPort {
       modGain.connect(carrier.frequency);
       carrier.connect(oscDest);
       oscs.push(carrier, mod);
+      oscRatios.push(1, patch.fmRatio);
       nodes.push(modGain);
     } else {
       // Subtractive. osc1 can be stacked into a detuned, stereo-spread UNISON (a
@@ -655,6 +701,7 @@ export class WebAudioSynth implements SynthPort {
         const det = unison > 1 ? (i / (unison - 1) - 0.5) * spread : patch.detune * 0.5;
         o.detune.setValueAtTime(det, t0);
         oscs.push(o);
+        oscRatios.push(1);
         let tail: AudioNode = o;
         if (stereo > 0 && unison > 1) {
           const pan = ctx.createStereoPanner();
@@ -681,6 +728,7 @@ export class WebAudioSynth implements SynthPort {
         osc2.connect(og);
         og.connect(oscDest);
         oscs.push(osc2);
+        oscRatios.push(patch.osc2ratio);
         nodes.push(og);
       }
 
@@ -695,6 +743,7 @@ export class WebAudioSynth implements SynthPort {
         sub.connect(sg);
         sg.connect(filter);
         oscs.push(sub);
+        oscRatios.push(0.5);
         nodes.push(sg);
       }
     }
@@ -734,6 +783,8 @@ export class WebAudioSynth implements SynthPort {
     const voice: Voice = {
       id,
       oscs,
+      oscRatios,
+      fund: freq,
       vca,
       nodes,
       release: patch.R,

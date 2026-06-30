@@ -30,7 +30,7 @@ src/
 ```
 
 **The contracts that keep lanes decoupled** (do not break these casually):
-- `SynthPort` — what the controller calls; what audio adapters implement. Voice groups keyed by an opaque `voiceId` (one chord = one group; re-`noteOn` with the same id replaces it, which powers the live morph).
+- `SynthPort` — what the controller calls; what audio adapters implement. Voice groups keyed by an opaque `voiceId` (one chord = one group). `noteOn` with the same id REPLACES the group (a fresh attack); `retune` slides a SOUNDING group to new pitches WITHOUT re-attacking (the LEGATO joystick morph - overlapping notes glide ~25ms, added notes swell in, dropped notes release out). The live morph + inversions + key/scale edits of a held chord all go through `retune` so they never re-pluck; `retune` falls back to `noteOn` if the id is not currently held.
 - `DeviceHandlers` / `DeviceProps` — the 3D device is purely presentational: it renders the `ViewModel` and fires raw, semantic-free input (`onPadDown`, `onJoyMove`, ...). All musical interpretation lives in the controller, so the 3D and logic lanes stay independent.
 - `ViewModel` — the single observable state the UI renders.
 
@@ -193,6 +193,17 @@ KEY-menu field (OFF/SLOW/MED/FAST, `glideSeconds`) drives it - HiChord-style tog
   target. Two sources: PORTAMENTO/glide (from the previous mono note, `setGlide`) and the
   per-note PITCH-ATTACK bloom (`Patch.pitchAttack` semitones below over `pitchAttackTime`,
   the supersaw-stab "sweeps in" sound - BLOOM uses it). Glide wins if both are active.
+- **LEGATO morph** (`retune`): the joystick morphs a held chord IN PLACE, no re-pluck. Each
+  Voice now stores `oscRatios` (each osc's freq / fundamental) + `fund` (current fundamental),
+  so `retune(voiceId, freqs)` exponential-ramps every sounding oscillator from its old to its
+  new pitch (~25ms, click-free) WITHOUT touching the VCA gain envelope. Overlapping notes
+  glide; added notes (triad -> 7th) `makeVoice`-attack in; dropped notes `releaseVoice` out.
+  The controller routes ALL re-voicing of a sounding chord (joystick morph `setQuality`,
+  `springToTriad`, inversions, key/scale edits via `revoiceHeld`; DRONE latch; LEAD note) through
+  `retune`/`triggerLead(true)` instead of `noteOn`, so editing a held chord never re-attacks.
+  Engine test `webAudioSynth.test.ts` pins it (fake AudioContext logs param scheduling: a
+  same-count morph re-ramps oscillator frequency + adds ZERO new VCA gain ops; adding a note
+  attacks exactly one voice).
 
 **Looper (`infrastructure/audio/webAudioLooper.ts`, `AudioLooper` port)**: an AUDIO
 loop recorder, NOT an event looper (rewritten 2026-06-29 - the old event `Looper` +

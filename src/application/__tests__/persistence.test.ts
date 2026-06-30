@@ -1,0 +1,93 @@
+import { describe, it, expect } from 'vitest';
+import { SynthController } from '../synthController';
+import { FakeAudioLooper, FakeClock, MemorySettingsStore, SpySynth } from './fakes';
+import type { SettingsSnapshot } from '../persistence';
+
+function make(store?: MemorySettingsStore) {
+  return new SynthController(new SpySynth(), new FakeClock(), new FakeAudioLooper(), store);
+}
+
+describe('settings persistence', () => {
+  it('saves durable settings to the store as they change', () => {
+    const store = new MemorySettingsStore();
+    const c = make(store);
+
+    c.setPatch('REESE');
+    c.swapColor(); // themeIndex 0 -> 1
+    c.toggleMenu('KEY');
+    c.cursorField(1); // SCL
+    c.cursorField(1); // OCT
+    c.editValue(-1); // octave -> -1
+
+    expect(store.saved?.patch).toBe('REESE');
+    expect(store.saved?.themeIndex).toBe(1);
+    expect(store.saved?.octave).toBe(-1);
+    expect(store.saved?.v).toBe(1);
+  });
+
+  it('restores the saved settings into a fresh controller', () => {
+    const store = new MemorySettingsStore();
+    const c1 = make(store);
+    c1.setPatch('NEON');
+    c1.swapColor();
+    c1.swapColor(); // themeIndex -> 2
+
+    // a new controller (a "reload") sharing the store comes up with those settings
+    const c2 = make(store);
+    const vm = c2.getState();
+    expect(vm.patch).toBe('NEON');
+    expect(vm.themeIndex).toBe(2);
+  });
+
+  it('does not write to the store when nothing durable changed', () => {
+    const store = new MemorySettingsStore();
+    const c = make(store);
+    const before = store.saves;
+    // A pure morph is transient (quality is not persisted), so it must not hit storage.
+    c.setQuality('7th');
+    c.springToTriad();
+    expect(store.saves).toBe(before);
+  });
+
+  it('ignores a corrupt / out-of-range payload and keeps safe defaults', () => {
+    const bad = {
+      v: 1,
+      root: 999,
+      scale: 'NONSENSE',
+      octave: 50,
+      patch: 'NOPE',
+      bpm: -10,
+      volume: 5,
+      themeIndex: -3,
+      mode: 'XYZ',
+      arpPattern: 'ZZ',
+      arpRate: '9/9',
+      repeatRate: 'no',
+      strumSpeed: 'huge',
+      bass: 'maybe',
+      fx: 'bad',
+      glide: 'bad',
+      drumKit: 'bad',
+      inversion: 99,
+    } as unknown as SettingsSnapshot;
+    const store = new MemorySettingsStore(bad);
+    const c = make(store);
+    const vm = c.getState();
+    // every field fell back to a valid default rather than the garbage
+    expect(vm.scale).toBe('MAJOR');
+    expect(vm.patch).toBe('SAW');
+    expect(vm.mode).toBe('PLAY');
+    expect(vm.octave).toBe(2); // clamped into [-2, 2]
+    expect(vm.bpm).toBe(40); // clamped into [40, 240]
+    expect(vm.volume).toBe(1); // clamped into [0, 1]
+  });
+
+  it('works with no store (persistence is optional)', () => {
+    const c = make(); // no store
+    expect(() => {
+      c.setPatch('HUGE');
+      c.swapColor();
+    }).not.toThrow();
+    expect(c.getState().patch).toBe('HUGE');
+  });
+});

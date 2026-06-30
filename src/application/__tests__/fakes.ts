@@ -1,5 +1,23 @@
 import type { DrumName, DrumKit } from '../../domain/music';
 import type { AudioLooper, Clock, LooperMode, LooperView, PatchName, SynthPort } from '../ports';
+import type { SettingsSnapshot, SettingsStore } from '../persistence';
+
+// An in-memory SettingsStore: records saves + replays the latest on load, so a test
+// can prove the controller persists + restores its durable settings.
+export class MemorySettingsStore implements SettingsStore {
+  saved: SettingsSnapshot | null = null;
+  saves = 0;
+  constructor(initial: SettingsSnapshot | null = null) {
+    this.saved = initial;
+  }
+  load(): SettingsSnapshot | null {
+    return this.saved;
+  }
+  save(snapshot: SettingsSnapshot): void {
+    this.saved = snapshot;
+    this.saves++;
+  }
+}
 
 // A stand-in AudioLooper that records the controller's calls and lets a test drive
 // the reported mode (so the OLED + "first key begins the take" wiring is testable

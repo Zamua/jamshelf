@@ -38,6 +38,7 @@ import {
 } from '../domain/music';
 import { PATCH_ORDER, type AudioLooper, type Clock, type PatchName, type SynthPort } from './ports';
 import type { Listener, MenuKind, MenuRow, ViewModel } from './state';
+import type { SettingsSnapshot, SettingsStore } from './persistence';
 
 const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS', 'FX', 'GLIDE'] as const;
 const PLAY_STRUM_MS = 4; // near-zero spread for the plain PLAY mode
@@ -90,19 +91,89 @@ export class SynthController {
   private readonly synth: SynthPort;
   private readonly clock: Clock;
   private readonly looper: AudioLooper;
+  private readonly settings: SettingsStore | null;
+  private lastSavedJson = ''; // skip writing when the durable settings are unchanged
 
-  constructor(synth: SynthPort, clock: Clock, looper: AudioLooper) {
+  constructor(synth: SynthPort, clock: Clock, looper: AudioLooper, settings?: SettingsStore) {
     this.synth = synth;
     this.clock = clock;
     this.looper = looper;
-    this.synth.setStrumMs(PLAY_STRUM_MS);
+    this.settings = settings ?? null;
+    // Restore persisted settings BEFORE the first apply so the side effects (patch,
+    // volume, fx, glide, tempo, strum) reflect the saved values, not the defaults.
+    const saved = this.settings?.load();
+    if (saved) this.restoreSettings(saved);
+    this.synth.setStrumMs(this.mode === 'STRUM' ? strumMs(this.strumSpeed) : PLAY_STRUM_MS);
     this.synth.setVolume(this.volume);
+    this.synth.setPatch(this.patch);
     this.applyFx();
     this.applyGlide();
     this.clock.onTick(() => this.tick());
     this.clock.setBpm(this.bpm);
     this.looper.setBpm(this.bpm);
     this.looper.onChange(() => this.publish());
+    // Seed the de-dupe baseline so the first publish doesn't re-save what we just loaded.
+    this.lastSavedJson = JSON.stringify(this.snapshotSettings());
+  }
+
+  // --- persistence (durable settings to a SettingsStore; the looper persists itself) ---
+  private snapshotSettings(): SettingsSnapshot {
+    return {
+      v: 1,
+      root: this.root,
+      scale: this.scale,
+      octave: this.octave,
+      patch: this.patch,
+      bpm: this.bpm,
+      volume: this.volume,
+      themeIndex: this.themeIndex,
+      mode: this.mode,
+      arpPattern: this.arpPattern,
+      arpRate: this.arpRate,
+      repeatRate: this.repeatRate,
+      strumSpeed: this.strumSpeed,
+      bass: this.bass,
+      fx: this.fx,
+      glide: this.glide,
+      drumKit: this.drumKit,
+      inversion: this.inversion,
+    };
+  }
+  // Apply a stored snapshot, VALIDATING every field against the known value sets so a
+  // stale / corrupt payload can never set an invalid state (unknown values keep the
+  // default). Pure field assignment - the constructor applies the side effects after.
+  private restoreSettings(s: SettingsSnapshot): void {
+    const pick = <T>(val: unknown, allowed: readonly T[], dflt: T): T =>
+      allowed.includes(val as T) ? (val as T) : dflt;
+    const num = (val: unknown, lo: number, hi: number, dflt: number): number =>
+      typeof val === 'number' && Number.isFinite(val) ? Math.min(hi, Math.max(lo, val)) : dflt;
+    this.root = Math.round(num(s.root, 0, 11, this.root)) % 12;
+    this.scale = pick(s.scale, SCALE_ORDER, this.scale);
+    this.octave = Math.round(num(s.octave, -2, 2, this.octave));
+    this.patch = pick(s.patch, PATCH_ORDER, this.patch);
+    this.bpm = Math.round(num(s.bpm, 40, 240, this.bpm));
+    this.volume = num(s.volume, 0, 1, this.volume);
+    this.themeIndex = Math.max(0, Math.round(num(s.themeIndex, 0, 999, this.themeIndex)));
+    this.mode = pick(s.mode, PLAY_MODES, this.mode);
+    this.arpPattern = pick(s.arpPattern, ARP_PATTERNS, this.arpPattern);
+    this.arpRate = pick(s.arpRate, RATES, this.arpRate);
+    this.repeatRate = pick(s.repeatRate, RATES, this.repeatRate);
+    this.strumSpeed = pick(s.strumSpeed, STRUM_SPEEDS, this.strumSpeed);
+    this.bass = pick(s.bass, BASS_MODES, this.bass);
+    this.fx = pick(s.fx, FX_MODES, this.fx);
+    this.glide = pick(s.glide, GLIDE_MODES, this.glide);
+    this.drumKit = pick(s.drumKit, DRUM_KITS, this.drumKit);
+    this.inversion = Math.round(num(s.inversion, 0, INVERSIONS - 1, this.inversion));
+  }
+  // Write the settings out when they actually change (called on every publish; the
+  // de-dupe means a joystick morph or transport tick does not hit storage).
+  private maybeSave(): void {
+    if (!this.settings) return;
+    const snap = this.snapshotSettings();
+    const json = JSON.stringify(snap);
+    if (json === this.lastSavedJson) return;
+    this.lastSavedJson = json;
+    this.settings.save(snap);
   }
 
   // --- looper (joystick click = record/overdub, long-press = clear) ---
@@ -702,6 +773,7 @@ export class SynthController {
     };
   }
   private publish(): void {
+    this.maybeSave(); // persist durable settings if they changed (de-duped)
     const vm = this.snapshot();
     for (const fn of this.listeners) fn(vm);
   }

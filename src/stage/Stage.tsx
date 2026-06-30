@@ -17,8 +17,8 @@ import { StudioLights } from '../shared/StudioLights';
 // shelf: device RESTS on the plank (its bottom edge sits ON the plank top), propped back.
 // At scale 0.82 + tilt 0.3 the lowest world point is ~0.73 below the pivot; the plank top
 // is at 2.16, so the pivot sits at 2.16 + 0.73 ~ 2.9.
-const SHELF_POS = new Vector3(0, 2.9, 0.15);
-const SHELF_TILT = 0.3;
+const SHELF_POS = new Vector3(0, 3.04, -0.35);
+const SHELF_TILT = 0.42;
 const SHELF_SCALE = 0.82;
 // desk: device lies PERFECTLY FLAT, face up. Flat + scale 1, its lowest point is ~0.22
 // below the pivot; the desk top is at -2.34, so the pivot sits at -2.34 + 0.22 ~ -2.12.
@@ -260,9 +260,18 @@ export function Stage({ mode, inspect, spinRef, vm, handlers, onShelfTap }: Stag
       <group ref={deviceRef}>
         <Device vm={vm} handlers={handlers} />
         {/* on the shelf, a tap anywhere on the instrument floats it to the desk; the
-            device's own pads are inert here (handlers are no-ops until it lands) */}
+            device's own pads are inert here (handlers are no-ops until it lands).
+            Fire on onPointerUp, NOT onClick: the onCreated touchstart-preventDefault
+            (the iOS magnifier fix) suppresses the synthetic click on touch, so an
+            onClick catcher is dead on a phone - pointer events still fire. */}
         {mode === 'shelf' && (
-          <mesh onPointerDown={stop} onClick={onShelfTap}>
+          <mesh
+            onPointerDown={stop}
+            onPointerUp={(e) => {
+              stop(e);
+              onShelfTap();
+            }}
+          >
             <sphereGeometry args={[2.4, 16, 16]} />
             <meshBasicMaterial transparent opacity={0} depthWrite={false} />
           </mesh>

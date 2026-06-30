@@ -7,7 +7,7 @@ TRAP
   snare    "Trap Snare 1"          by nbmusic098
   hat      "HI-HAT closed PO-12"   by jannevse
   tom      "JH Big Tom 1"          by Johnnie_Holiday
-  ride     "Trap Clap (JH)"        by Johnnie_Holiday
+  ride     "drumhit_Clap4"         by DigitalUnderglow
   openhat  "Dance Open Hat"        by Teyloh
 
 LOFI

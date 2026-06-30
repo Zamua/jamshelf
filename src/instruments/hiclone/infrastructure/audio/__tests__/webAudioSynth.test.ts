@@ -197,3 +197,35 @@ describe('WebAudioSynth.retune (legato chord morph)', () => {
     expect(count('gain')).toBeGreaterThan(gainBefore);
   });
 });
+
+describe('WebAudioSynth drum self-choke', () => {
+  let synth: WebAudioSynth;
+
+  beforeEach(() => {
+    ops = [];
+    (globalThis as unknown as { window: unknown }).window = { AudioContext: FakeCtx };
+    synth = new WebAudioSynth();
+    synth.resume();
+  });
+
+  afterEach(() => {
+    delete (globalThis as unknown as { window?: unknown }).window;
+  });
+
+  // The drum hit fades a gain to 0 ONLY on a self-choke (linearRampToValueAtTime on a
+  // 'gain' param); the voice's own envelopes use exponential ramps, so a linear gain ramp
+  // is an unambiguous choke marker.
+  it('retriggering a pad cuts its own previous hit; a different pad does not choke it', () => {
+    synth.drum('OPENHAT', 'TIGHT'); // first hit of a long-tail pad: nothing to choke yet
+    expect(count('gain', 'linearRampToValueAtTime')).toBe(0);
+
+    synth.drum('OPENHAT', 'TIGHT'); // SAME pad again -> choke the first voice
+    expect(count('gain', 'linearRampToValueAtTime')).toBe(1);
+
+    synth.drum('KICK', 'TIGHT'); // a DIFFERENT pad does not choke the open-hat
+    expect(count('gain', 'linearRampToValueAtTime')).toBe(1);
+
+    synth.drum('KICK', 'TIGHT'); // retriggering the kick chokes its own previous hit
+    expect(count('gain', 'linearRampToValueAtTime')).toBe(2);
+  });
+});

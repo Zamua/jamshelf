@@ -165,6 +165,10 @@ export class WebAudioSynth implements SynthPort {
   private noise: AudioBuffer | null = null; // shared white noise for the drum voices
   private sampleCache = new Map<string, AudioBuffer>(); // `${kit}:${pad}` -> decoded sample
   private kitLoading = new Set<DrumKit>();
+  // Per-pad drum voice (self-choke): retriggering a pad cuts its OWN previous hit so a
+  // long tail (clap/808/open-hat) never plays over itself. Keyed by DrumName; the value
+  // fades + stops the currently-sounding voice for that pad.
+  private drumVoices = new Map<DrumName, () => void>();
   // Global FX (delay + chorus); wet gains start at 0 = off.
   private delay: DelayNode | null = null;
   private delayWet: GainNode | null = null;
@@ -461,7 +465,7 @@ export class WebAudioSynth implements SynthPort {
     if (folder) {
       const buf = this.sampleCache.get(`${kit}:${name}`);
       if (buf) {
-        this.playBuffer(buf);
+        this.playBuffer(buf, name);
         return;
       }
       void this.loadKit(kit, folder); // kick off loading for next time
@@ -471,8 +475,18 @@ export class WebAudioSynth implements SynthPort {
     this.synthDrum(name, kit);
   }
 
-  private playBuffer(buf: AudioBuffer): void {
+  // Fade + stop the currently-sounding voice for a pad (self-choke), if any.
+  private chokeDrum(name: DrumName): void {
+    const stop = this.drumVoices.get(name);
+    if (stop) {
+      this.drumVoices.delete(name);
+      stop();
+    }
+  }
+
+  private playBuffer(buf: AudioBuffer, name: DrumName): void {
     const ctx = this.ctx!;
+    this.chokeDrum(name); // cut this pad's previous hit before the new one
     const src = ctx.createBufferSource();
     src.buffer = buf;
     const g = ctx.createGain();
@@ -480,7 +494,20 @@ export class WebAudioSynth implements SynthPort {
     src.connect(g);
     g.connect(this.master!);
     src.start();
+    const stop = () => {
+      const now = ctx.currentTime;
+      g.gain.cancelScheduledValues(now);
+      g.gain.setValueAtTime(g.gain.value, now);
+      g.gain.linearRampToValueAtTime(0, now + 0.008); // 8ms fade so the cut never clicks
+      try {
+        src.stop(now + 0.01);
+      } catch {
+        /* already stopped */
+      }
+    };
+    this.drumVoices.set(name, stop);
     src.onended = () => {
+      if (this.drumVoices.get(name) === stop) this.drumVoices.delete(name);
       try {
         src.disconnect();
         g.disconnect();
@@ -520,6 +547,15 @@ export class WebAudioSynth implements SynthPort {
     out.gain.value = 0.5;
     out.connect(this.master);
     let until = t + 0.1;
+
+    this.chokeDrum(name); // self-choke: cut this pad's previous (synth) hit
+    const stop = () => {
+      const now = ctx.currentTime;
+      out.gain.cancelScheduledValues(now);
+      out.gain.setValueAtTime(out.gain.value, now);
+      out.gain.linearRampToValueAtTime(0, now + 0.008); // silence the whole hit, no click
+    };
+    this.drumVoices.set(name, stop);
 
     const tone = (wave: OscillatorType, f0: number, f1: number, peak: number, dur: number) => {
       const o = ctx.createOscillator();
@@ -580,6 +616,7 @@ export class WebAudioSynth implements SynthPort {
     }
     const ms = (until - ctx.currentTime + 0.1) * 1000;
     setTimeout(() => {
+      if (this.drumVoices.get(name) === stop) this.drumVoices.delete(name);
       try {
         out.disconnect();
       } catch {

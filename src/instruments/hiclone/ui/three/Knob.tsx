@@ -204,9 +204,14 @@ export function Knob({ x, y, z, power, rim, basin, handlers, joyPointer }: KnobP
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      {/* invisible drag-tracking plane (only while dragging) */}
+      {/* invisible drag-tracking plane (only while dragging). MUST be COPLANAR with the
+          grab target above (same z): the press captures the floating centre on the grab
+          plane and every move measures deflection on this one, so any z gap between them
+          makes an off-axis camera ray (e.g. the flat top-down play view, where the knob is
+          well off-centre) read a constant sideways offset - a straight "down" pull then
+          registers as down-and-right and the looper down-flick never fires. */}
       {dragging && (
-        <mesh position={[0, 0, 1.5]} onPointerMove={apply} onPointerUp={end} onPointerCancel={end}>
+        <mesh position={[0, 0, 0.14]} onPointerMove={apply} onPointerUp={end} onPointerCancel={end}>
           <planeGeometry args={[24, 24]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>

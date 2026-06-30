@@ -324,6 +324,19 @@ describe('menus', () => {
     return seen;
   }
 
+  it('exposes the open menu as structured rows (one per field, cursor flagged)', () => {
+    expect(c.getState().menuRows).toEqual([]); // closed -> no rows
+    c.toggleMenu('KEY');
+    const rows = c.getState().menuRows;
+    expect(rows.map((r) => r.label)).toEqual(['KEY', 'SCL', 'OCT', 'BASS', 'FX', 'GLIDE']);
+    expect(rows.filter((r) => r.active).map((r) => r.label)).toEqual(['KEY']); // cursor on first
+    expect(rows.find((r) => r.label === 'OCT')?.value).toBe('+0');
+    c.cursorField(1); // move cursor to SCL
+    expect(c.getState().menuRows.filter((r) => r.active).map((r) => r.label)).toEqual(['SCL']);
+    c.toggleMenu('KEY'); // close
+    expect(c.getState().menuRows).toEqual([]);
+  });
+
   it('MODE menu exposes mode-specific fields (PATTERN+RATE only for ARP)', () => {
     switchMode('ARP');
     c.toggleMenu('MODE');

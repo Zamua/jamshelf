@@ -37,7 +37,7 @@ import {
   type FxMode,
 } from '../domain/music';
 import { PATCH_ORDER, type AudioLooper, type Clock, type PatchName, type SynthPort } from './ports';
-import type { Listener, MenuKind, ViewModel } from './state';
+import type { Listener, MenuKind, MenuRow, ViewModel } from './state';
 
 const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS', 'FX', 'GLIDE'] as const;
 const PLAY_STRUM_MS = 4; // near-zero spread for the plain PLAY mode
@@ -499,6 +499,15 @@ export class SynthController {
     f.push('BPM');
     return f;
   }
+  // The open menu as structured rows for the OLED (empty when no menu is open).
+  private menuRows(): MenuRow[] {
+    if (!this.menuOpen) return [];
+    return this.fields().map((f, i) => ({
+      label: f,
+      value: this.fieldValue(f),
+      active: i === this.menuIndex,
+    }));
+  }
   private fieldValue(field: string): string {
     switch (field) {
       case 'KEY':
@@ -677,6 +686,7 @@ export class SynthController {
       litPads,
       screenBig: big,
       screenSmall: small,
+      menuRows: this.menuRows(),
     };
   }
   private publish(): void {

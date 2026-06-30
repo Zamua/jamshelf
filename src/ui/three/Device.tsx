@@ -85,6 +85,7 @@ export function Device({ vm, handlers }: DeviceProps) {
       <Screen
         big={vm.screenBig}
         small={vm.screenSmall}
+        menuRows={vm.menuRows}
         power={vm.power}
         x={SCREEN.x}
         y={SCREEN.y}

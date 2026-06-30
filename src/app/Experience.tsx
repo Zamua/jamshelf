@@ -125,7 +125,7 @@ export function Experience() {
 
   return (
     <div className="experience">
-      <Stage mode={mode} inspect={inspect} spinRef={spin} vm={vm} handlers={stageHandlers} onShelfTap={play} />
+      <Stage mode={mode} inspect={inspect} spinRef={spin} vm={vm} handlers={stageHandlers} onShelfTap={play} label={hero.name} />
 
       {/* drag-to-spin surface, only while inspecting (sits under the chrome buttons) */}
       {inspect && (
@@ -142,9 +142,6 @@ export function Experience() {
       {/* shelf chrome */}
       <div className={'overlay shelf-chrome' + (mode === 'shelf' ? ' is-on' : '')}>
         <header className="shelf-title">jam<span>shelf</span></header>
-        <button className="shelf-label" onClick={play} aria-label={hero.name}>
-          {hero.name}
-        </button>
         <footer className="shelf-foot">more instruments coming soon</footer>
       </div>
 

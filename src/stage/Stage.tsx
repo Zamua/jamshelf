@@ -5,6 +5,7 @@ import { Device } from '../instruments/hiclone/ui/three/Device';
 import type { DeviceHandlers } from '../instruments/hiclone/ui/three/deviceProps';
 import type { ViewModel } from '../instruments/hiclone/application/state';
 import { StudioLights } from '../shared/StudioLights';
+import { ShelfLabel } from './ShelfLabel';
 
 // The two ends of the one continuous move. progress 0 = resting on the shelf (propped,
 // up high, viewed head-on); progress 1 = lying on the desk (flat, lower + forward,
@@ -231,12 +232,13 @@ interface StageProps {
   vm: ViewModel;
   handlers: DeviceHandlers; // real handlers when interactive, no-ops otherwise
   onShelfTap: () => void; // tap the shelved instrument -> float it to the desk
+  label: string; // the instrument name, scrawled on the paper taped to the shelf
 }
 
 // The ONE persistent canvas behind the whole app. The shelf, the desk play view, and the
 // raised inspect pose are the same scene; only `mode` + `inspect` (and the resulting camera
 // + device pose) change. Mounted once at the app root so nothing ever remounts -> no cut.
-export function Stage({ mode, inspect, spinRef, vm, handlers, onShelfTap }: StageProps) {
+export function Stage({ mode, inspect, spinRef, vm, handlers, onShelfTap, label }: StageProps) {
   const deviceRef = useRef<Group>(null);
   const floatTarget = mode === 'play' ? 1 : 0;
   const inspectTarget = inspect ? 1 : 0;
@@ -257,6 +259,7 @@ export function Stage({ mode, inspect, spinRef, vm, handlers, onShelfTap }: Stag
       <WarmLights />
       <StudioLights />
       <Room />
+      <ShelfLabel text={label} />
       <group ref={deviceRef}>
         <Device vm={vm} handlers={handlers} />
         {/* on the shelf, a tap anywhere on the instrument floats it to the desk; the

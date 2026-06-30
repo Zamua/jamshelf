@@ -142,9 +142,8 @@ export function Experience() {
       {/* shelf chrome */}
       <div className={'overlay shelf-chrome' + (mode === 'shelf' ? ' is-on' : '')}>
         <header className="shelf-title">jam<span>shelf</span></header>
-        <button className="shelf-caption" onClick={play}>
-          <span className="shelf-name">{hero.name}</span>
-          <span className="shelf-blurb">{hero.blurb}</span>
+        <button className="shelf-label" onClick={play} aria-label={hero.name}>
+          {hero.name}
         </button>
         <footer className="shelf-foot">more instruments coming soon</footer>
       </div>

@@ -173,7 +173,8 @@ the voice when idle, or the held chord's root/1st/2nd inversion when a pad is do
 
 **Synth engine (`infrastructure/audio/webAudioSynth.ts`)**: subtractive AND 2-operator
 FM voices (a `Patch.engine` discriminator). Instruments: SAW/SINE/EPIANO(FM)/HX7(FM)/
-STRINGS/CLARINET/BELL(FM)/ORGAN/PLUCK, plus the **"huge" family**: SUPER/HUGE/NEON
+STRINGS/CLARINET/BELL(FM)/ORGAN/PLUCK, BLOOM (a held supersaw chord that pitch-blooms
+on the attack), plus the **"huge" family**: SUPER/HUGE/NEON
 (supersaws) + REESE/NEURO (DnB bass). `SynthPort.noteOn` takes an optional per-note
 patch (the looper plays each track on its own instrument). Also a `drum(name)` method
 synthesizing percussion (no samples). A global `setBend(cents)` pitch bend (LEAD mode)
@@ -188,6 +189,10 @@ KEY-menu field (OFF/SLOW/MED/FAST, `glideSeconds`) drives it - HiChord-style tog
   before the filter for Reese/neuro grit (the sub bypasses it). Defaults (unison 1, no
   sub/drive) reproduce the classic 1-2 osc voices unchanged. Stacked levels are kept sane
   by `1/sqrt(unison)` per-osc gain + the master limiter. Play the basses with OCTAVE down.
+- **Pitch shapes** (`setVoiceFreq`): every osc frequency at note-on can ramp UP to the
+  target. Two sources: PORTAMENTO/glide (from the previous mono note, `setGlide`) and the
+  per-note PITCH-ATTACK bloom (`Patch.pitchAttack` semitones below over `pitchAttackTime`,
+  the supersaw-stab "sweeps in" sound - BLOOM uses it). Glide wins if both are active.
 
 **Looper (`infrastructure/audio/webAudioLooper.ts`, `AudioLooper` port)**: an AUDIO
 loop recorder, NOT an event looper (rewritten 2026-06-29 - the old event `Looper` +

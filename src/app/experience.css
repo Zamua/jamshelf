@@ -73,14 +73,6 @@
   max-width: 80vw;
   text-align: center;
 }
-.shelf-play {
-  margin-top: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #f0a93a;
-}
 .shelf-foot {
   position: absolute;
   left: 0;

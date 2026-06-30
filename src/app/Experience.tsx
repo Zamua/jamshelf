@@ -145,7 +145,6 @@ export function Experience() {
         <button className="shelf-caption" onClick={play}>
           <span className="shelf-name">{hero.name}</span>
           <span className="shelf-blurb">{hero.blurb}</span>
-          <span className="shelf-play">tap to play ▸</span>
         </button>
         <footer className="shelf-foot">more instruments coming soon</footer>
       </div>

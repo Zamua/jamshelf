@@ -376,7 +376,13 @@ isn't kept alive), and a window `pointerdown`/`touchstart`/`keydown` (the reliab
 - the next tap resumes it).
 
 **Drums (`DRUM` play mode)**: the 7 pads map to a kit (`drumForDegree`). Drum hits are
-rendered audio like everything else, so they are captured by the audio looper too. Kits via the DRUM-mode KIT
+rendered audio like everything else, so they are captured by the audio looper too. **Each
+pad SELF-CHOKES (is mono): retriggering a pad cuts its OWN previous hit (8ms fade, no click)
+so a long tail - clap / 808 / open-hat - never plays over itself; different pads do not
+choke each other.** It is a `drumVoices: Map<DrumName, stopFn>` in `webAudioSynth.ts`, applied
+in BOTH the sample path (`playBuffer`) and the synth path (`synthDrum`); since hits are the
+rendered audio the looper taps, the choked (non-overlapping) version is what gets recorded.
+Kits via the DRUM-mode KIT
 field: TIGHT/BOX808/BOX909 are SYNTHESIZED (`KIT_TUNE` factors); TRAP/LOFI are CC0
 SAMPLE kits. Samples live in `public/drums/<kit>/<pad>.mp3` (one mono mp3 per pad),
 lazy-loaded + decoded on first use (`SAMPLE_KITS` map in `webAudioSynth.ts`; fetch

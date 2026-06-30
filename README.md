@@ -44,9 +44,15 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full layer breakdown. In short: `domain/`
 
 ## Deploy
 
-The production build is a static site. Deploy `dist/` anywhere that serves static files; for example, as a hostthis static site:
+The production build is a fully static site (no backend). Build it, then serve `dist/` from any static host:
 
 ```
 npm run build
-tar czf - dist/ | ssh hostthis.dev
+# serve dist/ on your host of choice
 ```
+
+The only host requirement is **SPA fallback**: unknown client routes (e.g. `/hiclone`) must serve `index.html` so deep links resolve to the app.
+
+## License
+
+Source code: [MIT](./LICENSE). Bundled assets keep their own licenses (fonts under the SIL Open Font License 1.1, drum samples under CC0 1.0); see [NOTICE.md](./NOTICE.md). The HiClone is an independent, unbranded homage to the HiChord and is not affiliated with or endorsed by its makers.

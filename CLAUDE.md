@@ -45,7 +45,7 @@ lazy-`Play`/`Shelf3D`-per-route split was dropped). When a 2nd instrument lands,
 Stage to mount the route-selected instrument's device. **Persistence is namespaced per
 instrument** (`jamshelf/<id>/settings` in localStorage; one IndexedDB record per instrument in
 db `jamshelf`, store `looper`), so each groovebox keeps its own memory. Deploy is still ONE
-hostthis static site (`4jzmz9uv`, SPA fallback serves `/<id>` deep links; a cold deep-link
+static SPA (the host's SPA fallback serves `/<id>` deep links; a cold deep-link
 snaps straight to the play pose, no float).
 
 ## The stage = ONE continuous scene, shelf <-> desk (`src/stage/Stage.tsx`)
@@ -125,12 +125,11 @@ mobile-first. (Paths below are relative to `src/instruments/hichord/`.)
 
 ## Deploy
 
-- Build -> deploy `dist/` as a hostthis **static site**: `tar czf - dist/ | ssh hostthis.dev` (returns a `<slug>.hostthis.dev` URL; SPA fallback serves index.html for client routes). Re-deploy in place with `... ssh hostthis.dev <slug>`.
-- Tailnet dev preview for the iPad: TBD (pm2 + caddy + tailscale serve, per the macmini app pattern).
+- Build with `npm run build`, then serve `dist/` from any static host. The host MUST do SPA fallback (serve `index.html` for unknown client routes) so `/<instrument-id>` deep links resolve.
 
 ## The 3D device (look-matching notes)
 
-The device is modeled to match the real HiChord closely (the user's bar). Key
+The device is modeled to match the real HiChord closely. Key
 structural facts, learned by iterating against the official photos in
 `scratchpad/ref/` (front-black.jpg is the cleanest unoccluded reference):
 
@@ -185,7 +184,7 @@ structural facts, learned by iterating against the official photos in
   (cycled by `swapColor()`, exposed on the ViewModel); the UI maps it modulo the
   theme count - NO hex colors leak into the application layer. Chassis/Speaker/Knob
   + the joystick dots take their colors from the resolved theme; cream keys, accent
-  buttons and the screen are fixed. A round swatch button in `Hichord.tsx` cycles it.
+  buttons and the screen are fixed. The play-chrome color swatch (in `Experience.tsx`) cycles it.
 - All geometry lives in `layout.ts` (`KEY_WELL`, `SCREEN`, `MENU`, `SPEAKER`,
   `MIC`, `KNOB`, `COLS`, `KEY_W`, `BLOCK.gap`, `BRAND`, `JOY_DOTS`, `PAD`,
   `padSpecs()`). Tune there.
@@ -193,7 +192,6 @@ structural facts, learned by iterating against the official photos in
 Render loop for look-matching: `npm run build`, `npx vite preview --port 4231`,
 then Playwright (software WebGL: `--use-gl=angle --use-angle=swiftshader`) via the
 screenshot-harness venv -> PIL side-by-side vs `scratchpad/ref/front-black.jpg`.
-Live preview deploy: `https://4jzmz9uv.hostthis.dev` (re-deploy in place).
 
 ## Play modes + tempo clock (Phase 1, shipped)
 
@@ -382,24 +380,16 @@ SAMPLE kits. Samples live in `public/drums/<kit>/<pad>.mp3` (one mono mp3 per pa
 lazy-loaded + decoded on first use (`SAMPLE_KITS` map in `webAudioSynth.ts`; fetch
 `drums/<folder>/<pad>.mp3`, cache by `${kit}:${pad}`); the first hit before a kit
 finishes loading falls back to the synth so it is never silent. All bundled samples
-are CC0 1.0 (public domain, no attribution) - the TRAP/LOFI kits are sounds the user
-hand-picked from Freesound (see `public/drums/CREDITS.txt`).
+are CC0 1.0 (public domain, no attribution) - the TRAP/LOFI kits are CC0 sounds picked
+from Freesound (see `public/drums/CREDITS.txt`).
 
-Adding a genre kit (the established workflow): use the *Freesound API* - the user's
-key is at `~/keys/freesound` (the 40-char token only; never commit it). Token auth:
-`curl -sG https://freesound.org/apiv2/search/text/ --data-urlencode 'query=...'
---data-urlencode 'filter=license:"Creative Commons 0" duration:[0.05 TO 2]'
---data-urlencode 'fields=id,name,username,license,previews,avg_rating' --data-urlencode
-'sort=rating_desc' --data-urlencode "token=$(cat ~/keys/freesound)"`. The `previews`
-field gives public `preview-hq-mp3` CDN URLs (downloadable without auth; CC0 = fine to
-bundle). Prefer COHESIVE single-producer kits over mixing sources. Build a tappable
-audition page (scratchpad), deploy it as its own hostthis static site, send the link,
-let the user pick by number, then drop the chosen mp3s into `public/drums/<kit>/` and
-add the kit to `DrumKit` + `DRUM_KITS` + `SAMPLE_KITS`. LICENSING IS THE WHOLE TRICK:
-ONLY bundle CC0 / public-domain (or CC-BY *with* a credit line in CREDITS.txt) - the
-deployed site is public-reachable, so "royalty-free for your tracks" packs are NOT
-redistributable. Most "free drum kits" online fail this; CC0 ones skew to loops +
-partial packs.
+Adding a genre kit: pull CC0 sounds from the Freesound API (filter `license:"Creative
+Commons 0"`), drop the chosen mp3s into `public/drums/<kit>/`, and add the kit to `DrumKit`
++ `DRUM_KITS` + `SAMPLE_KITS`. LICENSING IS THE WHOLE TRICK: ONLY bundle CC0 / public-domain
+(or CC-BY *with* a credit line in `public/drums/CREDITS.txt`) - the deployed site is
+public-reachable, so "royalty-free for your tracks" packs are NOT redistributable. Most
+"free drum kits" online fail this; CC0 ones skew to loops + partial packs. (Operator
+API-key + audition-deploy details live in the private infra repo.)
 
 **Scales**: 10 total - the 7 modes plus MAJ_PENT / MIN_PENT / BLUES. `scaleTone` is
 generalized to any scale length (the 7 pads wrap the 5/6-note scales into octaves).
@@ -422,13 +412,13 @@ Touch hardening shipped:
   cap width, inside the dot ring); only the cap protrudes; aux + USB-C are flush
   recessed holes (PWR slider + VOL wheel still protrude);
 - iOS magnifier/loupe is a Safari wontfix that CSS canNOT stop; the canonical fix is
-  `preventDefault` on the canvas's raw `touchstart`/`touchmove` (in `Hichord.tsx`
+  `preventDefault` on the canvas's raw `touchstart`/`touchmove` (in `Stage.tsx`
   `onCreated`) - pads/joystick run on pointer events so they are unaffected. (CSS +
   selectstart/gesturestart + locked viewport are kept as extra layers.)
 
 Next, in rough priority: joystick EXTENDED/CHROMATIC modes (richer voicings + key
 modulation); a step sequencer; Web-MIDI out; presets; chord-lock; more effects
-(tremolo/filter/flanger); games. The repo is private at github.com/Zamua/jamshelf.
+(tremolo/filter/flanger); games. Source: github.com/Zamua/jamshelf.
 
 ## Persistence (local only; survives reload + PWA reopen)
 
@@ -437,7 +427,7 @@ Storage / IndexedDB directly (swapping the backing store = one new adapter + one
 line in `useSynth`):
 
 - **Durable settings -> `SettingsStore` -> localStorage** (`LocalStorageSettingsStore`,
-  key `jamshelf/<id>/settings`, e.g. `jamshelf/hichord/settings`). The `SettingsSnapshot` is the durable musical state ONLY
+  key `jamshelf/<id>/settings`, e.g. `jamshelf/hiclone/settings`). The `SettingsSnapshot` is the durable musical state ONLY
   (key/scale/octave/patch/bpm/volume/theme/mode/arp+rate/strum/bass/fx/glide/drumKit/
   inversion) - never transient state (held pads, morph quality, menu, power, transport).
   The controller `restoreSettings` on construct + `maybeSave()` from `publish()` (a single
@@ -446,7 +436,7 @@ line in `useSynth`):
   controller): every field is checked against its domain value set / clamped to range, so
   a stale or hand-edited payload can never set invalid state - it falls back per-field.
 - **Recorded loops -> `LooperStore` -> IndexedDB** (`IndexedDbLooperStore`, db `jamshelf`,
-  store `looper`, key = the instrument namespace e.g. `hichord`). Audio is seconds of stereo Float32 per layer (megabytes) =
+  store `looper`, key = the instrument namespace e.g. `hiclone`). Audio is seconds of stereo Float32 per layer (megabytes) =
   too big for localStorage, so it lives in IndexedDB (stores typed arrays natively, large
   quota). `WebAudioLooper.serialize()` snapshots every layer's PCM + loop geometry;
   `persist()` saves on each track-set change (finalizeMaster/Overdub, layer delete) and
@@ -463,6 +453,6 @@ with a `MemorySettingsStore`), `webAudioLooper.test.ts` "persists + restores STO
 ## Current state
 
 DDD skeleton + real Web Audio engine + the modeled/assembled 3D device + Phase 1
-play modes are built, tested, and deployed (`https://4jzmz9uv.hostthis.dev`). Domain
+play modes are built, tested, and deployed. Domain
 + controller are unit-tested. Active work: closing HiChord feature gaps (see roadmap)
 and iterative polish. See `README.md` for the human-facing overview.

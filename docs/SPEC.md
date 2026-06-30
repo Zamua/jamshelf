@@ -1,6 +1,6 @@
-# chord-synth — design spec
+# HiClone design spec
 
-Living design doc. The device is a playable browser clone of the HiChord (unbranded),
+Living design doc. The device is a playable browser homage to the HiChord (independent, unbranded),
 built DDD: pure music domain, application services + ports, infrastructure adapters,
 R3F presentation. This spec records the contracts and the in-flight feature work.
 

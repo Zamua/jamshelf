@@ -113,9 +113,11 @@ const PATCHES: Record<PatchName, Patch> = {
   REESE: { ...BASE, osc1: 'sawtooth', unison: 4, unisonDetune: 20, unisonSpread: 0.45, sub: 0.5, drive: 3, cutoff: 1500, q: 0.7, A: 0.01, D: 0.3, S: 0.85, R: 0.3, wet: 0.1 },
   NEURO: { ...BASE, osc1: 'sawtooth', unison: 3, unisonDetune: 26, unisonSpread: 0.4, sub: 0.5, drive: 6, cutoff: 2600, cutoffFloor: 500, filterEnv: true, q: 3.5, A: 0.005, D: 0.35, S: 0.5, R: 0.3, wet: 0.12 },
   // BLOOM: a held, buzzy saw chord-stab that blooms UP in pitch on the attack (the
-  // "sweeps in" sound). NO unison/detune at all (unison 1) so there is zero beating /
-  // flange / phasing - the buzz is the raw saw + drive, not a detuned wall.
-  BLOOM: { ...BASE, osc1: 'sawtooth', unison: 1, sub: 0.28, drive: 1.5, pitchAttack: 1.5, pitchAttackTime: 0.1, cutoff: 5200, q: 0.4, A: 0.012, D: 0.3, S: 0.85, R: 0.45, wet: 0.2 },
+  // "sweeps in" sound). NO unison/detune (unison 1) = zero beating / flange / phasing.
+  // "Fatter" without detune: a saw an OCTAVE UP (harmonic, no beating) + a strong sub +
+  // more drive. (Stereo "width" needs L != R, so it only shows on headphones, not the
+  // mono phone speaker.)
+  BLOOM: { ...BASE, osc1: 'sawtooth', osc2: 'sawtooth', osc2ratio: 2, osc2gain: 0.28, unison: 1, sub: 0.42, drive: 1.9, pitchAttack: 1.5, pitchAttackTime: 0.16, cutoff: 5200, q: 0.4, A: 0.012, D: 0.3, S: 0.85, R: 0.45, wet: 0.2 },
 };
 
 // A soft-clip (tanh) waveshaper curve for the `drive` grit (amount ~3-8).
@@ -368,14 +370,21 @@ export class WebAudioSynth implements SynthPort {
     chWet.connect(liveSum);
     this.chorusWet = chWet;
 
-    // Browsers SUSPEND the AudioContext when the tab is backgrounded (currentTime
-    // freezes); on return it stays suspended and everything goes silent. Resume it
-    // when the page becomes visible again so loops + the live synth keep playing.
+    // Browsers SUSPEND (iOS Safari INTERRUPTS) the AudioContext when the tab/app is
+    // backgrounded; on return it stays silent. visibilitychange alone is NOT enough on
+    // iOS: a programmatic resume is often ignored until a real user gesture, and the
+    // context can sit in 'interrupted'. So re-resume on EVERY signal - becoming visible,
+    // the context's own statechange, and (the reliable one on iOS) the next user touch.
     if (typeof document !== 'undefined') {
+      const tryResume = () => {
+        if (ctx.state !== 'running') void ctx.resume();
+      };
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && ctx.state === 'suspended')
-          void ctx.resume();
+        if (document.visibilityState === 'visible') tryResume();
       });
+      ctx.addEventListener('statechange', tryResume);
+      for (const ev of ['pointerdown', 'touchstart', 'keydown'])
+        window.addEventListener(ev, tryResume, { passive: true });
     }
 
     this.applyFx();

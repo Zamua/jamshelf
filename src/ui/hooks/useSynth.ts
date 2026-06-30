@@ -15,6 +15,10 @@ const JOY_ENGAGE = 0.85; // must be this far out (0..1) to start morphing
 const JOY_RELEASE = 0.5; // and fall back inside this to return to a plain triad
 // Discrete menu flicks need an equally clear, near-full push.
 const MENU_NAV_THRESHOLD = 0.85;
+// The looper STOP/restart down-flick is more forgiving than menu nav: a moderate
+// downward pull triggers it (0.85 made "pull down to stop" feel unreliable, and a
+// gentle pull was misread as a tap = an accidental overdub).
+const LOOP_STOP_THRESHOLD = 0.55;
 // LEAD-mode pitch bend range on the joystick X axis (full deflection = this many
 // semitones up/down). Y axis is a full +/-1 octave (1200 cents).
 const BEND_SEMITONES = 2;
@@ -171,15 +175,17 @@ export function useSynth() {
         trackLatched.current = false;
         return;
       }
-      if (trackLatched.current || mag < MENU_NAV_THRESHOLD) return;
+      if (trackLatched.current) return;
       const ax = Math.abs(x);
       const ay = Math.abs(y);
-      if (ax > ay * AXIS_DOMINANCE) {
+      // DOWN = stop / restart: forgiving threshold so the pull reliably registers.
+      if (ay > ax * AXIS_DOMINANCE && y < 0 && mag >= LOOP_STOP_THRESHOLD) {
+        trackLatched.current = true;
+        controller.looperStop();
+      } else if (ax > ay * AXIS_DOMINANCE && mag >= MENU_NAV_THRESHOLD) {
+        // LEFT/RIGHT = pick the layer (keeps the firmer near-full push).
         trackLatched.current = true;
         controller.selectLoopTrack(x > 0 ? 1 : -1);
-      } else if (ay > ax * AXIS_DOMINANCE && y < 0) {
-        trackLatched.current = true;
-        controller.looperStop(); // down = stop / restart from the top
       }
     };
 

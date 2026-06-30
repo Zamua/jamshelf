@@ -34,6 +34,7 @@ export class FakeAudioLooper implements AudioLooper {
   }
   toggleStop(): void {
     this.stops++;
+    this.stopped = !this.stopped;
   }
   noteStarted(): void {
     this.notes++;

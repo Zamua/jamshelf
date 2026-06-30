@@ -239,11 +239,22 @@ controller's press/release), so a long release/reverb tail past the bar line doe
 a bar - the tail is `wrapAdd`-folded back into the loop start (bleeds into bar 1) instead.
 **Overdub has a 4-beat count-in**: hitting record over a loop silences the layers, clicks
 4 beats (OLED `COUNT n`), then restarts ALL layers from bar 1 AND begins capturing on the
-downbeat (so a new layer never waits a whole loop to align). **Joystick DOWN = stop**
-(`toggleStop`, `useSynth` navLooper down-flick): halts all layers (OLED `STOPPED`); down
-again restarts them from the top (bar 1) via the retained per-layer `buffer`. Each layer
-is `{source, gain, buffer}` so it can be re-started (stop/resume, overdub count-in) and
-faded on delete. **Overdub capture is CONTIGUOUS** (accumulate blocks from the downbeat,
+downbeat (so a new layer never waits a whole loop to align). **A re-press DURING the count-in
+CANCELS the overdub** (`cancelOverdub`): it abandons the new layer, kills the scheduled
+count-in clicks + the pending capture-start, and resumes the existing layers - so rapid
+joystick presses can't finalize near-empty bogus tracks or stack overlapping metronomes (the
+master arm already cancels via `armed -> idle`). **Click oscillators are cancellable**:
+`click()` tracks each `{osc, at}` in `clickNodes`, and `killFutureClicks()` (called from
+`stopMetronome`, `cancelOverdub`, `resetAll`) stops the ones not yet fired, so a cancelled
+arm/count-in never leaves audio-scheduled blips to overlap the next one. **Joystick DOWN =
+stop** (`toggleStop`, `useSynth` navLooper down-flick at the forgiving `LOOP_STOP_THRESHOLD`
+= 0.55, NOT the 0.85 menu-nav push - 0.85 felt unreliable and a gentle pull got misread as a
+tap = an accidental overdub): halts all layers; down again restarts them from the top (bar 1)
+via the retained per-layer `buffer`. **STOPPED is FLASHED once** (`looperStop` -> `flash`,
+~900ms) then the OLED falls back to the live key/scale with a compact `STOP n LOOPS` marker -
+it does NOT persist (a persistent `STOPPED` obstructed the screen). Each layer is
+`{source, gain, buffer}` so it can be re-started (stop/resume, overdub count-in) and faded on
+delete. **Overdub capture is CONTIGUOUS** (accumulate blocks from the downbeat,
 truncate to one loop via `copyInto`) - NOT the old per-block phase-write off
 `playbackTime`, whose jitter left discontinuities a sharp drum hit exposed. **Zombie-track
 invariant**: `restartTracks` STOPS the current sources before recreating them, and

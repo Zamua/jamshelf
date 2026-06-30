@@ -33,8 +33,9 @@ class FakeOsc extends FakeNode {
   start(t: number): void {
     this.started = t;
   }
-  stop(t: number): void {
-    this.stopped = t;
+  stop(t?: number): void {
+    // real osc.stop() with no arg = stop now; killFutureClicks calls it to cancel
+    this.stopped = t ?? 0;
   }
 }
 class FakeBufferSource extends FakeNode {
@@ -228,6 +229,27 @@ describe('WebAudioLooper', () => {
     expect(od.loop).toBe(true);
     expect(od.connections[0].connections).toContain(loopOut);
     expect(od.buffer!.getChannelData(0).some((s) => Math.abs(s - 0.3) < 1e-4)).toBe(true);
+  });
+
+  it('a re-press DURING the overdub count-in cancels it (no bogus track)', () => {
+    const { looper, ctx } = makeLooper();
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 });
+    expect(looper.view().trackCount).toBe(1);
+
+    looper.toggle(); // play -> overdub count-in
+    expect(looper.view().mode).toBe('rec');
+    expect(looper.view().countdown).toBe(4);
+
+    looper.toggle(); // re-press while still counting in -> ABANDON the overdub
+    const v = looper.view();
+    expect(v.mode).toBe('play'); // back to playing, not recording
+    expect(v.countdown).toBe(0);
+    expect(v.trackCount).toBe(1); // no near-empty track was finalized
+
+    // and a fresh overdub still works cleanly afterward (no stuck/zombie state)
+    recordOverdub(looper, ctx, 0.3, 50);
+    expect(looper.view().trackCount).toBe(2);
   });
 
   it('selects layers; clears a non-master layer alone, the master wipes all', () => {

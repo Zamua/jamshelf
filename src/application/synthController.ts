@@ -124,6 +124,10 @@ export class SynthController {
   looperStop(): void {
     if (!this.power || this.inspect) return;
     this.looper.toggleStop();
+    // Flash STOPPED once on the way into a stop, then let the screen fall back to the
+    // live key/scale (the flash auto-reverts) so the word doesn't obstruct the OLED.
+    if (this.looper.view().stopped) this.flash('STOPPED', 900);
+    this.publish();
   }
 
   // --- lifecycle ---
@@ -650,10 +654,18 @@ export class SynthController {
       return { big, small: flashing ? this.flashText : keyScale };
     }
     if (lv.mode === 'play') {
+      if (lv.stopped) {
+        // Halted: STOPPED flashed once (looperStop); after it fades, show the live
+        // key/scale so nothing obstructs the OLED, with a compact paused-loops marker.
+        return {
+          big: flashing ? this.flashText : keyScale,
+          small: `STOP ${lv.trackCount} LOOP${lv.trackCount === 1 ? '' : 'S'}`,
+        };
+      }
       // big line is the live transport (bar.beat), flashing to chord names as you
-      // play; small line shows the selected layer + loop length. STOP halts it.
+      // play; small line shows the selected layer + loop length.
       return {
-        big: flashing ? this.flashText : lv.stopped ? 'STOPPED' : `BAR ${lv.bar}.${lv.beat}`,
+        big: flashing ? this.flashText : `BAR ${lv.bar}.${lv.beat}`,
         small: `TRK ${lv.selected + 1}/${lv.trackCount} ${lv.loopBars}BR`,
       };
     }

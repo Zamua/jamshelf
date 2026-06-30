@@ -61,6 +61,10 @@ export class WebAudioLooper implements AudioLooper {
   private stopped = false; // joystick-down stop: layers halted (resume from the top)
   private countdown = 0; // overdub count-in clicks remaining (0 = not counting in)
   private pendingTimers: ReturnType<typeof setTimeout>[] = []; // scheduled count-in steps
+  // every metronome / count-in click oscillator + its scheduled time, so a cancel
+  // (disarm, overdub-cancel, stop-metronome) can silence the ones not yet fired -
+  // otherwise rapid clicks leave audio-scheduled blips that overlap as new ones start.
+  private clickNodes: { osc: OscillatorNode; at: number }[] = [];
 
   // metronome
   private metroTimer: ReturnType<typeof setInterval> | null = null;
@@ -137,7 +141,11 @@ export class WebAudioLooper implements AudioLooper {
         this.stopMetronome();
         break;
       case 'rec':
-        if (this.recTrack === 0) this.finalizeMaster();
+        if (this.recTrack === 0)
+          this.finalizeMaster();
+        // a re-press DURING an overdub count-in (nothing recorded yet) abandons the new
+        // layer and resumes playback - it does NOT finalize a near-empty bogus track.
+        else if (this.countdown > 0) this.cancelOverdub();
         else this.finalizeOverdub();
         break;
       case 'play':
@@ -145,6 +153,24 @@ export class WebAudioLooper implements AudioLooper {
         break;
     }
     this.emit();
+  }
+
+  // Abandon an in-progress overdub count-in: kill the scheduled count-in clicks + the
+  // pending capture-start, and resume the existing layers from the top right away.
+  private cancelOverdub(): void {
+    this.clearPendingTimers();
+    this.killFutureClicks();
+    this.capturing = false;
+    this.capturedSamples = 0;
+    this.masterChunks = [[], []];
+    this.countdown = 0;
+    this.recTrack = -1;
+    this.mode = 'play';
+    this.stopped = false;
+    const at = this.ctx!.currentTime + 0.05;
+    this.anchorTime = at;
+    this.restartTracks(at); // existing layers (silenced for the count-in) play again
+    this.startDisplayTimer();
   }
 
   noteStarted(): void {
@@ -486,6 +512,7 @@ export class WebAudioLooper implements AudioLooper {
       clearInterval(this.metroTimer);
       this.metroTimer = null;
     }
+    this.killFutureClicks(); // drop any clicks the scheduler already queued ahead
   }
   private scheduleClicks(): void {
     if (!this.ctx) return;
@@ -520,7 +547,9 @@ export class WebAudioLooper implements AudioLooper {
     g.connect(this.loopOut!); // untapped bus => never recorded
     osc.start(at);
     osc.stop(at + 0.06);
+    this.clickNodes.push({ osc, at });
     osc.onended = () => {
+      this.clickNodes = this.clickNodes.filter((c) => c.osc !== osc);
       try {
         osc.disconnect();
         g.disconnect();
@@ -528,6 +557,22 @@ export class WebAudioLooper implements AudioLooper {
         /* already gone */
       }
     };
+  }
+
+  // Silence any click scheduled in the FUTURE (not yet started). Cancelling an arm /
+  // overdub count-in this way is what stops rapid taps from stacking overlapping clicks.
+  private killFutureClicks(): void {
+    if (!this.ctx) return;
+    const now = this.ctx.currentTime;
+    for (const c of this.clickNodes) {
+      if (c.at > now) {
+        try {
+          c.osc.stop();
+        } catch {
+          /* already stopped */
+        }
+      }
+    }
   }
 }
 

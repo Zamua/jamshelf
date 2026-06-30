@@ -114,7 +114,7 @@ describe('looper wiring', () => {
     expect(looper.ended).toBe(1);
   });
 
-  it('the OLED shows the count-in countdown and the stopped state', () => {
+  it('the OLED shows the count-in countdown', () => {
     looper.mode = 'rec';
     looper.recTrack = 1;
     looper.countdown = 3;
@@ -123,11 +123,25 @@ describe('looper wiring', () => {
     looper.countdown = 0;
     looper.emit();
     expect(c.getState().screenBig).toBe('REC 2');
+  });
+
+  it('STOPPED flashes once on stop, it does not persist on the OLED', () => {
     looper.mode = 'play';
     looper.trackCount = 1;
     looper.loopBars = 2;
+
+    // The raw stopped state (no flash) shows the live key/scale, NOT a persistent
+    // STOPPED that would obstruct the screen; a compact marker notes the paused loops.
     looper.stopped = true;
     looper.emit();
+    expect(c.getState().screenBig).not.toBe('STOPPED');
+    expect(c.getState().screenBig).toBe('C MAJ');
+    expect(c.getState().screenSmall).toBe('STOP 1 LOOP');
+
+    // Entering the stop via looperStop() flashes STOPPED once (then it auto-reverts).
+    looper.stopped = false; // so toggleStop flips it back to true
+    c.looperStop();
+    expect(looper.stopped).toBe(true);
     expect(c.getState().screenBig).toBe('STOPPED');
   });
 });

@@ -17,12 +17,22 @@ body,
   margin: 0;
   height: 100%;
   width: 100%;
-  /* Warm room backdrop on the ROOT element: in an installed iOS PWA the bottom
-     safe-area strip (the home-indicator zone) is painted from html's background,
-     and with no background it falls back to the UA's black canvas - the "black
-     bar" along the bottom. #150d08 matches the manifest background_color AND the
-     scene gradient's warm bottom (#160c08), so the strip blends into the room. */
+  /* Warm room backdrop (#150d08 matches the manifest background_color + the scene
+     gradient's warm bottom #160c08) so nothing reads as a black bar. */
   background: #150d08;
+}
+
+/* iOS Safari/PWA: the bottom home-indicator safe-area strip is painted from the
+   HTML box. With height:100% the html box stops at the SMALL viewport, leaving that
+   strip outside it - so it falls back to the UA's black canvas (color-scheme: dark).
+   Stretch html to the LARGE viewport (full screen, incl. the strip) so its warm bg
+   covers it; overflow:hidden keeps the extra height from scrolling (body is fixed and
+   covers the visible area anyway). This is the actual black-bar fix; html background
+   alone does NOT reach the strip. */
+html {
+  min-height: 100vh;
+  min-height: 100lvh;
+  overflow: hidden;
 }
 
 body {

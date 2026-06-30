@@ -208,7 +208,9 @@ export function useSynth() {
         const st = controller.getState();
         if (st.menuOpen) navMenu(x, y);
         else if (st.mode === 'LEAD') controller.setLeadBend(x * BEND_SEMITONES * 100 + y * 1200);
-        else if (st.looper.mode === 'play' && st.litPads.length === 0) navLooper(x, y);
+        // playing, OR mid overdub count-in (so a DOWN flick can cancel the pending take)
+        else if ((st.looper.mode === 'play' || st.looper.countdown > 0) && st.litPads.length === 0)
+          navLooper(x, y);
         else {
           const q = joyQuality(x, y, lastQuality.current);
           lastQuality.current = q;

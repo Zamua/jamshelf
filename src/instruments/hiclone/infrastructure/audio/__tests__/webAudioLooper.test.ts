@@ -275,6 +275,33 @@ describe('WebAudioLooper', () => {
     expect(looper.view().trackCount).toBe(2);
   });
 
+  it('joystick-DOWN during the overdub count-in cancels the take AND leaves the layers stopped', () => {
+    const { looper, ctx } = makeLooper();
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 });
+    expect(looper.view().trackCount).toBe(1);
+    expect(looper.view().stopped).toBe(false);
+
+    looper.toggle(); // play -> overdub count-in
+    expect(looper.view().mode).toBe('rec');
+    expect(looper.view().countdown).toBe(4);
+
+    looper.toggleStop(); // pull DOWN while counting in -> cancel the take + stop playback
+    const v = looper.view();
+    expect(v.mode).toBe('play'); // not recording
+    expect(v.countdown).toBe(0); // count-in abandoned
+    expect(v.trackCount).toBe(1); // no bogus track finalized
+    expect(v.stopped).toBe(true); // layers STOPPED (a re-press would have resumed them)
+
+    // a later down resumes the layers, same as a normal stop/restart toggle
+    looper.toggleStop();
+    expect(looper.view().stopped).toBe(false);
+
+    // and a fresh overdub still works cleanly afterward (no stuck/zombie state)
+    recordOverdub(looper, ctx, 0.3, 50);
+    expect(looper.view().trackCount).toBe(2);
+  });
+
   it('selects layers; clears a non-master layer alone, the master wipes all', () => {
     const { looper, ctx } = makeLooper();
     looper.setBpm(120);

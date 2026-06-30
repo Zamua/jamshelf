@@ -165,8 +165,9 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   // Abandon an in-progress overdub count-in: kill the scheduled count-in clicks + the
-  // pending capture-start, and resume the existing layers from the top right away.
-  private cancelOverdub(): void {
+  // pending capture-start. resume=true (a re-press) plays the existing layers again;
+  // resume=false (a joystick-down) leaves them stopped.
+  private cancelOverdub(resume = true): void {
     this.clearPendingTimers();
     this.killFutureClicks();
     this.capturing = false;
@@ -175,11 +176,18 @@ export class WebAudioLooper implements AudioLooper {
     this.countdown = 0;
     this.recTrack = -1;
     this.mode = 'play';
-    this.stopped = false;
-    const at = this.ctx!.currentTime + 0.05;
-    this.anchorTime = at;
-    this.restartTracks(at); // existing layers (silenced for the count-in) play again
-    this.startDisplayTimer();
+    if (resume) {
+      this.stopped = false;
+      const at = this.ctx!.currentTime + 0.05;
+      this.anchorTime = at;
+      this.restartTracks(at); // existing layers (silenced for the count-in) play again
+      this.startDisplayTimer();
+    } else {
+      // Pulled DOWN to cancel: the layers were already silenced for the count-in, so
+      // leave them stopped (a later joystick-down resumes them, same as a normal stop).
+      this.stopped = true;
+      this.stopDisplayTimer();
+    }
   }
 
   noteStarted(): void {
@@ -207,8 +215,15 @@ export class WebAudioLooper implements AudioLooper {
       this.lastActivity = this.ctx.currentTime;
   }
 
-  // Joystick down: STOP all layers (resume restarts them from the top / bar 1).
+  // Joystick down: STOP all layers (resume restarts them from the top / bar 1). Pulled
+  // DOWN during an overdub count-in instead CANCELS the pending recording and leaves the
+  // existing layers stopped (the re-press path resumes them; down stops everything).
   toggleStop(): void {
+    if (this.countdown > 0) {
+      this.cancelOverdub(false);
+      this.emit();
+      return;
+    }
     if (this.mode !== 'play') return;
     if (!this.stopped) {
       this.stopAllSources();

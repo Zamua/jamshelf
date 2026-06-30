@@ -254,8 +254,12 @@ swiping fast) left the note held with no release = a stuck key. A window
 `pointerup`/`pointercancel` listener calls `controller.releasePad(String(pointerId))` for
 the lifted pointer (idempotent: a normal over-pad release already cleared it; a non-pad
 pointer id isn't a held voice). Reproduced + verified via CDP touch (7 stuck oscillators ->
-0, only the chorus LFO remains). `WebAudioSynth` also resumes the AudioContext on
-`document` `visibilitychange` (backgrounding a tab suspends it).
+0, only the chorus LFO remains). `WebAudioSynth` resumes the AudioContext after backgrounding via THREE signals, because
+visibilitychange alone is NOT enough on iOS Safari (a programmatic resume is ignored until
+a real gesture, and the ctx can sit 'interrupted'): `visibilitychange`->visible, ctx
+`statechange` (both gated on `document.visibilityState === 'visible'` so a backgrounded tab
+isn't kept alive), and a window `pointerdown`/`touchstart`/`keydown` (the reliable iOS path
+- the next tap resumes it).
 
 **Drums (`DRUM` play mode)**: the 7 pads map to a kit (`drumForDegree`). Drum hits are
 rendered audio like everything else, so they are captured by the audio looper too. Kits via the DRUM-mode KIT

@@ -259,7 +259,7 @@ export function Stage({ mode, inspect, spinRef, vm, handlers, onShelfTap, label 
       <WarmLights />
       <StudioLights />
       <Room />
-      <ShelfLabel text={label} />
+      <ShelfLabel text={label} mode={mode} />
       <group ref={deviceRef}>
         <Device vm={vm} handlers={handlers} />
         {/* on the shelf, a tap anywhere on the instrument floats it to the desk; the

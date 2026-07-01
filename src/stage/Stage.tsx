@@ -23,7 +23,7 @@ const SHELF_TILT = -0.32;
 const SHELF_SCALE = 0.82;
 // desk: device lies PERFECTLY FLAT, face up. Flat + scale 1, its lowest point is ~0.22
 // below the pivot; the desk top is at -2.34, so the pivot sits at -2.34 + 0.22 ~ -2.12.
-const PLAY_POS = new Vector3(0, -2.12, 2.2);
+const PLAY_POS = new Vector3(0, -2.12, 3.1);
 const PLAY_TILT = -Math.PI / 2;
 const PLAY_SCALE = 1.0;
 
@@ -35,8 +35,8 @@ const SHELF_UP = new Vector3(0, 1, 0);
 // face is fronto-parallel / 2D, no perspective skew. The up-vector swings from +Y to -Z so
 // the camera's "up" stays perpendicular to the straight-down view (an exactly-vertical
 // camera with +Y up is degenerate; with -Z up it is fine).
-const PLAY_CAM = new Vector3(0, 5.15, 2.2);
-const PLAY_TGT = new Vector3(0, -2.12, 2.2);
+const PLAY_CAM = new Vector3(0, 5.15, 3.1);
+const PLAY_TGT = new Vector3(0, -2.12, 3.1);
 const PLAY_UP = new Vector3(0, 0, -1);
 
 // inspect: the eye button floats the device UP off the desk to a centered presentation
@@ -259,7 +259,7 @@ export function Stage({ mode, inspect, spinRef, vm, handlers, onShelfTap, label 
       <WarmLights />
       <StudioLights />
       <Room />
-      <ShelfLabel text={label} mode={mode} />
+      <ShelfLabel text={label} />
       <group ref={deviceRef}>
         <Device vm={vm} handlers={handlers} />
         {/* on the shelf, a tap anywhere on the instrument floats it to the desk; the

@@ -426,6 +426,19 @@ describe('menus', () => {
     expect(synth.lastRetune().freqs[0]).toBeCloseTo(midiToFreq(64));
   });
 
+  it('inversions are PER-PAD: cycling one pad leaves the others in root position', () => {
+    c.pressPad('p3', 3); // E minor triad, root (lowest = E4 = 64)
+    c.pressSound(); // cycle ONLY pad 3 to 1st inversion (lowest lifts to G4 = 67)
+    c.releasePad('p3');
+    // pad 1 was never touched -> still root position (lowest = C4 = 60)
+    c.pressPad('p1', 1);
+    expect(synth.lastOn().freqs[0]).toBeCloseTo(midiToFreq(60));
+    c.releasePad('p1');
+    // pad 3 kept its OWN inversion (1st: lowest is now G4 = 67, not root E4)
+    c.pressPad('p3', 3);
+    expect(synth.lastOn().freqs[0]).toBeCloseTo(midiToFreq(67));
+  });
+
   it('the joystick morph retunes a held chord legato (no re-attack)', () => {
     c.pressPad('p1', 1); // C major triad -> one noteOn
     const onsBefore = synth.on.length;

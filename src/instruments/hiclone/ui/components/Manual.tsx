@@ -35,7 +35,7 @@ const ITEMS: readonly Item[] = [
     chip: { label: 'YELLOW', tone: 'yellow' },
     title: 'Sound + inversions',
     body:
-      'The yellow button cycles through the synth voices. Hold a pad while you press it to cycle that chord through its inversions instead (root, 1st, 2nd) for smoother voice leading.',
+      'The yellow button cycles through the synth voices. Hold a pad while you press it to cycle THAT pad through its own inversions instead (root, 1st, 2nd). Each pad keeps its own, so you can voice-lead a whole progression pad by pad.',
   },
   {
     chip: { label: 'RED', tone: 'red' },

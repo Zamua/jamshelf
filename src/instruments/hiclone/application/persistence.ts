@@ -42,7 +42,7 @@ export interface SettingsSnapshot {
   readonly fx: FxMode;
   readonly glide: GlideMode;
   readonly drumKit: DrumKit;
-  readonly inversion: number;
+  readonly inversions: readonly number[]; // per-pad inversion (7 entries, degree-1 indexed)
 }
 
 // Coerce an untrusted payload (stale shape, hand-edited storage, an older build) into
@@ -57,6 +57,8 @@ export function coerceSettings(raw: unknown, fallback: SettingsSnapshot): Settin
     typeof val === 'number' && Number.isFinite(val) ? Math.min(hi, Math.max(lo, Math.round(val))) : dflt;
   const clampNum = (val: unknown, lo: number, hi: number, dflt: number): number =>
     typeof val === 'number' && Number.isFinite(val) ? Math.min(hi, Math.max(lo, val)) : dflt;
+  const clampIntArray = (val: unknown, len: number, lo: number, hi: number, dflt: readonly number[]): number[] =>
+    Array.isArray(val) && val.length === len ? val.map((v) => clampInt(v, lo, hi, 0)) : [...dflt];
   return {
     v: 1,
     root: clampInt(r.root, 0, 11, fallback.root),
@@ -75,7 +77,7 @@ export function coerceSettings(raw: unknown, fallback: SettingsSnapshot): Settin
     fx: oneOf(r.fx, FX_MODES, fallback.fx),
     glide: oneOf(r.glide, GLIDE_MODES, fallback.glide),
     drumKit: oneOf(r.drumKit, DRUM_KITS, fallback.drumKit),
-    inversion: clampInt(r.inversion, 0, INVERSIONS - 1, fallback.inversion),
+    inversions: clampIntArray(r.inversions, 7, 0, INVERSIONS - 1, fallback.inversions),
   };
 }
 

@@ -25,7 +25,7 @@ const DEFAULTS: SettingsSnapshot = {
   fx: 'OFF',
   glide: 'OFF',
   drumKit: 'TIGHT',
-  inversion: 0,
+  inversions: [0, 0, 0, 0, 0, 0, 0],
 };
 
 describe('coerceSettings (pure validation)', () => {
@@ -112,7 +112,7 @@ describe('settings persistence', () => {
       fx: 'bad',
       glide: 'bad',
       drumKit: 'bad',
-      inversion: 99,
+      inversions: 'bad',
     } as unknown as SettingsSnapshot;
     const store = new MemorySettingsStore(bad);
     const c = make(store);

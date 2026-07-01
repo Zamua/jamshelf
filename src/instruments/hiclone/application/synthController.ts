@@ -76,7 +76,10 @@ export class SynthController {
   private fx: FxMode = 'OFF';
   private glide: GlideMode = 'OFF';
   private drumKit: DrumKit = 'TIGHT';
-  private inversion = 0; // 0 = root position, 1 = 1st, 2 = 2nd
+  // PER-PAD inversion (0 = root, 1 = 1st, 2 = 2nd), indexed by degree-1. Cycling the
+  // inversion with a pad held changes ONLY that pad's chord, so you can voice-lead a
+  // progression pad-by-pad; it is not one global inversion for all keys.
+  private inversions: number[] = new Array(7).fill(0);
   private latched: Degree | null = null; // DRONE: the currently-sustained pad
   private arpStep = 0;
 
@@ -137,7 +140,7 @@ export class SynthController {
       fx: this.fx,
       glide: this.glide,
       drumKit: this.drumKit,
-      inversion: this.inversion,
+      inversions: [...this.inversions],
     };
   }
   // Reconstitute the durable settings from a stored payload. Validation/clamping is a
@@ -161,7 +164,7 @@ export class SynthController {
     this.fx = s.fx;
     this.glide = s.glide;
     this.drumKit = s.drumKit;
-    this.inversion = s.inversion;
+    this.inversions = [...s.inversions];
   }
   // Write the settings out when they actually change (called on every publish; the
   // de-dupe means a joystick morph or transport tick does not hit storage).
@@ -323,9 +326,15 @@ export class SynthController {
     else this.cyclePatch();
   }
   cycleInversion(): void {
-    this.inversion = (this.inversion + 1) % INVERSIONS;
+    // Cycle only the currently-held pad(s) - each pad keeps its own inversion.
+    const degrees = new Set<Degree>(this.held.values());
+    if (this.latched !== null) degrees.add(this.latched);
+    let shown = 0;
+    for (const d of degrees) {
+      shown = this.inversions[d - 1] = (this.inversions[d - 1] + 1) % INVERSIONS;
+    }
     this.revoiceHeld();
-    this.flash('INV ' + this.inversion);
+    this.flash('INV ' + shown);
     this.publish();
   }
 
@@ -623,7 +632,7 @@ export class SynthController {
   // inversion + bass (the joystick morph already baked into `quality`).
   private voiced(degree: Degree): Midi[] {
     const chord = resolveChord(degree, this.key(), this.quality);
-    return voiceChord(chord.notes, this.inversion, this.bass);
+    return voiceChord(chord.notes, this.inversions[degree - 1] ?? 0, this.bass);
   }
   private triggerVoice(voiceId: string, degree: Degree): void {
     this.synth.noteOn(voiceId, this.voiced(degree).map(midiToFreq));

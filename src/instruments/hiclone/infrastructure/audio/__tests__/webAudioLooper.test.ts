@@ -154,12 +154,13 @@ function recordMaster(
   opts: { value?: number; playBlocks: number; tailBlocks?: number },
 ): void {
   const value = opts.value ?? 0.5;
-  looper.toggle(); // arm
+  looper.click(); // enter looper mode
+  looper.click(); // arm
   looper.noteStarted(); // first key -> rec, anchor here
   pump(ctx, value, opts.playBlocks); // the playing
   looper.noteEnded(); // last note lifts -> sets the loop length reference
   if (opts.tailBlocks) pump(ctx, value * 0.6, opts.tailBlocks); // the ringing tail
-  looper.toggle(); // finalize
+  looper.click(); // finalize
 }
 
 // Advance past an overdub's 4-beat count-in so capturing has begun.
@@ -170,10 +171,10 @@ function passCountIn(ctx: FakeCtx): void {
 
 // Record an overdub: start (count-in), wait it out, play, stop.
 function recordOverdub(looper: WebAudioLooper, ctx: FakeCtx, value: number, blocks: number): void {
-  looper.toggle(); // play -> rec (count-in begins)
+  looper.click(); // play -> rec (count-in begins)
   passCountIn(ctx);
   pump(ctx, value, blocks);
-  looper.toggle(); // finalize overdub
+  looper.click(); // finalize overdub
 }
 
 describe('WebAudioLooper', () => {
@@ -181,7 +182,9 @@ describe('WebAudioLooper', () => {
     const { looper, ctx } = makeLooper();
     looper.setBpm(120);
 
-    looper.toggle(); // idle -> armed
+    looper.click(); // idle -> enter looper mode
+    expect(looper.view().active).toBe(true);
+    looper.click(); // -> armed
     expect(looper.view().mode).toBe('armed');
 
     // blocks BEFORE the first key must NOT be captured (no leading silence)
@@ -192,7 +195,7 @@ describe('WebAudioLooper', () => {
     pump(ctx, 0.5, 40); // under a bar, so no tail wraps onto the start
     looper.noteEnded();
 
-    looper.toggle(); // rec -> play (finalize master)
+    looper.click(); // rec -> play (finalize master)
     const v = looper.view();
     expect(v.mode).toBe('play');
     expect(v.trackCount).toBe(1);
@@ -224,6 +227,34 @@ describe('WebAudioLooper', () => {
     expect(ctx.sources[0].buffer!.length).toBe(96000);
   });
 
+  it('click ENTERS looper mode first; up EXITS + stops but keeps the loop', () => {
+    const { looper, ctx } = makeLooper();
+    looper.setBpm(120);
+    // first click just enters looper mode - no recording yet
+    looper.click();
+    expect(looper.view().active).toBe(true);
+    expect(looper.view().mode).toBe('idle');
+    // second click arms; record a master
+    looper.click();
+    looper.noteStarted();
+    pump(ctx, 0.5, 40);
+    looper.noteEnded();
+    looper.click(); // finalize -> play
+    expect(looper.view().mode).toBe('play');
+    expect(looper.view().trackCount).toBe(1);
+    // UP exits: halts playback + deactivates, but the loop is KEPT
+    looper.exit();
+    let v = looper.view();
+    expect(v.active).toBe(false);
+    expect(v.stopped).toBe(true);
+    expect(v.trackCount).toBe(1);
+    // re-enter: back in looper mode with the (stopped) loop
+    looper.click();
+    v = looper.view();
+    expect(v.active).toBe(true);
+    expect(v.trackCount).toBe(1);
+  });
+
   it('overdubs with a count-in, keeping the master audio frozen', () => {
     const { looper, ctx, loopOut } = makeLooper();
     looper.setBpm(120);
@@ -232,7 +263,7 @@ describe('WebAudioLooper', () => {
     const masterStart = masterBuf.getChannelData(0)[0];
     expect(masterStart).toBeCloseTo(0.5);
 
-    looper.toggle(); // play -> rec: the count-in begins
+    looper.click(); // play -> rec: the count-in begins
     expect(looper.view().mode).toBe('rec');
     expect(looper.view().recTrack).toBe(1);
     expect(looper.view().countdown).toBe(4); // 4-beat count-in
@@ -240,7 +271,7 @@ describe('WebAudioLooper', () => {
     passCountIn(ctx);
     expect(looper.view().countdown).toBe(0); // count-in done, capturing now
     pump(ctx, 0.3, 50); // play the new layer
-    looper.toggle(); // finalize overdub
+    looper.click(); // finalize overdub
 
     const v = looper.view();
     expect(v.mode).toBe('play');
@@ -260,11 +291,11 @@ describe('WebAudioLooper', () => {
     recordMaster(looper, ctx, { playBlocks: 40 });
     expect(looper.view().trackCount).toBe(1);
 
-    looper.toggle(); // play -> overdub count-in
+    looper.click(); // play -> overdub count-in
     expect(looper.view().mode).toBe('rec');
     expect(looper.view().countdown).toBe(4);
 
-    looper.toggle(); // re-press while still counting in -> ABANDON the overdub
+    looper.click(); // re-press while still counting in -> ABANDON the overdub
     const v = looper.view();
     expect(v.mode).toBe('play'); // back to playing, not recording
     expect(v.countdown).toBe(0);
@@ -282,7 +313,7 @@ describe('WebAudioLooper', () => {
     expect(looper.view().trackCount).toBe(1);
     expect(looper.view().stopped).toBe(false);
 
-    looper.toggle(); // play -> overdub count-in
+    looper.click(); // play -> overdub count-in
     expect(looper.view().mode).toBe('rec');
     expect(looper.view().countdown).toBe(4);
 
@@ -403,6 +434,7 @@ describe('WebAudioLooper', () => {
     expect(b.ctx.sources[0].buffer!.getChannelData(0)[0]).toBeCloseTo(0.5);
 
     // clearing the master wipes the persisted state too
+    b.looper.click(); // re-enter looper mode (clear only acts while in the mode)
     b.looper.toggleStop(); // un-stop -> play, so selectTrack/clear are active
     while (b.looper.view().selected !== 0) b.looper.selectTrack(-1); // to the master
     b.looper.clear(); // master clear = wipe everything
@@ -414,7 +446,8 @@ describe('WebAudioLooper', () => {
     vi.useFakeTimers();
     const { looper, ctx, live, loopOut } = makeLooper();
     looper.setBpm(120);
-    looper.toggle(); // arm -> metronome scheduler starts
+    looper.click(); // enter looper mode
+    looper.click(); // arm -> metronome scheduler starts
     ctx.currentTime = 1.0; // advance past a couple of beats
     vi.advanceTimersByTime(30); // fire the lookahead scheduler
 
@@ -429,9 +462,10 @@ describe('WebAudioLooper', () => {
 
   it('does not record while only armed (no master block leaks in)', () => {
     const { looper, ctx } = makeLooper();
-    looper.toggle(); // armed
+    looper.click(); // enter looper mode
+    looper.click(); // armed
     pump(ctx, 0.9, 10); // audio while armed
-    looper.toggle(); // armed -> idle (cancelled, never pressed a key)
+    looper.click(); // armed -> idle (cancelled, never pressed a key)
     expect(looper.view().mode).toBe('idle');
     expect(ctx.sources).toHaveLength(0); // nothing was recorded
   });

@@ -60,6 +60,10 @@ export class WebAudioLooper implements AudioLooper {
   // master - the loop length quantizes to THIS (the notes), not the captured audio,
   // so a long release/reverb tail bleeds into the loop instead of adding a bar.
   private stopped = false; // joystick-down stop: layers halted (resume from the top)
+  // In looper MODE: entered by a joystick click, exited by joystick UP. The click only
+  // records/advances once you are IN the mode; UP halts playback + leaves. Loops are kept
+  // (stopped) when you exit, so re-entering + a down-flick resumes them.
+  private active = false;
   private countdown = 0; // overdub count-in clicks remaining (0 = not counting in)
   private pendingTimers: ReturnType<typeof setTimeout>[] = []; // scheduled count-in steps
   // every metronome / count-in click oscillator + its scheduled time, so a cancel
@@ -114,6 +118,7 @@ export class WebAudioLooper implements AudioLooper {
       beat = (beatIdx % BEATS_PER_BAR) + 1;
     }
     return {
+      active: this.active,
       mode: this.mode,
       recTrack: this.recTrack,
       trackCount: this.tracks.length,
@@ -134,8 +139,15 @@ export class WebAudioLooper implements AudioLooper {
     this.emit();
   }
 
-  toggle(): void {
+  // Joystick CLICK. The FIRST click ENTERS looper mode (no recording yet); once you are
+  // in the mode, clicks run the record/stop cycle. Exit is a separate gesture (up).
+  click(): void {
     if (!this.ensureGraph()) return;
+    if (!this.active) {
+      this.active = true; // enter looper mode
+      this.emit();
+      return;
+    }
     switch (this.mode) {
       case 'idle':
         // arm the master; capture waits for the first key (noteStarted)
@@ -161,6 +173,29 @@ export class WebAudioLooper implements AudioLooper {
         if (this.tracks.length < MAX_TRACKS) this.startOverdub();
         break;
     }
+    this.emit();
+  }
+
+  // Joystick UP: exit looper mode AND stop playback. Any in-progress take is finalized
+  // (kept), then all layers halt; the loops stay recorded but stopped, so re-entering
+  // (click) + a down-flick resumes them.
+  exit(): void {
+    if (!this.active) return;
+    if (this.mode === 'armed') {
+      this.mode = 'idle';
+      this.recTrack = -1;
+      this.stopMetronome();
+    } else if (this.mode === 'rec') {
+      if (this.recTrack === 0) this.finalizeMaster();
+      else if (this.countdown > 0) this.cancelOverdub();
+      else this.finalizeOverdub();
+    }
+    if (this.mode === 'play' && !this.stopped) {
+      this.stopAllSources();
+      this.stopped = true;
+      this.stopDisplayTimer();
+    }
+    this.active = false;
     this.emit();
   }
 
@@ -240,6 +275,7 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   clear(): void {
+    if (!this.active) return; // long-press only clears while you are in looper mode
     // While a loop plays, clear ONLY the selected layer - unless it's the master
     // (layer 0), which defines the loop length, so clearing it wipes everything.
     if (this.mode === 'play' && this.selected > 0 && this.selected < this.tracks.length) {
@@ -347,7 +383,7 @@ export class WebAudioLooper implements AudioLooper {
 
     const beat = this.beatSec();
     const t0 = ctx.currentTime + 0.12; // first count-in click
-    for (let k = 0; k < BEATS_PER_BAR; k++) this.click(t0 + k * beat, k === 0);
+    for (let k = 0; k < BEATS_PER_BAR; k++) this.clickSound(t0 + k * beat, k === 0);
     // tick the on-screen countdown 4 -> 1 on each count-in beat
     for (let k = 0; k < BEATS_PER_BAR; k++)
       this.scheduleAt(t0 + k * beat, () => {
@@ -614,12 +650,12 @@ export class WebAudioLooper implements AudioLooper {
     let t = this.metroAnchor + this.metroBeat * b;
     while (t < horizon) {
       const beatIdx = Math.round((t - accentRef) / b);
-      this.click(t, (((beatIdx % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR) === 0);
+      this.clickSound(t, (((beatIdx % BEATS_PER_BAR) + BEATS_PER_BAR) % BEATS_PER_BAR) === 0);
       this.metroBeat++;
       t = this.metroAnchor + this.metroBeat * b;
     }
   }
-  private click(at: number, accent: boolean): void {
+  private clickSound(at: number, accent: boolean): void {
     const ctx = this.ctx!;
     const osc = ctx.createOscillator();
     osc.type = 'square';

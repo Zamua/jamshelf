@@ -23,10 +23,12 @@ export class MemorySettingsStore implements SettingsStore {
 // the reported mode (so the OLED + "first key begins the take" wiring is testable
 // without a real AudioContext - the actual audio capture is verified in-browser).
 export class FakeAudioLooper implements AudioLooper {
-  toggles = 0;
+  clicks = 0;
+  exits = 0;
   cleared = 0;
   notes = 0; // noteStarted() calls
   bpm = -1;
+  active = false;
   mode: LooperMode = 'idle';
   trackCount = 0;
   recTrack = -1;
@@ -41,8 +43,11 @@ export class FakeAudioLooper implements AudioLooper {
   selectDirs: number[] = [];
   private cb: (() => void) | null = null;
 
-  toggle(): void {
-    this.toggles++;
+  click(): void {
+    this.clicks++;
+  }
+  exit(): void {
+    this.exits++;
   }
   clear(): void {
     this.cleared++;
@@ -65,6 +70,7 @@ export class FakeAudioLooper implements AudioLooper {
   }
   view(): LooperView {
     return {
+      active: this.active,
       mode: this.mode,
       recTrack: this.recTrack,
       trackCount: this.trackCount,

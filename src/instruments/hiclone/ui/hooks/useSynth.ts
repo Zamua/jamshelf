@@ -185,10 +185,12 @@ export function useSynth() {
       if (trackLatched.current) return;
       const ax = Math.abs(x);
       const ay = Math.abs(y);
-      // DOWN = stop / restart: forgiving threshold so the pull reliably registers.
-      if (ay > ax * AXIS_DOMINANCE && y < 0 && mag >= LOOP_STOP_THRESHOLD) {
+      // Vertical flick: UP = exit the looper + stop; DOWN = pause / restart. Forgiving
+      // threshold so the pull reliably registers.
+      if (ay > ax * AXIS_DOMINANCE && mag >= LOOP_STOP_THRESHOLD) {
         trackLatched.current = true;
-        controller.looperStop();
+        if (y > 0) controller.looperExit();
+        else controller.looperStop();
       } else if (ax > ay * AXIS_DOMINANCE && mag >= MENU_NAV_THRESHOLD) {
         // LEFT/RIGHT = pick the layer (keeps the firmer near-full push).
         trackLatched.current = true;
@@ -208,9 +210,9 @@ export function useSynth() {
         const st = controller.getState();
         if (st.menuOpen) navMenu(x, y);
         else if (st.mode === 'LEAD') controller.setLeadBend(x * BEND_SEMITONES * 100 + y * 1200);
-        // playing, OR mid overdub count-in (so a DOWN flick can cancel the pending take)
-        else if ((st.looper.mode === 'play' || st.looper.countdown > 0) && st.litPads.length === 0)
-          navLooper(x, y);
+        // in looper mode (any state) + no pad held -> joystick tilts control the looper
+        // (up = exit+stop, down = pause/restart, left/right = select track)
+        else if (st.looper.active && st.litPads.length === 0) navLooper(x, y);
         else {
           const q = joyQuality(x, y, lastQuality.current);
           lastQuality.current = q;

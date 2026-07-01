@@ -71,6 +71,7 @@ export type LooperMode = 'idle' | 'armed' | 'rec' | 'play';
 
 // What the UI needs to render the looper (kept tiny + serializable).
 export interface LooperView {
+  readonly active: boolean; // in looper MODE (entered via joystick click; exit via up)
   readonly mode: LooperMode;
   readonly recTrack: number; // 0-based track being recorded, or -1
   readonly trackCount: number; // finalized loop layers
@@ -84,10 +85,13 @@ export interface LooperView {
 }
 
 export interface AudioLooper {
-  // The joystick click: advance idle -> armed -> rec -> play -> (overdub) rec ...
-  // When it arms the master it does NOT start capturing yet - capture begins at the
-  // first key (noteStarted), so there is no leading silence.
-  toggle(): void;
+  // The joystick click. The FIRST click ENTERS looper mode; subsequent clicks advance
+  // idle -> armed -> rec -> play -> (overdub) rec ... When it arms the master it does NOT
+  // start capturing yet - capture begins at the first key (noteStarted), no leading silence.
+  click(): void;
+  // Joystick UP: exit looper mode and stop playback. Any take is finalized; loops are kept
+  // (stopped), so re-entering + a down-flick resumes them.
+  exit(): void;
   // While a loop plays, move the selection cursor over the recorded layers (the
   // joystick left/right when no pad is held). No-op outside play.
   selectTrack(dir: -1 | 1): void;

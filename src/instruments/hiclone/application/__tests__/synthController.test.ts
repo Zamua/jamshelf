@@ -45,7 +45,7 @@ describe('construction', () => {
 describe('looper wiring', () => {
   it('the joystick click toggles and the long-press clears', () => {
     c.joyClick();
-    expect(looper.toggles).toBe(1);
+    expect(looper.clicks).toBe(1);
     c.joyHold();
     expect(looper.cleared).toBe(1);
   });
@@ -60,7 +60,7 @@ describe('looper wiring', () => {
     c.togglePower(); // off
     c.joyClick();
     c.joyHold();
-    expect(looper.toggles).toBe(0);
+    expect(looper.clicks).toBe(0);
     expect(looper.cleared).toBe(0);
   });
 
@@ -73,6 +73,7 @@ describe('looper wiring', () => {
   });
 
   it('the OLED reflects armed / rec / play looper states', () => {
+    looper.active = true; // the looper OLED only shows while in looper mode
     looper.mode = 'armed';
     looper.emit();
     expect(c.getState().screenSmall).toBe('LOOP ARMED');
@@ -115,6 +116,7 @@ describe('looper wiring', () => {
   });
 
   it('the OLED shows the count-in countdown', () => {
+    looper.active = true;
     looper.mode = 'rec';
     looper.recTrack = 1;
     looper.countdown = 3;
@@ -126,6 +128,7 @@ describe('looper wiring', () => {
   });
 
   it('STOPPED flashes once on stop, it does not persist on the OLED', () => {
+    looper.active = true;
     looper.mode = 'play';
     looper.trackCount = 1;
     looper.loopBars = 2;

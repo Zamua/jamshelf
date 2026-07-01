@@ -177,14 +177,21 @@ export class SynthController {
     this.settings.save(snap);
   }
 
-  // --- looper (joystick click = record/overdub, long-press = clear) ---
+  // --- looper. Joystick CLICK enters looper mode / records; UP exits + stops; DOWN
+  // pauses/restarts; LEFT/RIGHT selects a track; long-press clears the selected track. ---
   joyClick(): void {
     if (!this.power || this.inspect) return;
-    this.looper.toggle();
+    this.looper.click();
   }
   joyHold(): void {
     if (!this.power || this.inspect) return;
     this.looper.clear();
+  }
+  // Joystick UP while in looper mode + no pad held: exit the looper and stop playback.
+  looperExit(): void {
+    if (!this.power || this.inspect) return;
+    this.looper.exit();
+    this.publish();
   }
   // Joystick left/right while a loop plays + no pad is held: pick the layer the
   // long-press will clear / redo. The UI only calls this in that context.
@@ -723,26 +730,24 @@ export class SynthController {
     const flashing = now() < this.flashUntil;
     const keyScale = `${NOTE_NAMES[this.root]} ${SCALE_LABELS[this.scale]}`;
     const lv = this.looper.view();
-    // Armed = waiting for the first key (the metronome is counting you in). While
-    // recording, REC is the headline; while a loop plays, it shows in the small
-    // line. Otherwise the usual key/chord + patch/mode.
-    if (lv.mode === 'armed') {
-      return { big: flashing ? this.flashText : keyScale, small: 'LOOP ARMED' };
-    }
-    if (lv.mode === 'rec') {
-      // count-in (overdub) shows the 4..1 countdown; otherwise REC + the take number.
-      const big = lv.countdown > 0 ? `COUNT ${lv.countdown}` : `REC ${lv.recTrack + 1}`;
-      return { big, small: flashing ? this.flashText : keyScale };
-    }
-    if (lv.mode === 'play') {
+    // The looper OLED only shows while you are IN looper mode (active). Idle-active =
+    // entered, ready to record. Armed = waiting for the first key (metronome counting you
+    // in). Recording = REC/COUNT. Playing = transport / STOP. Not active -> normal display.
+    if (lv.active) {
+      if (lv.mode === 'idle') {
+        return { big: flashing ? this.flashText : 'LOOPER', small: 'READY' };
+      }
+      if (lv.mode === 'armed') {
+        return { big: flashing ? this.flashText : keyScale, small: 'LOOP ARMED' };
+      }
+      if (lv.mode === 'rec') {
+        // count-in (overdub) shows the 4..1 countdown; otherwise REC + the take number.
+        const big = lv.countdown > 0 ? `COUNT ${lv.countdown}` : `REC ${lv.recTrack + 1}`;
+        return { big, small: flashing ? this.flashText : keyScale };
+      }
+      // mode === 'play'
       if (lv.stopped) {
-        // Halted: STOPPED flashed once (looperStop); after it fades, show the live
-        // key/scale so nothing obstructs the OLED, with a compact one-line marker
-        // (`STOP n` = n halted layers) that fits without wrapping.
-        return {
-          big: flashing ? this.flashText : keyScale,
-          small: `STOP ${lv.trackCount}`,
-        };
+        return { big: flashing ? this.flashText : keyScale, small: `STOP ${lv.trackCount}` };
       }
       // big line is the live transport (bar.beat), flashing to chord names as you
       // play; small line shows the selected layer + loop length.

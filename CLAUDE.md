@@ -307,7 +307,12 @@ the bug this fixes). Output routing (`webAudioSynth.ts`): the live graph (master
 reverb + delay + chorus) sums into `liveSum`, which the looper taps via a
 ScriptProcessorNode; loop playback + the metronome go through a SEPARATE `loopSum` bus
 that joins after the tap, so loops are never re-recorded and overdubs layer cleanly.
-`audioGraph()` exposes `{ctx, live, loopOut}`. State machine (joystick click):
+`audioGraph()` exposes `{ctx, live, loopOut}`. **The looper is a MODE (aligned to the
+HiChord): the joystick CLICK first ENTERS looper mode (`active` flag, no recording yet);
+subsequent clicks run the record cycle; joystick UP EXITS the mode + stops playback (loops
+kept, halted; `exit()`), DOWN pauses/restarts (`toggleStop()`), LEFT/RIGHT selects a track,
+long-press clears the selected track (all gated on `active`). The OLED looper view only
+shows while `active`.** State machine, once IN the mode (joystick click):
 idle -> armed (waiting; nothing recorded) -> rec (the FIRST key starts the master
 capture, no leading silence) -> play; play -> rec overdubs a new layer. Track 1 sets the
 loop length, SNAPPED to a whole number of BARS (`BEATS_PER_BAR=4`, round-to-nearest, min

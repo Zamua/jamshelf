@@ -51,7 +51,7 @@ const ITEMS: readonly Item[] = [
   {
     title: 'Looper',
     body:
-      'Tap the joystick (a quick press, no drag) to start recording a loop; tap again to stop, and it plays back on repeat. Tap once more to overdub another track on top (up to 6, each keeps its own sound). Long-press the joystick to clear all loops.',
+      'Click the joystick (a quick press, no drag) to ENTER the looper. Click again to record into the selected track; click once more to stop and it loops. Click over a playing loop to overdub another track (up to 6, each keeps its own sound). Push LEFT/RIGHT to pick a track, DOWN to pause/restart, UP to exit the looper and stop. Long-press to clear the selected track.',
   },
   {
     title: 'Power',

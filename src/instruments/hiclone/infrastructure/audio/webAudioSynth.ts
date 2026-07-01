@@ -115,6 +115,11 @@ const PATCHES: Record<PatchName, Patch> = {
   // OCTAVE) for the classic enormous bass. NEURO sweeps a resonant filter for movement.
   REESE: { ...BASE, osc1: 'sawtooth', unison: 1, sub: 0.5, drive: 3, cutoff: 1500, q: 0.7, A: 0.01, D: 0.3, S: 0.85, R: 0.3, wet: 0.1 },
   NEURO: { ...BASE, osc1: 'sawtooth', unison: 1, sub: 0.5, drive: 6, cutoff: 2600, cutoffFloor: 500, filterEnv: true, q: 3.5, A: 0.005, D: 0.35, S: 0.5, R: 0.3, wet: 0.12 },
+  // Fat DnB basses (auditioned dry; weight from SUB + DRIVE + filter movement, no detune).
+  ROLLER: { ...BASE, osc1: 'sawtooth', sub: 0.72, drive: 1.6, cutoff: 820, q: 0.7, A: 0.01, D: 0.25, S: 0.9, R: 0.26, wet: 0.1 },
+  GROWLER: { ...BASE, osc1: 'sawtooth', sub: 0.52, drive: 4, cutoff: 1600, cutoffFloor: 720, filterEnv: true, q: 2.6, A: 0.008, D: 0.3, S: 0.62, R: 0.28, wet: 0.1 },
+  NFUNK: { ...BASE, osc1: 'sawtooth', sub: 0.55, drive: 7, cutoff: 3000, cutoffFloor: 420, filterEnv: true, q: 4, A: 0.005, D: 0.4, S: 0.5, R: 0.3, wet: 0.1 },
+  FMBASS: { ...BASE, engine: 'fm', carrier: 'sine', modWave: 'sine', fmRatio: 2, fmIndex: 4.2, fmDecay: 0.32, fmSustain: 0.45, drive: 2.2, cutoff: 2600, q: 0.8, A: 0.005, D: 0.4, S: 0.7, R: 0.3, wet: 0.1 },
   // BLOOM: a held, buzzy saw chord-stab that blooms UP in pitch on the attack (the
   // "sweeps in" sound). NO unison/detune (unison 1) = zero beating / flange / phasing.
   // "Fatter" without detune: a saw an OCTAVE UP (harmonic, no beating) + a strong sub +

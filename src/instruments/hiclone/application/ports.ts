@@ -21,6 +21,10 @@ export type PatchName =
   | 'NEON'
   | 'REESE'
   | 'NEURO'
+  | 'ROLLER'
+  | 'GROWLER'
+  | 'NFUNK'
+  | 'FMBASS'
   | 'BLOOM';
 
 export const PATCH_ORDER: readonly PatchName[] = [
@@ -38,6 +42,10 @@ export const PATCH_ORDER: readonly PatchName[] = [
   'NEON',
   'REESE',
   'NEURO',
+  'ROLLER',
+  'GROWLER',
+  'NFUNK',
+  'FMBASS',
   'BLOOM',
 ];
 

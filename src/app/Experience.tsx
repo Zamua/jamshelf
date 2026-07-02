@@ -165,9 +165,10 @@ function StageHost({
     }
   };
 
-  // Rig-build overlay (on the shelf): pick instruments, then start the rig.
-  const [buildOpen, setBuildOpen] = useState(false);
-  const [pick, setPick] = useState<Set<string>>(() => new Set(INSTRUMENTS.map((m) => m.manifest.id)));
+  // Rig-build mode (in the 3D room): the camera pulls back to the shelf + a board; tapping an
+  // instrument flies it onto/off the board. `building` is the mode; `boardIds` are the placed ones.
+  const [building, setBuilding] = useState(false);
+  const [boardIds, setBoardIds] = useState<string[]>([]);
 
   // The carousel: `carouselIndex` is the settled centered instrument (React state, drives the
   // label + dots); `carousel` is the live fractional position the Stage animates (so a swipe
@@ -238,7 +239,7 @@ function StageHost({
   // a swipe never opens a device. On release we snap to the nearest instrument (clamped to range).
   const swipe = useRef<{ x: number; startPos: number } | null>(null);
   useEffect(() => {
-    if (activeId !== null || buildOpen) return; // only browse on the shelf (not while building a rig)
+    if (activeId !== null || building) return; // only browse on the shelf (not while building a rig)
     const n = INSTRUMENTS.length;
     const down = (e: PointerEvent) => {
       swipe.current = { x: e.clientX, startPos: carousel.current.pos };
@@ -268,7 +269,7 @@ function StageHost({
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
     };
-  }, [activeId, buildOpen]);
+  }, [activeId, building]);
 
   const active = activeId ? entries[activeId] : null;
 
@@ -285,17 +286,30 @@ function StageHost({
     return { id: mid, label: module.manifest.name, node: <Device vm={entry.vm} handlers={handlers} /> };
   });
 
-  // Tapping a device on the shelf: the CENTERED one opens (floats to the desk); a side one just
-  // recenters the carousel onto it (bring it to the front first).
+  // Tapping a device. In BUILD mode: toggle it on/off the board (fly it down/up). On the shelf: the
+  // CENTERED one opens (floats to the desk); a side one just recenters the carousel onto it.
   const onDeviceTap = (i: number) => {
+    const id = INSTRUMENTS[i].manifest.id;
+    if (building) {
+      entries[id]?.handlers.resume();
+      setBoardIds((b) => (b.includes(id) ? b.filter((x) => x !== id) : [...b, id]));
+      return;
+    }
     if (i === Math.round(carousel.current.pos)) {
-      const id = INSTRUMENTS[i].manifest.id;
       entries[id]?.handlers.resume(); // unlock + build that instrument's audio on the first gesture
       onNavigate(`/${id}`);
     } else {
       carousel.current.target = i;
       setCarouselIndex(i);
     }
+  };
+
+  const startJam = () => {
+    if (boardIds.length < 1) return;
+    const uuid = createRig(boardIds);
+    setBuilding(false);
+    boardIds.forEach((id) => entries[id]?.handlers.resume());
+    onNavigate(`/rig/${uuid}`);
   };
 
   const onPointerMissed = () => {
@@ -312,6 +326,8 @@ function StageHost({
         activeId={activeId}
         centeredIndex={carouselIndex}
         inspect={inspect}
+        build={building}
+        board={boardIds}
         spinRef={spin}
         carouselRef={carousel}
         onDeviceTap={onDeviceTap}
@@ -330,8 +346,8 @@ function StageHost({
         />
       )}
 
-      {/* shelf chrome */}
-      <div className={'overlay shelf-chrome' + (activeId === null ? ' is-on' : '')}>
+      {/* shelf chrome (hidden while building a rig) */}
+      <div className={'overlay shelf-chrome' + (activeId === null && !building ? ' is-on' : '')}>
         <header className="shelf-title">jam<span>shelf</span></header>
         <div className="carousel-dots">
           {INSTRUMENTS.map((m, i) => (
@@ -339,57 +355,20 @@ function StageHost({
           ))}
         </div>
         <footer className="shelf-foot">swipe to browse, tap to play</footer>
-        <button className="new-rig-btn" onClick={() => setBuildOpen(true)}>＋ new rig</button>
+        <button className="new-rig-btn" onClick={() => { setBoardIds([]); setBuilding(true); }}>＋ new rig</button>
       </div>
 
-      {/* rig-build overlay: pick instruments, then start */}
-      {buildOpen && (
-        <div className="rig-build" role="dialog" aria-modal="true">
-          <div className="rig-build-card">
-            <h2 className="rig-build-title">Build a rig</h2>
-            <p className="rig-build-lede">Pick the instruments to jam together. They share a tempo; switch between them without stopping the sound.</p>
-            <ul className="rig-pick">
-              {INSTRUMENTS.map((m) => {
-                const on = pick.has(m.manifest.id);
-                return (
-                  <li key={m.manifest.id}>
-                    <button
-                      className={'rig-pick-item' + (on ? ' is-on' : '')}
-                      onClick={() =>
-                        setPick((s) => {
-                          const n = new Set(s);
-                          if (n.has(m.manifest.id)) n.delete(m.manifest.id);
-                          else n.add(m.manifest.id);
-                          return n;
-                        })
-                      }
-                      style={{ ['--accent' as string]: m.manifest.accent }}
-                    >
-                      <span className="rig-pick-check">{on ? '✓' : ''}</span>
-                      <span className="rig-pick-name">{m.manifest.name}</span>
-                      <span className="rig-pick-blurb">{m.manifest.blurb}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="rig-build-actions">
-              <button className="rig-cancel" onClick={() => setBuildOpen(false)}>Cancel</button>
-              <button
-                className="rig-start"
-                disabled={pick.size < 1}
-                onClick={() => {
-                  const ids = INSTRUMENTS.map((m) => m.manifest.id).filter((id) => pick.has(id));
-                  const uuid = createRig(ids);
-                  setBuildOpen(false);
-                  ids.forEach((id) => entries[id]?.handlers.resume());
-                  onNavigate(`/rig/${uuid}`);
-                }}
-              >
-                Start rig ›
-              </button>
-            </div>
-          </div>
+      {/* rig-build chrome (in the 3D room): a hint + cancel + JAM */}
+      {building && (
+        <div className="overlay build-chrome is-on">
+          <button className="back-to-shelf" onClick={() => setBuilding(false)} aria-label="Cancel">‹</button>
+          <header className="build-title">Build a rig</header>
+          <footer className="build-hint">
+            {boardIds.length === 0 ? 'tap instruments to add them to the board' : 'tap an instrument to add or remove it'}
+          </footer>
+          <button className="jam-btn" disabled={boardIds.length < 1} onClick={startJam}>
+            jam ›
+          </button>
         </div>
       )}
 

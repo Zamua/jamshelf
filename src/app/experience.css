@@ -269,3 +269,43 @@
 }
 .dock-tab.is-active { color: #f4ecdf; border-color: var(--accent); background: color-mix(in srgb, var(--accent) 22%, rgba(30,20,12,0.6)); }
 .dock-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+/* ---- rig-build chrome (3D room) ---- */
+.build-title {
+  position: absolute;
+  top: calc(20px + env(safe-area-inset-top, 0));
+  left: 0; right: 0;
+  text-align: center;
+  font: 700 18px/1 system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  color: #f4ecdf;
+}
+.build-hint {
+  position: absolute;
+  left: 0; right: 0;
+  bottom: calc(94px + env(safe-area-inset-bottom, 0));
+  text-align: center;
+  font: 500 11.5px/1.4 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b7a488;
+  padding: 0 24px;
+}
+.jam-btn {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(30px + env(safe-area-inset-bottom, 0));
+  padding: 14px 34px;
+  border-radius: 999px;
+  background: #f0a93a;
+  border: none;
+  color: #201203;
+  font: 700 16px/1 system-ui, sans-serif;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(240, 169, 58, 0.3);
+  -webkit-tap-highlight-color: transparent;
+}
+.jam-btn:disabled { opacity: 0.35; box-shadow: none; }
+.jam-btn:not(:disabled):active { transform: translateX(-50%) scale(0.96); }

@@ -89,6 +89,14 @@ export class Transport {
   toggle(): void {
     this.running ? this.stop() : this.play();
   }
+  // Reset the position to the downbeat (bar 1). Used when a context resets - e.g. entering a rig
+  // after solo free-run noodling left the counter far along. Refuses while running (never yanks a
+  // playing clock).
+  rewind(): void {
+    if (this.running) return;
+    this.pulse = -1;
+    for (const cb of this.positionSubs) cb();
+  }
 
   // Called by the Ticker once per pulse-interval. Advances the counter while advancing (playing or
   // free-run), then fires the sub-clocks + the position listeners. Each sub-clock decides for itself

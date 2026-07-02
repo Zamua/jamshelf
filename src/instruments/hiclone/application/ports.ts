@@ -49,18 +49,6 @@ export const PATCH_ORDER: readonly PatchName[] = [
   'BLOOM',
 ];
 
-// A BPM-synced tick source. Timing lives HERE (a port), never in the domain, so
-// the controller's arpeggiator / repeat logic is driven by clock ticks and stays
-// fully testable with a fake clock. The controller sets the tempo + subdivision
-// and subscribes; the adapter decides how to schedule (interval, audio clock...).
-export interface Clock {
-  setBpm(bpm: number): void;
-  setBeatsPerTick(beats: number): void; // e.g. rateBeats(rate) from the domain
-  start(): void;
-  stop(): void;
-  onTick(cb: () => void): () => void; // subscribe; returns an unsubscribe fn
-}
-
 // The loop recorder, as the application sees it. The concrete adapter records the
 // synth's RENDERED AUDIO (not note events) off a tap on the live output, so every
 // layer is frozen the moment it is captured - immune to any later sound / play-mode

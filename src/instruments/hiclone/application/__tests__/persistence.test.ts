@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { SynthController } from '../synthController';
-import { FakeAudioLooper, FakeClock, MemorySettingsStore, SpySynth } from './fakes';
+import { FakeAudioLooper, MemorySettingsStore, SpySynth } from './fakes';
 import { coerceSettings, type SettingsSnapshot } from '../persistence';
+import { Transport } from '../../../../transport/transport';
 
 function make(store?: MemorySettingsStore) {
-  return new SynthController(new SpySynth(), new FakeClock(), new FakeAudioLooper(), store);
+  return new SynthController(new SpySynth(), new Transport(), new FakeAudioLooper(), store);
 }
 
 const DEFAULTS: SettingsSnapshot = {

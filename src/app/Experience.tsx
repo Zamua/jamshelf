@@ -171,6 +171,16 @@ function StageHost({
     };
   }, [transport]);
 
+  // Free-run policy: while a SOLO instrument that has no transport bar (the HiClone) is active, keep
+  // the shared clock free-running so its arp/looper still step on pad-hold. In a rig the bar owns
+  // play/stop (free-run off); on entering a rig, rewind the idle clock so it starts at bar 1.
+  useEffect(() => {
+    const mod = activeId ? instrumentById(activeId) : undefined;
+    const free = !rig && mod?.needsFreeClock === true;
+    transport.setFreeRun(free);
+    if (!free && !transport.isRunning()) transport.rewind();
+  }, [activeId, rig, transport]);
+
   // Play/stop the whole rig (unlock every rig instrument's audio on the first gesture) + set the
   // one shared tempo.
   const toggleTransport = () => {

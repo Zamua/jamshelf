@@ -42,6 +42,11 @@ export interface InstrumentModule<VM = unknown, H = unknown> {
   withHelpToggle(handlers: H, toggle: () => void): H;
   // Optional instrument-specific play-chrome tool buttons (HTML), e.g. the HiClone color swatch.
   PlayTools?: ComponentType<{ vm: VM; handlers: H }>;
+  // Does this instrument need the shared clock free-running when played SOLO (it has no transport
+  // bar / play button, so its arp/looper must still step on pad-hold)? The composition root puts the
+  // Transport in free-run while such an instrument is the active solo one. Sequencers (the TR-B0B)
+  // leave this false - they own play/stop. In a rig the bar owns play, so free-run is off there.
+  readonly needsFreeClock?: boolean;
 }
 
 // The registry stores modules with erased VM/Handlers types; the host wires vm+handlers from

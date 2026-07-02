@@ -1,5 +1,5 @@
 import type { DrumName, DrumKit } from '../../domain/music';
-import type { AudioLooper, Clock, LooperMode, LooperView, PatchName, SynthPort } from '../ports';
+import type { AudioLooper, LooperMode, LooperView, PatchName, SynthPort } from '../ports';
 import type { SettingsSnapshot, SettingsStore } from '../persistence';
 
 // An in-memory SettingsStore: records saves + replays the latest on load, so a test
@@ -90,37 +90,6 @@ export class FakeAudioLooper implements AudioLooper {
   // emitting on a state change).
   emit(): void {
     this.cb?.();
-  }
-}
-
-// A Clock you tick by hand, so the controller's arp/repeat logic is deterministic
-// in tests (no real timers). `tick()` fires subscribers only while "running".
-export class FakeClock implements Clock {
-  bpm = 0;
-  beats = 0;
-  running = false;
-  private subs = new Set<() => void>();
-
-  setBpm(bpm: number): void {
-    this.bpm = bpm;
-  }
-  setBeatsPerTick(beats: number): void {
-    this.beats = beats;
-  }
-  start(): void {
-    this.running = true;
-  }
-  stop(): void {
-    this.running = false;
-  }
-  onTick(cb: () => void): () => void {
-    this.subs.add(cb);
-    return () => this.subs.delete(cb);
-  }
-  // test-only: fire one tick to every subscriber (no-op while stopped).
-  tick(): void {
-    if (!this.running) return;
-    for (const cb of this.subs) cb();
   }
 }
 

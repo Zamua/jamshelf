@@ -37,7 +37,8 @@ import {
   type DrumKit,
   type FxMode,
 } from '../domain/music';
-import { PATCH_ORDER, type AudioLooper, type Clock, type PatchName, type SynthPort } from './ports';
+import { PATCH_ORDER, type AudioLooper, type PatchName, type SynthPort } from './ports';
+import type { Clock, Transport } from '../../../transport/transport';
 import type { Listener, MenuKind, MenuRow, ViewModel } from './state';
 import { coerceSettings, type SettingsSnapshot, type SettingsStore } from './persistence';
 
@@ -93,31 +94,48 @@ export class SynthController {
   private flashUntil = 0;
   private listeners = new Set<Listener>();
   private readonly synth: SynthPort;
-  private readonly clock: Clock;
+  private readonly transport: Transport;
+  private readonly clock: Clock; // a FREE sub-clock of the transport (arp/repeat run in solo + lock in a rig)
   private readonly looper: AudioLooper;
   private readonly settings: SettingsStore | null;
   private lastSavedJson = ''; // skip writing when the durable settings are unchanged
 
-  constructor(synth: SynthPort, clock: Clock, looper: AudioLooper, settings?: SettingsStore) {
+  constructor(synth: SynthPort, transport: Transport, looper: AudioLooper, settings?: SettingsStore) {
     this.synth = synth;
-    this.clock = clock;
+    this.transport = transport;
     this.looper = looper;
     this.settings = settings ?? null;
     // Restore persisted settings BEFORE the first apply so the side effects (patch,
     // volume, fx, glide, tempo, strum) reflect the saved values, not the defaults.
     const saved = this.settings?.load();
     if (saved) this.restoreSettings(saved);
+    this.transport.setBpm(this.bpm); // seed the shared tempo from this instrument's saved bpm
     this.synth.setStrumMs(this.mode === 'STRUM' ? strumMs(this.strumSpeed) : PLAY_STRUM_MS);
     this.synth.setVolume(this.volume);
     this.synth.setPatch(this.patch);
     this.applyFx();
     this.applyGlide();
+    // The arp/repeat run off a FREE sub-clock of the shared Transport: phase-locked to the drum grid
+    // in a rig, and (via free-run) still stepping on pad-hold when played solo.
+    this.clock = this.transport.clock(false);
     this.clock.onTick(() => this.tick());
-    this.clock.setBpm(this.bpm);
     this.looper.setBpm(this.bpm);
     this.looper.onChange(() => this.publish());
+    // Follow the shared tempo: mirror it into this.bpm and re-sync the looper + tempo-synced delay.
+    this.transport.onChange(() => this.syncTempo());
     // Seed the de-dupe baseline so the first publish doesn't re-save what we just loaded.
     this.lastSavedJson = JSON.stringify(this.snapshotSettings());
+  }
+
+  // The shared Transport owns tempo; mirror any change into this.bpm (the value the OLED, fx delay
+  // and looper read) and re-apply the tempo-dependent side effects. Only acts on an actual change.
+  private syncTempo(): void {
+    const b = this.transport.getBpm();
+    if (b === this.bpm) return;
+    this.bpm = b;
+    this.looper.setBpm(b);
+    this.applyFx();
+    this.publish();
   }
 
   // --- persistence (durable settings to a SettingsStore; the looper persists itself) ---
@@ -368,16 +386,10 @@ export class SynthController {
     this.flash('VOL ' + Math.round(this.volume * 8));
   }
 
-  // Set an absolute tempo (used by a rig's shared transport so every instrument shares one BPM).
-  // Re-syncs the clock, looper and tempo-synced delay to the new tempo.
+  // Set an absolute tempo. Tempo has ONE owner - the shared Transport - so this routes there; the
+  // onChange subscription (syncTempo) mirrors it back and re-syncs the looper + tempo-synced delay.
   setBpm(bpm: number): void {
-    const next = Math.max(40, Math.min(300, Math.round(bpm)));
-    if (next === this.bpm) return;
-    this.bpm = next;
-    this.clock.setBpm(this.bpm);
-    this.looper.setBpm(this.bpm);
-    this.applyFx();
-    this.publish();
+    this.transport.setBpm(Math.max(40, Math.min(300, Math.round(bpm))));
   }
 
   getBpm(): number {
@@ -519,7 +531,7 @@ export class SynthController {
       !this.inspect &&
       this.held.size > 0;
     if (stepping) {
-      this.clock.setBpm(this.bpm);
+      // tempo is the Transport's; here we only choose the subdivision + start stepping
       this.clock.setBeatsPerTick(rateBeats(this.mode === 'ARP' ? this.arpRate : this.repeatRate));
       this.clock.start();
     } else {
@@ -586,11 +598,9 @@ export class SynthController {
       const i = DRUM_KITS.indexOf(this.drumKit);
       this.drumKit = DRUM_KITS[(i + delta + DRUM_KITS.length) % DRUM_KITS.length];
     } else {
-      // BPM
-      this.bpm = Math.max(40, Math.min(300, this.bpm + delta));
-      this.looper.setBpm(this.bpm);
-      this.applyMode();
-      this.applyFx(); // re-sync the delay time to the new tempo
+      // BPM - route to the shared Transport (one tempo owner); syncTempo mirrors it back + re-syncs
+      // the looper and the tempo-synced delay.
+      this.setBpm(this.bpm + delta);
     }
   }
 

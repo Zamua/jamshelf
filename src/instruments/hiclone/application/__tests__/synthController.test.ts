@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { SynthController } from '../synthController';
 import { midiToFreq, type PlayMode } from '../../domain/music';
-import { FakeAudioLooper, FakeClock, SpySynth } from './fakes';
+import { FakeAudioLooper, SpySynth } from './fakes';
+import { Transport } from '../../../../transport/transport';
 
 // C major triad (degree 1, C major, octave 0) = MIDI 60/64/67.
 const C = midiToFreq(60);
@@ -9,16 +10,29 @@ const E = midiToFreq(64);
 const G = midiToFreq(67);
 
 let synth: SpySynth;
-let clock: FakeClock;
+let transport: Transport;
 let looper: FakeAudioLooper;
 let c: SynthController;
 
 beforeEach(() => {
   synth = new SpySynth();
-  clock = new FakeClock();
+  transport = new Transport();
+  transport.setFreeRun(true); // solo free-run: the pulse advances so the arp's FREE clock steps on pad-hold
   looper = new FakeAudioLooper();
-  c = new SynthController(synth, clock, looper);
+  c = new SynthController(synth, transport, looper);
 });
+
+// The arp/repeat run off a FREE sub-clock of the transport at the default 1/8 rate = 12 pulses per
+// step. Any 12-pulse window contains exactly one multiple of 12, so advancing 12 pulses fires
+// EXACTLY one arp/repeat step, whatever the starting phase.
+function advance(pulses: number) {
+  for (let i = 0; i < pulses; i++) transport.advance();
+}
+function step() {
+  advance(12);
+}
+// Count how many arp notes (voiceId 'arp') have sounded so far.
+const arpCount = () => synth.on.filter((o) => o.id === 'arp').length;
 
 // Drive a mode change through the public MODE menu, cycling from the CURRENT mode.
 const MODE_ORDER: PlayMode[] = ['PLAY', 'STRUM', 'ARP', 'DRONE', 'REPEAT', 'LEAD', 'DRUM'];
@@ -32,13 +46,15 @@ function switchMode(target: PlayMode) {
 }
 
 describe('construction', () => {
-  it('wires the synth + clock and starts in PLAY', () => {
+  it('wires the synth + transport and starts in PLAY', () => {
     expect(synth.vol).toBeCloseTo(0.8);
     expect(synth.strum).toBe(4); // near-zero PLAY spread
-    expect(clock.bpm).toBe(120);
-    expect(clock.running).toBe(false); // PLAY does not run the clock
+    expect(c.getState().bpm).toBe(120);
+    expect(transport.getBpm()).toBe(120); // the controller seeds the shared tempo
     expect(c.getState().mode).toBe('PLAY');
     expect(looper.bpm).toBe(120); // the looper's metronome gets the tempo too
+    step(); // PLAY does not step: advancing the transport fires no arp notes
+    expect(arpCount()).toBe(0);
   });
 });
 
@@ -232,38 +248,39 @@ describe('LEAD mode', () => {
 });
 
 describe('ARP mode', () => {
-  it('runs the clock and steps through the pattern on ticks', () => {
+  it('steps through the pattern on transport ticks while a pad is held', () => {
     switchMode('ARP');
-    expect(clock.running).toBe(false); // clock idles until a pad is held
-    c.pressPad('p1', 1); // immediate first step (UP -> 60), starts the clock
-    expect(clock.running).toBe(true);
+    step(); // idle until a pad is held
+    expect(arpCount()).toBe(0);
+    c.pressPad('p1', 1); // immediate first step (UP -> 60)
     expect(synth.lastOn().id).toBe('arp');
     expect(synth.lastOn().freqs).toHaveLength(1);
     expect(synth.lastOn().freqs[0]).toBeCloseTo(C);
-    clock.tick(); // -> 64
+    step(); // -> 64
     expect(synth.lastOn().freqs[0]).toBeCloseTo(E);
-    clock.tick(); // -> 67
+    step(); // -> 67
     expect(synth.lastOn().freqs[0]).toBeCloseTo(G);
-    clock.tick(); // wraps -> 60
+    step(); // wraps -> 60
     expect(synth.lastOn().freqs[0]).toBeCloseTo(C);
   });
-  it('releases the arp when the last pad lifts (and the clock stops)', () => {
+  it('releases the arp when the last pad lifts (and stepping stops)', () => {
     switchMode('ARP');
     c.pressPad('p1', 1);
+    const n = arpCount();
     c.releasePad('p1');
     expect(synth.off).toContain('arp');
-    expect(clock.running).toBe(false); // nothing held: clock idles again
+    step(); // nothing held: no more steps
+    expect(arpCount()).toBe(n);
   });
 });
 
 describe('REPEAT mode', () => {
   it('re-triggers the held chord on every tick', () => {
     switchMode('REPEAT');
-    c.pressPad('p1', 1);
-    expect(clock.running).toBe(true); // starts on first press
+    c.pressPad('p1', 1); // immediate hit
     const before = synth.on.length;
-    clock.tick();
-    clock.tick();
+    step();
+    step();
     const repeats = synth.on.slice(before).filter((o) => o.id === 'p1');
     expect(repeats.length).toBe(2);
   });
@@ -282,23 +299,33 @@ describe('DRUM mode', () => {
   });
 });
 
-describe('clock lifecycle', () => {
-  it('runs only in ARP/REPEAT while a pad is held', () => {
+describe('stepping lifecycle', () => {
+  it('steps only in ARP/REPEAT while a pad is held', () => {
     switchMode('ARP');
-    expect(clock.running).toBe(false); // armed mode but nothing held
+    step();
+    expect(arpCount()).toBe(0); // armed mode but nothing held
     c.pressPad('p1', 1);
-    expect(clock.running).toBe(true);
-    switchMode('PLAY'); // clears held + stops the clock
-    expect(clock.running).toBe(false);
+    const held = arpCount();
+    step();
+    expect(arpCount()).toBeGreaterThan(held); // stepping with a pad held
+    switchMode('PLAY'); // clears held + stops stepping
+    const paused = arpCount();
+    step();
+    expect(arpCount()).toBe(paused);
     switchMode('REPEAT');
+    const p2 = () => synth.on.filter((o) => o.id === 'p2').length;
     c.pressPad('p2', 3);
-    expect(clock.running).toBe(true);
+    const before = p2();
+    step();
+    expect(p2()).toBeGreaterThan(before); // REPEAT steps too
   });
-  it('power-off and inspect stop the clock and release everything', () => {
+  it('power-off stops stepping and releases everything', () => {
     switchMode('ARP');
     c.pressPad('p1', 1);
+    const n = arpCount();
     c.togglePower(); // off
-    expect(clock.running).toBe(false);
+    step();
+    expect(arpCount()).toBe(n); // no more steps
     expect(synth.releasedAll).toBeGreaterThan(0);
     expect(synth.muted).toBe(true);
   });

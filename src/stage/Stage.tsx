@@ -69,7 +69,7 @@ function buildHomePose(regIndex: number, total: number): ShelfPose {
 // (not the instruments) moves: a top-down ALL-VIEW showing the whole pile, or ZOOMED to one.
 const RIG_DESK_Y = -2.12; // flat on the desk
 const RIG_SCALE = 0.62;
-const RIG_ALLVIEW_Y = 7.6; // camera height to see the whole scattered pile
+const RIG_ALLVIEW_Y = 10.5; // camera height to see the whole scattered pile
 const RIG_FOCUS_Y = 2.55; // camera height zoomed to one instrument (it fills the screen)
 const RIG_CAM_EASE = 3.2; // how fast the camera glides between all-view / focus
 const AXIS_X = new Vector3(1, 0, 0);
@@ -238,7 +238,7 @@ function CameraRig({
   inspectTarget: number;
   buildTarget: number;
   rigActive: boolean;
-  rigCamRef: React.RefObject<{ pos: Vector3; tgt: Vector3 }>;
+  rigCamRef: React.RefObject<{ pos: Vector3; tgt: Vector3; up: Vector3 }>;
 }) {
   const fRaw = useRef(floatTarget);
   const iRaw = useRef(inspectTarget);
@@ -247,6 +247,7 @@ function CameraRig({
   const tUp = useRef(new Vector3());
   const tgt = useRef(new Vector3());
   const rigTgt = useRef(new Vector3()); // the camera's currently-looked-at point (eased) in rig mode
+  const rigUp = useRef(new Vector3()); // the eased camera up (rolls to keep the focused device upright)
   const rigInit = useRef(false);
   const { camera } = useThree();
   useLayoutEffect(() => {
@@ -261,12 +262,14 @@ function CameraRig({
         // snap on entry so we don't sweep in from the shelf pose
         state.camera.position.copy(c.pos);
         rigTgt.current.copy(c.tgt);
+        rigUp.current.copy(c.up);
         rigInit.current = true;
       } else {
         state.camera.position.lerp(c.pos, k);
         rigTgt.current.lerp(c.tgt, k);
+        rigUp.current.lerp(c.up, k);
       }
-      state.camera.up.copy(PLAY_UP);
+      state.camera.up.copy(rigUp.current).normalize();
       state.camera.lookAt(rigTgt.current);
       return;
     }
@@ -418,17 +421,22 @@ export function Stage({
   const camBuild = build ? 1 : 0;
   const centered = instruments[centeredIndex];
 
-  // Rig-play camera: focus on the played instrument (top-down zoom) or the all-view over the pile.
-  const rigCam = useRef<{ pos: Vector3; tgt: Vector3 }>({ pos: new Vector3(), tgt: new Vector3() });
+  // Rig-play camera: focus on the played instrument (top-down zoom, ROLLED so the device reads
+  // upright despite its scattered yaw) or the all-view over the whole pile (fixed orientation).
+  const rigCam = useRef<{ pos: Vector3; tgt: Vector3; up: Vector3 }>({ pos: new Vector3(), tgt: new Vector3(), up: PLAY_UP.clone() });
   if (rigPlay && placements) {
     const focus = activeId ? placements[activeId] : null;
     if (focus) {
       rigCam.current.pos.set(focus.x, RIG_FOCUS_Y, focus.z);
       rigCam.current.tgt.set(focus.x, RIG_DESK_Y, focus.z);
+      // roll so the device's top edge is at the top of the screen (device top after flat+yaw is
+      // (-sin yaw, 0, -cos yaw) in world; that becomes the camera's up for a straight-down view)
+      rigCam.current.up.set(-Math.sin(focus.yaw), 0, -Math.cos(focus.yaw));
     } else {
       const c = centroid(placements);
       rigCam.current.pos.set(c.x, RIG_ALLVIEW_Y, c.z);
       rigCam.current.tgt.set(c.x, RIG_DESK_Y, c.z);
+      rigCam.current.up.copy(PLAY_UP);
     }
   }
 

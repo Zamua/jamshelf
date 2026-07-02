@@ -20,24 +20,28 @@ const key = (uuid: string) => `jamshelf/rigs/${uuid}`;
 // The desk cluster center (x, z) the instruments scatter around.
 const CLUSTER = { x: 0, z: 1.2 } as const;
 
-// A scattered flat placement for a new instrument: near the cluster center, offset + yaw jittered
-// so the pile looks natural + chaotic (overlap is fine, even wanted). Nudged away from an exact
-// clash with an existing one so two don't land perfectly stacked.
+// The minimum center-to-center distance so two flat devices sit NEAR each other but never
+// intersect / z-fight (a device's flat footprint is ~1.6 x 1.0 world units).
+const MIN_SEP = 2.05;
+
+// A scattered flat placement for a new instrument: as CLOSE to the cluster as it can get without
+// its footprint overlapping any existing one (so the pile reads as "near each other", not phasing
+// through). Candidates are sampled on an expanding disc, so the first that clears MIN_SEP is the
+// nearest free spot; the yaw is jittered for a natural, un-gridded look.
 export function scatterFor(existing: Record<string, Placement>): Placement {
   const rand = (a: number, b: number) => a + Math.random() * (b - a);
-  let best: Placement | null = null;
-  let bestGap = -1;
-  // try a few candidates, keep the one least-stacked on the others (but still clustered + overlapping)
-  for (let i = 0; i < 8; i++) {
-    const p: Placement = { x: CLUSTER.x + rand(-1.3, 1.3), z: CLUSTER.z + rand(-1.0, 1.0), yaw: rand(-0.5, 0.5) };
-    let gap = 99;
-    for (const e of Object.values(existing)) gap = Math.min(gap, Math.hypot(p.x - e.x, p.z - e.z));
-    if (gap > bestGap) {
-      bestGap = gap;
-      best = p;
-    }
+  const others = Object.values(existing);
+  if (others.length === 0) return { x: CLUSTER.x, z: CLUSTER.z, yaw: rand(-0.4, 0.4) };
+  const clears = (p: Placement) => others.every((e) => Math.hypot(p.x - e.x, p.z - e.z) >= MIN_SEP);
+  for (let i = 0; i < 90; i++) {
+    const radius = MIN_SEP + (i / 90) * MIN_SEP * 2.4; // grows outward - first hit is the nearest free spot
+    const ang = rand(0, Math.PI * 2);
+    const p: Placement = { x: CLUSTER.x + Math.cos(ang) * radius, z: CLUSTER.z + Math.sin(ang) * radius, yaw: rand(-0.5, 0.5) };
+    if (clears(p)) return p;
   }
-  return best!;
+  // fallback (crowded): push well out past everything
+  const c = centroid(existing);
+  return { x: c.x + rand(-1, 1) * MIN_SEP * 3, z: c.z + MIN_SEP * 3, yaw: rand(-0.5, 0.5) };
 }
 
 // The centroid of a set of placements (for framing the all-view camera).

@@ -123,6 +123,7 @@ export function Device({ vm, handlers }: DeviceProps) {
         on={vm.vibrato}
         power={vm.power}
         label="VIBRATO"
+        offOn
         onToggle={handlers.onVibratoToggle}
         resume={handlers.resume}
       />

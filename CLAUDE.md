@@ -39,14 +39,36 @@ src/
       ui/              three/Device.tsx + parts, deviceProps.ts, components/Manual, hooks/useSynth.ts
 ```
 
-**Single instrument for now: `Stage` + `Experience` import the HiClone's `Device` + `useSynth`
-directly** (the continuity needs the SAME live device on the shelf AND the desk, so the old
-lazy-`Play`/`Shelf3D`-per-route split was dropped). When a 2nd instrument lands, generalize the
-Stage to mount the route-selected instrument's device. **Persistence is namespaced per
-instrument** (`jamshelf/<id>/settings` in localStorage; one IndexedDB record per instrument in
-db `jamshelf`, store `looper`), so each groovebox keeps its own memory. Deploy is still ONE
-static SPA (the host's SPA fallback serves `/<id>` deep links; a cold deep-link
-snaps straight to the play pose, no float).
+**Multi-instrument as of 2026-07-01 (the StyloClone landed).** The framework was generalized off
+the old single-instrument shortcut: each instrument ships an **`InstrumentModule`**
+(`shared/instrument.ts`: manifest + `useInstrument(enabled)` hook + `Device` + optional `Manual`
++ `releaseOnMiss` + optional `PlayTools`), the **`registry`** is a list of MODULES (not
+manifests), and `Experience` mounts EVERY module's device on the shelf at once. Mechanics:
+- `Experience` builds a **context provider stack** (`InstrumentProvider` nested via
+  `reduceRight` over the static registry) so each instrument's hook is called exactly once,
+  unconditionally, in a stable order (rules-of-hooks clean) while staying registry-driven. Each
+  provider merges its `{vm, handlers}` into `InstrumentsCtx`; a single `StageHost` consumer below
+  reads them all, builds the device nodes, and wires the ACTIVE instrument's play chrome.
+- Only the **active** instrument (the route's `/<id>`) is `enabled` (responds to the desktop
+  keyboard); the others are mounted but idle. The active device gets real handlers only once it
+  has landed + is not being inspected (else no-op'd handlers, generic `noopLike`).
+- `Stage` is now instrument-agnostic: it takes `instruments: {id, node, label}[]` + `activeId`,
+  gives each a **shelf slot** (an x offset), and floats ONLY the active one to the desk (its own
+  `DeviceRig` progress -> 1) while the others hold their slot. The camera is a shared `CameraRig`
+  driven by whether an instrument is active. Nothing remounts, so the float stays continuous for
+  every instrument. `SHELF_SCALE_MULTI` + `SLOT_SPACING` shrink/space the devices when >1.
+
+**Persistence is namespaced per instrument** (`jamshelf/<id>/settings` in localStorage; the
+HiClone also keeps one IndexedDB record in db `jamshelf`, store `looper`), so each instrument
+keeps its own memory. Deploy is still ONE static SPA (the host's SPA fallback serves `/<id>` deep
+links; a cold deep-link snaps straight to the play pose, no float).
+
+**The StyloClone instrument** (`src/instruments/styloclone/`) is a faithful, unbranded 1968 Dubreq
+Stylophone: a strictly MONOPHONIC 20-key stylus synth (A2 -> E4, piano interleave) with a
+relaxation-oscillator buzz, a ~7Hz vibrato, tune + volume pots, a sound selector (BUZZ/ROUND/REED)
+and a tethered stylus. Its own small DDD stack (domain `keyboard.ts`, `stylophoneController`,
+`webAudioStylophone`, `useStylophone`, the 3D `Device` + parts). Full spec + build notes in
+`docs/STYLOCLONE.md`.
 
 ## The stage = ONE continuous scene, shelf <-> desk (`src/stage/Stage.tsx`)
 

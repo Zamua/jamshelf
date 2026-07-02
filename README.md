@@ -1,8 +1,11 @@
 # jamshelf
 
-A 3D **shelf of playable instruments** in the browser. The shelf displays each instrument as a 3D model; tap one to open and play it. Pick up the **HiClone**, a chord groovebox: press the pads to play the seven chords that always sound good together in your chosen key, morph them live with the joystick, loop and layer, and rotate the device in 3D to inspect it. Inspired by the HiChord pocket chord synth; this is an independent, unbranded homage.
+A 3D **shelf of playable instruments** in the browser. The shelf displays each instrument as a 3D model; tap one to open and play it.
 
-Built with **React + react-three-fiber + TypeScript + Vite + react-router**, organized with domain-driven design. Each instrument is a self-contained module (a pure music-theory core, a Web Audio adapter behind a port, and a 3D UI) lazy-loaded on demand; the shelf renders from an instrument registry. More instruments (and, later, linked multi-instrument "jam" sessions) to come.
+- **HiClone**, a chord groovebox: press the pads to play the seven chords that always sound good together in your chosen key, morph them live with the joystick, loop and layer, and rotate the device in 3D to inspect it. Inspired by the HiChord pocket chord synth; an independent, unbranded homage.
+- **StyloClone**, a pocket stylus synth: a faithful, unbranded recreation of the 1968 Stylophone. Touch the 20-key silver plate to buzz one note at a time, flip on the vibrato, trim the tune, and slide your finger across the keys to slur. Monophonic and dead simple, on purpose.
+
+Built with **React + react-three-fiber + TypeScript + Vite + react-router**, organized with domain-driven design. Each instrument is a self-contained module (a pure music-theory core, a Web Audio adapter behind a port, and a 3D UI); the shelf renders from an instrument registry and hosts every instrument in one continuous 3D scene. More instruments (and, later, linked multi-instrument "jam" sessions) to come.
 
 ## Run it
 
@@ -15,10 +18,18 @@ Then open the printed local URL. Held best in landscape; multi-touch on a phone 
 
 ## How to play
 
+**HiClone**
+
 - **7 pads** play the 7 diatonic chords of the current key and scale. Any combination sounds good.
 - **Joystick** morphs the held chord while you push it (7th, sus, 6th, jazz, ...); release to settle back to a triad.
 - **Gray** opens the key menu (root, scale, octave). **Yellow** cycles the sound. **Red** is tap-tempo.
 - **3D** button rotates the device for inspection; **?** opens the in-app guide.
+
+**StyloClone**
+
+- **Touch the silver plate** to play. It is a 20-key stylus keyboard (A2 to E4); on a phone your finger is the stylus. Slide across the keys to slur.
+- **One note at a time** (monophonic, like the original). **Vibrato** switch adds the classic wobble; the **sound** tile cycles the voice; **tune** and **volume** are draggable knobs.
+- **3D** and **?** work the same as above.
 
 ## Saved state
 

@@ -81,7 +81,7 @@ function keyToDegree(key: string): Degree | null {
 // instance, mirrors its ViewModel into React state, exposes DeviceHandlers, and
 // adds desktop keyboard play. The glissando itself is delivered by the 3D pad
 // meshes calling onPadMove -> controller.movePad; nothing here needs to know.
-export function useSynth() {
+export function useSynth(enabled = true) {
   const controller = useMemo(() => {
     // The real synth plays audio; the audio looper taps its rendered output and
     // loops it back through a separate (untapped) bus, so each recorded layer is
@@ -122,6 +122,7 @@ export function useSynth() {
   // voiceId ('k1'..'k7') keeps keyboard voices independent from touch voices, so
   // a chord can be held by keys and fingers at once. First keypress unlocks audio.
   useEffect(() => {
+    if (!enabled) return; // only the ACTIVE instrument responds to the desktop keyboard
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return; // ignore auto-repeat + shortcuts
       const degree = keyToDegree(e.key);
@@ -140,7 +141,7 @@ export function useSynth() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, [controller]);
+  }, [controller, enabled]);
 
   const handlers: DeviceHandlers = useMemo(() => {
     // Joystick while a menu is open: exactly ONE discrete step per flick. The

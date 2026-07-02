@@ -1,92 +1,128 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Stage } from '../stage/Stage';
+import { Stage, type StageInstrument } from '../stage/Stage';
 import { EyeIcon } from './EyeIcon';
-import { useSynth } from '../instruments/hiclone/ui/hooks/useSynth';
-import { BODY_THEMES } from '../instruments/hiclone/ui/three/palette';
-import { Manual } from '../instruments/hiclone/ui/components/Manual';
-import type { DeviceHandlers } from '../instruments/hiclone/ui/three/deviceProps';
 import { INSTRUMENTS, instrumentById } from '../instruments/registry';
+import type { AnyInstrumentModule } from '../shared/instrument';
 import './experience.css';
 
-const NOOP_HANDLERS: DeviceHandlers = {
-  resume() {},
-  onPadDown() {},
-  onPadMove() {},
-  onPadUp() {},
-  onJoyMove() {},
-  onJoyEnd() {},
-  onJoyClick() {},
-  onJoyHold() {},
-  onKey() {},
-  onSound() {},
-  onTempo() {},
-  onPower() {},
-  onVolume() {},
-  onInspectToggle() {},
-  onHelpToggle() {},
-  onSwapColor() {},
-};
 const FLOAT_MS = 1250; // matches the Stage's float DURATION; the device plays after it lands
 
-// The whole experience: ONE persistent 3D stage with the shelf + the desk, plus the
-// HTML chrome cross-faded over it. The route (`/` vs `/<id>`) only sets the mode; the
-// device + camera float continuously between the shelf and the desk - no remount, no cut.
-// (Single instrument for now: the stage hosts the HiClone directly; generalize when a
-// second instrument lands.)
+interface Spin {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  dragging: boolean;
+}
+
+// One mounted instrument's live state, keyed by id in the context.
+interface Entry {
+  module: AnyInstrumentModule;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vm: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handlers: any;
+}
+
+// Accumulates every mounted instrument's { vm, handlers } so the StageHost (a single consumer
+// below the provider stack) can build all the device nodes + wire the active one's chrome.
+const InstrumentsCtx = createContext<Record<string, Entry>>({});
+
+// One provider = one instrument's hook, merged into the context. Nesting these (built by
+// reduceRight over the static registry) keeps a constant hook order across renders, so calling
+// each instrument's hook stays rules-of-hooks clean while the host stays registry-driven.
+function InstrumentProvider({
+  module,
+  enabled,
+  children,
+}: {
+  module: AnyInstrumentModule;
+  enabled: boolean;
+  children: ReactNode;
+}) {
+  const parent = useContext(InstrumentsCtx);
+  const { vm, handlers } = module.useInstrument(enabled);
+  const value = useMemo(
+    () => ({ ...parent, [module.manifest.id]: { module, vm, handlers } }),
+    [parent, module, vm, handlers],
+  );
+  return <InstrumentsCtx.Provider value={value}>{children}</InstrumentsCtx.Provider>;
+}
+
+// Replace every handler method with a no-op (generic across instruments), so a device that is
+// mid-float or being inspected does not fire notes.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function noopLike(handlers: any): any {
+  const out: Record<string, () => void> = {};
+  for (const k of Object.keys(handlers)) out[k] = () => {};
+  return out;
+}
+
+// The whole experience: ONE persistent 3D stage hosting every instrument (each on a shelf slot),
+// plus the HTML chrome cross-faded over it. The route (`/` vs `/<id>`) sets which instrument is
+// active; the active device floats continuously between the shelf and the desk - no remount.
 export function Experience() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { vm, handlers } = useSynth();
-  const [manualOpen, setManualOpen] = useState(false);
-  const hero = INSTRUMENTS[0];
 
   const id = location.pathname.replace(/^\//, '');
-  const valid = !id || !!instrumentById(id); // '/' or a known instrument
-  const mode: 'shelf' | 'play' = id && instrumentById(id) ? 'play' : 'shelf';
+  const known = !!instrumentById(id);
+  const activeId = id && known ? id : null;
+  const valid = !id || known; // '/' or a known instrument
 
-  // An unknown path falls back to the shelf.
   useEffect(() => {
     if (!valid) navigate('/', { replace: true });
   }, [valid, navigate]);
 
-  // Eye button: float the device up + let the user spin it. `spin` holds the drag-accumulated
-  // rotation (x = tilt, y = turn) plus its angular velocity (vx/vy) so a flick coasts; the
-  // stage reads + advances it every frame. Reset each time inspect opens.
-  const [inspect, setInspect] = useState(false);
-  const spin = useRef({ x: 0, y: 0, vx: 0, vy: 0, dragging: false });
+  // Build the provider stack (one hook per instrument) around the StageHost. Only the ACTIVE
+  // instrument is `enabled` (responds to the desktop keyboard); the rest are mounted but idle.
+  const tree = INSTRUMENTS.reduceRight<ReactNode>(
+    (children, module) => (
+      <InstrumentProvider key={module.manifest.id} module={module} enabled={module.manifest.id === activeId}>
+        {children}
+      </InstrumentProvider>
+    ),
+    <StageHost activeId={activeId} onNavigate={navigate} />,
+  );
 
-  // The device only becomes interactive once it has landed on the desk (after the float).
-  const [interactive, setInteractive] = useState(mode === 'play');
+  return <div className="experience">{tree}</div>;
+}
+
+function StageHost({ activeId, onNavigate }: { activeId: string | null; onNavigate: (to: string) => void }) {
+  const entries = useContext(InstrumentsCtx);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [inspect, setInspect] = useState(false);
+  const spin = useRef<Spin>({ x: 0, y: 0, vx: 0, vy: 0, dragging: false });
+
+  // The active device only becomes interactive once it has landed on the desk (after the float).
+  const [interactive, setInteractive] = useState(activeId !== null);
   useEffect(() => {
-    if (mode === 'play') {
+    if (activeId !== null) {
       const t = setTimeout(() => setInteractive(true), FLOAT_MS);
       return () => clearTimeout(t);
     }
     setInteractive(false);
-    setInspect(false); // leaving play closes inspect
+    setInspect(false);
     setManualOpen(false);
-  }, [mode]);
+  }, [activeId]);
 
   const toggleInspect = () => {
     setInspect((on) => {
-      if (!on) spin.current = { x: 0, y: 0, vx: 0, vy: 0, dragging: false }; // start at rest
+      if (!on) spin.current = { x: 0, y: 0, vx: 0, vy: 0, dragging: false };
       return !on;
     });
   };
 
-  // Drag-to-spin while inspecting: a horizontal drag turns the device, a vertical drag tilts it.
-  // We set BOTH position and angular velocity here (velocity from the real pointer-event timing,
-  // so it survives the release), then drop `dragging` so the stage coasts on that velocity and
-  // decays it - the floaty momentum. Holding still bleeds the velocity (in the stage), so a
-  // stop-then-lift doesn't fling.
-  const TURN_SENS = 0.01; // rad per px, horizontal -> turn
-  const TILT_SENS = 0.008; // rad per px, vertical -> tilt
+  // Drag-to-spin while inspecting (velocity from real pointer-event timing so a flick coasts; the
+  // Stage reads + advances spin every frame).
+  const TURN_SENS = 0.01;
+  const TILT_SENS = 0.008;
   const drag = useRef<{ x: number; y: number; t: number } | null>(null);
   const onDragStart = (e: React.PointerEvent) => {
     drag.current = { x: e.clientX, y: e.clientY, t: e.timeStamp };
     spin.current.dragging = true;
-    spin.current.vx = 0; // catch a coasting device: grabbing stops it
+    spin.current.vx = 0;
     spin.current.vy = 0;
   };
   const onDragMove = (e: React.PointerEvent) => {
@@ -94,12 +130,11 @@ export function Experience() {
     if (!d) return;
     const dyaw = (e.clientX - d.x) * TURN_SENS;
     const nx = Math.max(-1.2, Math.min(1.2, spin.current.x + (e.clientY - d.y) * TILT_SENS));
-    const dpitch = nx - spin.current.x; // actually-applied tilt (after the clamp)
+    const dpitch = nx - spin.current.x;
     spin.current.y += dyaw;
     spin.current.x = nx;
     const dtS = (e.timeStamp - d.t) / 1000;
     if (dtS > 0) {
-      // exponential-smoothed velocity tracks the recent motion (rad/s)
       spin.current.vy = spin.current.vy * 0.4 + (dyaw / dtS) * 0.6;
       spin.current.vx = spin.current.vx * 0.4 + (dpitch / dtS) * 0.6;
     }
@@ -107,25 +142,46 @@ export function Experience() {
   };
   const onDragEnd = () => {
     drag.current = null;
-    spin.current.dragging = false; // release -> the stage coasts on the carried velocity
+    spin.current.dragging = false;
   };
 
-  const deviceHandlers = useMemo<DeviceHandlers>(
-    () => ({ ...handlers, onHelpToggle: () => setManualOpen((o) => !o) }),
-    [handlers],
-  );
-  // No playing while inspecting (you're looking at it, not playing it).
-  const stageHandlers = interactive && !inspect ? deviceHandlers : NOOP_HANDLERS;
+  const active = activeId ? entries[activeId] : null;
 
-  const play = () => {
-    handlers.resume(); // build + unlock audio on the first gesture
-    navigate(`/${hero.id}`);
+  // Build a device node per instrument. The active device gets real handlers only once it has
+  // landed and is not being inspected; otherwise (mid-float, inspecting, or a shelf device) its
+  // taps are no-ops. Shelf devices are shielded by the tap-to-open catcher anyway.
+  const stageInstruments: StageInstrument[] = INSTRUMENTS.map((module) => {
+    const mid = module.manifest.id;
+    const entry = entries[mid];
+    const isActive = mid === activeId;
+    const live = isActive && interactive && !inspect;
+    const handlers = live ? entry.handlers : noopLike(entry.handlers);
+    const Device = module.Device;
+    return { id: mid, label: module.manifest.name, node: <Device vm={entry.vm} handlers={handlers} /> };
+  });
+
+  const openInstrument = (id: string) => {
+    entries[id]?.handlers.resume(); // unlock + build that instrument's audio on the first gesture
+    onNavigate(`/${id}`);
   };
-  const theme = BODY_THEMES[vm.themeIndex % BODY_THEMES.length];
+
+  const onPointerMissed = () => {
+    if (active) active.module.releaseOnMiss(active.handlers);
+  };
+
+  const ActiveManual = active?.module.Manual;
+  const ActivePlayTools = active?.module.PlayTools;
 
   return (
-    <div className="experience">
-      <Stage mode={mode} inspect={inspect} spinRef={spin} vm={vm} handlers={stageHandlers} onShelfTap={play} label={hero.name} />
+    <>
+      <Stage
+        instruments={stageInstruments}
+        activeId={activeId}
+        inspect={inspect}
+        spinRef={spin}
+        onShelfTap={openInstrument}
+        onPointerMissed={onPointerMissed}
+      />
 
       {/* drag-to-spin surface, only while inspecting (sits under the chrome buttons) */}
       {inspect && (
@@ -140,24 +196,18 @@ export function Experience() {
       )}
 
       {/* shelf chrome */}
-      <div className={'overlay shelf-chrome' + (mode === 'shelf' ? ' is-on' : '')}>
+      <div className={'overlay shelf-chrome' + (activeId === null ? ' is-on' : '')}>
         <header className="shelf-title">jam<span>shelf</span></header>
-        <footer className="shelf-foot">more instruments coming soon</footer>
+        <footer className="shelf-foot">tap an instrument to play</footer>
       </div>
 
       {/* play chrome */}
-      <div className={'overlay play-chrome' + (mode === 'play' ? ' is-on' : '')}>
-        <button className="back-to-shelf" onClick={() => navigate('/')} aria-label="Back to the shelf">
+      <div className={'overlay play-chrome' + (activeId !== null ? ' is-on' : '')}>
+        <button className="back-to-shelf" onClick={() => onNavigate('/')} aria-label="Back to the shelf">
           ‹
         </button>
         <div className="tools">
-          <button
-            className="tool-btn tool-swatch"
-            onClick={deviceHandlers.onSwapColor}
-            aria-label="Swap the device color"
-            title={theme.name}
-            style={{ background: theme.body }}
-          />
+          {active && ActivePlayTools && <ActivePlayTools vm={active.vm} handlers={active.handlers} />}
           <button
             className={'tool-btn' + (manualOpen ? ' is-active' : '')}
             onClick={() => setManualOpen((o) => !o)}
@@ -177,7 +227,7 @@ export function Experience() {
         </div>
       </div>
 
-      <Manual open={manualOpen} onClose={() => setManualOpen(false)} />
-    </div>
+      {ActiveManual && <ActiveManual open={manualOpen} onClose={() => setManualOpen(false)} />}
+    </>
   );
 }

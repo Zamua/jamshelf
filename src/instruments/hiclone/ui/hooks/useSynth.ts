@@ -3,6 +3,7 @@ import { SynthController } from '../../application/synthController';
 import type { ViewModel } from '../../application/state';
 import { WebAudioSynth } from '../../infrastructure/audio/webAudioSynth';
 import { WebAudioLooper } from '../../infrastructure/audio/webAudioLooper';
+import type { TransportControl } from '../../application/ports';
 import { LocalStorageSettingsStore, migrateSettingsNamespace } from '../../infrastructure/persistence/localStorageSettings';
 import { IndexedDbLooperStore } from '../../infrastructure/persistence/indexedDbLooper';
 import type { Degree, Quality } from '../../domain/music';
@@ -93,10 +94,22 @@ export function useSynth(enabled = true, transport?: Transport) {
     // localStorage), durable settings in localStorage. Both restore on reload / PWA reopen.
     const ns = 'hiclone';
     migrateSettingsNamespace('hichord', ns); // carry prefs from the instrument's former id
-    const looper = new WebAudioLooper(realSynth, new IndexedDbLooperStore(ns));
     // The shared master clock (a rig); solo, spin up our own with a ticker - solo is a rig of one.
     const t = transport ?? new Transport();
     if (!transport) new IntervalTicker(t);
+    // The looper drives the rig on record via this narrow control: suspend halts the clock for the
+    // count-in; resumeFromTop rewinds to bar 1 and plays it - but only PLAYS if not free-running, so
+    // a solo HiClone (free-run, for its arp) resumes free-running from bar 1 without waking the
+    // (silent, bystander) drum machine, while a rig replays the drums from the top.
+    const transportControl: TransportControl = {
+      suspend: () => t.stop(),
+      resumeFromTop: () => {
+        t.stop(); // force not-running so rewind takes effect even if the bar was tapped mid-count-in
+        t.rewind();
+        if (!t.isFreeRun()) t.play();
+      },
+    };
+    const looper = new WebAudioLooper(realSynth, new IndexedDbLooperStore(ns), transportControl);
     return new SynthController(realSynth, t, looper, new LocalStorageSettingsStore(ns));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transport]);

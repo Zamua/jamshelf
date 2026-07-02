@@ -54,6 +54,9 @@ export class Transport {
   isRunning(): boolean {
     return this.running;
   }
+  isFreeRun(): boolean {
+    return this.freeRun;
+  }
   // Should the pulse counter advance right now? True when explicitly playing OR in free-run.
   isAdvancing(): boolean {
     return this.running || this.freeRun;

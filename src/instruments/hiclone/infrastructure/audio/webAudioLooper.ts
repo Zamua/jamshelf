@@ -1,4 +1,4 @@
-import type { AudioLooper, LooperMode, LooperView } from '../../application/ports';
+import type { AudioLooper, LooperMode, LooperView, TransportControl } from '../../application/ports';
 import type { LooperStore, SerializedLooper } from '../../application/persistence';
 import type { WebAudioSynth } from './webAudioSynth';
 
@@ -6,20 +6,19 @@ import type { WebAudioSynth } from './webAudioSynth';
 // off a tap on the live bus, so every layer is frozen the instant it is captured -
 // switching patch / play-mode / fx afterwards never alters a recorded loop.
 //
-// The state machine, driven by the joystick click (`toggle`):
-//   idle  --click-->  armed   (waiting for the first key; nothing recorded yet)
-//   armed --key---->  rec      (the FIRST key starts the master capture - no
-//                               leading silence; that note is the loop's downbeat)
-//   rec(master) --click--> play (master length is snapped to a whole number of
-//                               beats so the metronome + overdubs lock to the loop)
-//   play  --click-->  rec      (overdub: a new layer, recorded for one loop and
-//                               aligned to the loop boundary - whole-track, not
-//                               per-note quantize)
+// The state machine, driven by the joystick click:
+//   idle  --click-->  rec   (beginTake: halt the rig, count in 4, then restart from bar 1
+//                            and capture the MASTER; its length snaps to whole bars on finalize)
+//   rec(master) --click--> play
+//   play  --click-->  rec   (beginTake again: an overdub layer, same halt -> count-in ->
+//                            restart-from-bar-1, captured for one loop)
 //   rec(overdub) --click--> play
 // Long-press (`clear`) wipes every layer back to idle.
 //
-// A metronome clicks while arming + recording so layers can be played in time; it
-// routes to the synth's loop bus, so it is never captured into a recording.
+// Recording a take drives the shared Transport (via TransportControl): it suspends the rig for
+// the count-in, then rewinds to bar 1 and resumes - so the drums replay from the top and the loop's
+// bar 1 IS the transport's bar 1, locking the loop to the beat by construction. A metronome clicks
+// through the count-in + recording, routed to the synth's loop bus so it is never captured.
 
 const MAX_TRACKS = 6;
 const BEATS_PER_BAR = 4; // 4/4 - the master loop is snapped to whole bars
@@ -55,7 +54,7 @@ export class WebAudioLooper implements AudioLooper {
   private loopLenSamples = 0; // master loop length (defines every layer)
   private loopBeats = 0; // its length in whole beats (locks the metronome)
   private loopBars = 0; // its length in whole bars (BEATS_PER_BAR beats each)
-  private anchorTime = 0; // ctx time of loop phase 0 (the first note)
+  private anchorTime = 0; // ctx time of loop phase 0 (bar 1 - the post-count-in downbeat)
   private lastActivity = 0; // ctx time of the last note on/off while recording the
   // master - the loop length quantizes to THIS (the notes), not the captured audio,
   // so a long release/reverb tail bleeds into the loop instead of adding a bar.
@@ -82,10 +81,12 @@ export class WebAudioLooper implements AudioLooper {
 
   private listeners = new Set<() => void>();
   private readonly store: LooperStore | null;
+  private readonly transport: TransportControl | null; // drives the rig's stop/restart on record
 
-  constructor(synth: WebAudioSynth, store?: LooperStore) {
+  constructor(synth: WebAudioSynth, store?: LooperStore, transport?: TransportControl) {
     this.synth = synth;
     this.store = store ?? null;
+    this.transport = transport ?? null;
     // Reload any saved loops (async). They come back STOPPED so nothing blasts on open
     // (and iOS won't play audio before a gesture anyway); a joystick-down starts them.
     if (this.store)
@@ -150,27 +151,17 @@ export class WebAudioLooper implements AudioLooper {
     }
     switch (this.mode) {
       case 'idle':
-        // arm the master; capture waits for the first key (noteStarted)
-        this.mode = 'armed';
-        this.recTrack = 0;
-        this.startMetronome(this.ctx!.currentTime + 0.12);
-        break;
-      case 'armed':
-        // cancel before any note was played
-        this.mode = 'idle';
-        this.recTrack = -1;
-        this.stopMetronome();
+        this.beginTake(); // master: halt the rig -> count in -> restart from bar 1 -> capture
         break;
       case 'rec':
-        if (this.recTrack === 0)
-          this.finalizeMaster();
-        // a re-press DURING an overdub count-in (nothing recorded yet) abandons the new
-        // layer and resumes playback - it does NOT finalize a near-empty bogus track.
-        else if (this.countdown > 0) this.cancelOverdub();
+        // a re-press DURING the count-in (nothing recorded yet) abandons the take + resumes,
+        // rather than finalizing a near-empty bogus track.
+        if (this.countdown > 0) this.cancelTake(true);
+        else if (this.recTrack === 0) this.finalizeMaster();
         else this.finalizeOverdub();
         break;
       case 'play':
-        if (this.tracks.length < MAX_TRACKS) this.startOverdub();
+        if (this.tracks.length < MAX_TRACKS) this.beginTake(); // overdub, same take flow
         break;
     }
     this.emit();
@@ -181,17 +172,14 @@ export class WebAudioLooper implements AudioLooper {
   // (click) + a down-flick resumes them.
   exit(): void {
     if (!this.active) return;
-    if (this.mode === 'armed') {
-      this.mode = 'idle';
-      this.recTrack = -1;
-      this.stopMetronome();
-    } else if (this.mode === 'rec') {
-      if (this.recTrack === 0) this.finalizeMaster();
-      else if (this.countdown > 0) this.cancelOverdub();
+    if (this.mode === 'rec') {
+      // counting in (nothing captured) -> abandon + leave stopped; capturing -> keep the take
+      if (this.countdown > 0) this.cancelTake(false);
+      else if (this.recTrack === 0) this.finalizeMaster();
       else this.finalizeOverdub();
     }
     if (this.mode === 'play' && !this.stopped) {
-      this.stopAllSources();
+      this.stopAllSources(); // halt the looper's layers (the rig's transport keeps rolling)
       this.stopped = true;
       this.stopDisplayTimer();
     }
@@ -199,54 +187,49 @@ export class WebAudioLooper implements AudioLooper {
     this.emit();
   }
 
-  // Abandon an in-progress overdub count-in: kill the scheduled count-in clicks + the
-  // pending capture-start. resume=true (a re-press) plays the existing layers again;
-  // resume=false (a joystick-down) leaves them stopped.
-  private cancelOverdub(resume = true): void {
+  // Abandon an in-progress take DURING its count-in: kill the scheduled count-in clicks + the
+  // pending capture-start. resume=true (a re-press) resumes from bar 1 (existing layers + the rig);
+  // resume=false (a joystick-down / exit) leaves everything stopped where the count-in halted it.
+  private cancelTake(resume: boolean): void {
     this.clearPendingTimers();
     this.killFutureClicks();
     this.capturing = false;
     this.capturedSamples = 0;
     this.masterChunks = [[], []];
     this.countdown = 0;
+    const wasMaster = this.recTrack === 0;
     this.recTrack = -1;
-    this.mode = 'play';
+    this.mode = wasMaster ? 'idle' : 'play'; // no master loop yet -> idle; overdub -> back to play
     if (resume) {
       this.stopped = false;
-      const at = this.ctx!.currentTime + 0.05;
-      this.anchorTime = at;
-      this.restartTracks(at); // existing layers (silenced for the count-in) play again
-      this.startDisplayTimer();
+      if (!wasMaster) {
+        const at = this.ctx!.currentTime + 0.05;
+        this.anchorTime = at;
+        this.restartTracks(at); // existing layers (silenced for the count-in) play again from bar 1
+        this.startDisplayTimer();
+      }
+      this.transport?.resumeFromTop(); // the rig replays from bar 1 too
     } else {
-      // Pulled DOWN to cancel: the layers were already silenced for the count-in, so
-      // leave them stopped (a later joystick-down resumes them, same as a normal stop).
+      // Leave everything stopped (a later down-flick / bar play resumes it). restartTracks (in
+      // beginTake) scheduled the existing layers to start AT the now-cancelled downbeat, so stop
+      // them or they would fire audibly + untracked once that future time arrives (a zombie).
+      this.stopAllSources();
       this.stopped = true;
       this.stopDisplayTimer();
     }
   }
 
+  // The master anchors to bar 1 (set in beginTake), not the first note - so here we only track the
+  // last-played instant, so the loop length quantizes on the notes (not a release/reverb tail).
   noteStarted(): void {
-    if (!this.ctx) return;
-    if (this.mode === 'armed') {
-      // The first key of the master take: start capturing rendered audio NOW and make
-      // this instant the loop's downbeat (re-anchor the metronome to it).
-      this.mode = 'rec';
-      this.recTrack = 0;
-      this.masterChunks = [[], []];
-      this.capturedSamples = 0;
-      this.capturing = true;
-      this.anchorTime = this.ctx.currentTime;
-      this.lastActivity = this.anchorTime;
-      this.startMetronome(this.anchorTime);
-      this.emit();
-    } else if (this.mode === 'rec' && this.recTrack === 0) {
-      this.lastActivity = this.ctx.currentTime; // a note while recording the master
-    }
+    if (this.mode === 'rec' && this.capturing && this.recTrack === 0 && this.ctx)
+      this.lastActivity = this.ctx.currentTime;
   }
-  // A pad release while recording the master - marks where the playing ended (the
-  // loop quantizes to this, not to where the release/reverb tail finally decays).
+  // A pad release while recording the master - marks where the playing ended (the loop quantizes to
+  // this, not to where the release/reverb tail finally decays). Gated on `capturing` (like
+  // noteStarted): a release DURING the count-in must not push lastActivity before bar 1.
   noteEnded(): void {
-    if (this.mode === 'rec' && this.recTrack === 0 && this.ctx)
+    if (this.mode === 'rec' && this.capturing && this.recTrack === 0 && this.ctx)
       this.lastActivity = this.ctx.currentTime;
   }
 
@@ -255,7 +238,7 @@ export class WebAudioLooper implements AudioLooper {
   // existing layers stopped (the re-press path resumes them; down stops everything).
   toggleStop(): void {
     if (this.countdown > 0) {
-      this.cancelOverdub(false);
+      this.cancelTake(false); // pulled down during a count-in: abandon the take, leave stopped
       this.emit();
       return;
     }
@@ -290,6 +273,9 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   private resetAll(): void {
+    // If a take is mid-count-in the rig was suspended (beginTake) and the scheduled downbeat resume
+    // is about to be cancelled below - so resume the rig here, else it stays halted forever.
+    if (this.countdown > 0) this.transport?.resumeFromTop();
     this.clearPendingTimers();
     for (const t of this.tracks) this.stopTrack(t, false);
     this.tracks = [];
@@ -368,14 +354,18 @@ export class WebAudioLooper implements AudioLooper {
     this.persist();
   }
 
-  // Overdub with a 4-beat count-in: silence the existing layers, click 4 times, then
-  // restart every layer from bar 1 AND begin capturing - all locked to the downbeat
-  // after the count-in, so a new layer never waits a whole (e.g. 8-bar) loop to align.
-  private startOverdub(): void {
+  // Start a take (master OR overdub) with the same locked flow: suspend the rig, click a 4-beat
+  // count-in, then at the downbeat rewind the rig to bar 1 + resume AND begin capturing. Because the
+  // capture and the rig both start at that one downbeat, the loop locks to the beat by construction.
+  // The master (no existing layers) records until you finalize (length snaps to bars); an overdub
+  // replays the existing layers from bar 1 and records one loop's worth. recTrack = the layer index
+  // (0 = master), so finalize knows which path to take.
+  private beginTake(): void {
     const ctx = this.ctx!;
-    this.stopAllSources(); // layers go silent during the count-in
+    this.transport?.suspend(); // halt the rig for the count-in
+    this.stopAllSources(); // existing layers go silent during the count-in (none for the master)
     this.stopMetronome();
-    this.stopped = false; // recording an overdub clears any prior stop state
+    this.stopped = false;
     this.recTrack = this.tracks.length;
     this.capturing = false; // not yet - wait out the count-in
     this.mode = 'rec';
@@ -391,10 +381,12 @@ export class WebAudioLooper implements AudioLooper {
         this.emit();
       });
 
-    const downbeat = t0 + BEATS_PER_BAR * beat; // the loop's new bar 1
+    const downbeat = t0 + BEATS_PER_BAR * beat; // the loop's bar 1
     this.anchorTime = downbeat;
-    this.restartTracks(downbeat); // existing layers replay from the top, in sync
+    this.lastActivity = downbeat; // master length measured from bar 1 (bumped as notes play)
+    this.restartTracks(downbeat); // existing layers replay from bar 1, in sync (no-op for the master)
     this.scheduleAt(downbeat, () => {
+      this.transport?.resumeFromTop(); // rewind the rig to bar 1 + resume (the drums replay)
       this.countdown = 0;
       this.stopped = false; // layers are audibly playing again from bar 1
       this.masterChunks = [[], []]; // contiguous capture, starting at phase 0

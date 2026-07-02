@@ -49,13 +49,24 @@ export const PATCH_ORDER: readonly PatchName[] = [
   'BLOOM',
 ];
 
+// Control over the shared Transport that recording needs, as a NARROW port (ports-and-adapters):
+// the looper never touches the Transport directly, only "halt the rig for the count-in" and "rewind
+// to bar 1 and play again". The composition root supplies the adapter (which also restores the
+// solo free-run vs rig play mode). This is what makes a recorded loop lock to the beat: the loop's
+// bar 1 and the rig's bar 1 become the same transport bar 1 by construction.
+export interface TransportControl {
+  suspend(): void; // halt the shared clock while counting in
+  resumeFromTop(): void; // rewind to bar 1 and resume (the drums replay from the top)
+}
+
 // The loop recorder, as the application sees it. The concrete adapter records the
 // synth's RENDERED AUDIO (not note events) off a tap on the live output, so every
 // layer is frozen the moment it is captured - immune to any later sound / play-mode
 // / fx change. Track 1 (the master) sets the loop length; later layers are aligned
 // to that loop's boundary. Driven by a single click (the joystick) that cycles
-// idle -> armed -> rec -> play, plus a separate clear.
-export type LooperMode = 'idle' | 'armed' | 'rec' | 'play';
+// idle -> rec -> play, plus a separate clear. Recording (master OR overdub) halts the
+// rig, counts in, then restarts from bar 1 and captures - so the loop locks to the beat.
+export type LooperMode = 'idle' | 'rec' | 'play';
 
 // What the UI needs to render the looper (kept tiny + serializable).
 export interface LooperView {
@@ -74,8 +85,9 @@ export interface LooperView {
 
 export interface AudioLooper {
   // The joystick click. The FIRST click ENTERS looper mode; subsequent clicks advance
-  // idle -> armed -> rec -> play -> (overdub) rec ... When it arms the master it does NOT
-  // start capturing yet - capture begins at the first key (noteStarted), no leading silence.
+  // idle -> rec -> play -> (overdub) rec ... Starting a take (master OR overdub) halts the
+  // rig, counts in 4 beats, then restarts from bar 1 and captures - the loop's downbeat IS
+  // the transport downbeat, so it locks to the beat.
   click(): void;
   // Joystick UP: exit looper mode and stop playback. Any take is finalized; loops are kept
   // (stopped), so re-entering + a down-flick resumes them.
@@ -88,8 +100,9 @@ export interface AudioLooper {
   // Long-press: clear the SELECTED layer while playing (the master, layer 0, clears
   // everything since it defines the loop length); otherwise wipe everything.
   clear(): void;
-  // The controller calls this on every pad press. While armed it starts the master
-  // capture at this instant (the first note = the loop's downbeat); otherwise no-op.
+  // The controller calls this on every pad press. While capturing the master it marks the
+  // last-played instant (the master anchors to bar 1, not the first note), so the loop length
+  // quantizes on the notes; otherwise no-op.
   noteStarted(): void;
   // The controller calls this on every pad release: while recording the master it
   // marks where the playing ended, so the loop quantizes on the notes, not the tail.

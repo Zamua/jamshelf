@@ -67,17 +67,22 @@ links; a cold deep-link snaps straight to the play pose, no float).
 a tempo. The shelf has a "＋ new rig" button -> a build overlay (multi-select instruments) ->
 `createRig()` stores the config (`src/rig/rigStore.ts`, localStorage keyed by uuid, `{instruments,
 desk}`) -> navigates to `/rig/<uuid>`. `Experience.parsePath` routes shelf / single (`/<id>`) / rig.
-In rig mode the "desk" instrument is React state (not the URL), switched by a **dock** (bottom tabs);
-`activeId` = the desk instrument, so the Stage floats it in exactly like single-play. Because EVERY
-instrument stays mounted + audio-live (the mount-all architecture), the drum beat keeps rolling while
-you switch the desk to the HiClone (chords) or StyloClone (lead). A **transport bar** (top) holds one
-shared BPM + a global play/stop. Sync wiring: each tempo instrument's hook returns an optional
-**`InstrumentTransport`** (`shared/instrument.ts`: setBpm/getBpm/play/stop/isPlaying); the rig bar
-pushes one BPM to all + toggles the sequenced ones. HiClone gained a public `setBpm`; the TR-B0B's
-transport drives its 16-step sequencer; the StyloClone has no transport (free real-time lead). v1 is
-shared-BPM + the beat as the audible clock; **NOT yet done: a single shared CLOCK so the HiClone arp is
-sample-phase-locked to the drum grid** (each instrument still runs its own IntervalClock, so two
-auto-sequencers would drift - fine for beat + live chords + live lead, the intended jam).
+In rig mode the instruments lie scattered FLAT on the desk (`rigStore` placements); the camera flies
+between a top-down all-view and a focused instrument (tap to zoom in, swipe the empty margins to cycle
+next/prev, back to the all-view). `activeId` = the focused instrument. Because EVERY instrument stays
+mounted + audio-live (the mount-all architecture), the drum beat keeps rolling while you focus another.
+
+**Sync is a real shared clock now** (`src/transport/`, spec in `docs/RIG.md`). ONE `Transport` (a
+software DIN-sync master: tempo + running/play-stop + a pulse-index position -> bar/beat/tick/phase)
+is created at the composition root (`Experience`) and threaded to every instrument via
+`useInstrument(enabled, transport)`. It hands each synced instrument a sub-clock off the SAME pulse
+counter, so they are phase-locked by construction (the TR-B0B drum + the HiClone arp fire in the same
+`advance()` call). A `gated` clock (the TR-B0B sequencer) fires only while the transport is explicitly
+playing; a `free` clock (the HiClone arp/repeat) fires on any advancing pulse, so `setFreeRun` lets a
+solo HiClone still arp on pad-hold (composition sets free-run while it is the active solo instrument;
+off in a rig, where the transport bar owns play). "Solo is a rig of one." The transport bar drives the
+shared Transport (play/stop, tempo, `bar.beat` readout). The old `InstrumentTransport` capability +
+per-instrument `IntervalClock`s are GONE. The StyloClone ignores the transport (free real-time lead).
 
 **The TR-B0B instrument** (`src/instruments/trb0b/`) is an unbranded TR-808-style 16-step drum machine:
 8 synth voices (BD/SD/TOM/CLAP/CH/OH/CB/CY, all sample-free in `webAudioDrums.ts`), a pure sequencer
@@ -360,20 +365,21 @@ subsequent clicks run the record cycle; joystick UP EXITS the mode + stops playb
 kept, halted; `exit()`), DOWN pauses/restarts (`toggleStop()`), LEFT/RIGHT selects a track,
 long-press clears the selected track (all gated on `active`). The OLED looper view only
 shows while `active`.** State machine, once IN the mode (joystick click):
-idle -> armed (waiting; nothing recorded) -> rec (the FIRST key starts the master
-capture, no leading silence) -> play; play -> rec overdubs a new layer. Track 1 sets the
-loop length, SNAPPED to a whole number of BARS (`BEATS_PER_BAR=4`, round-to-nearest, min
-1 bar). **Quantization is on the NOTES, not the captured audio**: the length is
-`anchor -> lastActivity` (the last note on/off, via `noteStarted`/`noteEnded` from the
-controller's press/release), so a long release/reverb tail past the bar line does NOT add
-a bar - the tail is `wrapAdd`-folded back into the loop start (bleeds into bar 1) instead.
-**Overdub has a 4-beat count-in**: hitting record over a loop silences the layers, clicks
-4 beats (OLED `COUNT n`), then restarts ALL layers from bar 1 AND begins capturing on the
-downbeat (so a new layer never waits a whole loop to align). **A re-press DURING the count-in
-CANCELS the overdub** (`cancelOverdub`): it abandons the new layer, kills the scheduled
-count-in clicks + the pending capture-start, and resumes the existing layers - so rapid
-joystick presses can't finalize near-empty bogus tracks or stack overlapping metronomes (the
-master arm already cancels via `armed -> idle`). **Click oscillators are cancellable**:
+idle -> rec -> play; play -> rec overdubs a new layer. **Recording (master OR overdub) is
+transport-locked (`beginTake`, unified - there is no more 'armed' state):** it SUSPENDS the shared
+Transport, counts in 4 beats (OLED `COUNT n`), then at the downbeat REWINDS the rig to bar 1 + resumes
+it AND begins capturing - so the loop's bar 1 IS the transport's bar 1 (the drums replay from the top
+and the loop locks to the beat by construction). The rig is driven through a narrow `TransportControl`
+port (`suspend` / `resumeFromTop`), wired in `useSynth`: `suspend`=`transport.stop()`;
+`resumeFromTop`=`transport.rewind()` then `play()` ONLY if not free-running (so a solo HiClone resumes
+free-running from bar 1 without waking the silent bystander drum machine, while a rig replays the
+drums). Track 1 (the master) sets the loop length, SNAPPED to a whole number of BARS
+(`BEATS_PER_BAR=4`, min 1 bar). **Quantization is on the NOTES**: length is `anchorTime (bar 1) ->
+lastActivity` (last note on/off via `noteStarted`/`noteEnded`), so a release/reverb tail past the bar
+does NOT add a bar - the tail `wrapAdd`-folds back into bar 1. **A re-press DURING the count-in CANCELS
+the take** (`cancelTake(true)`): abandons the layer, kills the scheduled count-in clicks + the pending
+capture-start, and resumes from bar 1 (a master goes back to idle, an overdub back to play) - so rapid
+presses can't finalize near-empty bogus tracks or stack metronomes. **Click oscillators are cancellable**:
 `click()` tracks each `{osc, at}` in `clickNodes`, and `killFutureClicks()` (called from
 `stopMetronome`, `cancelOverdub`, `resetAll`) stops the ones not yet fired, so a cancelled
 arm/count-in never leaves audio-scheduled blips to overlap the next one. **Joystick DOWN =
@@ -403,9 +409,9 @@ selected layer (`useSynth` `navTrack`, horizontal-only flick), long-press clears
 SELECTED layer (master/layer-0 clears all, since it defines the length), and each layer
 is a `{source, gain, buffer}` track faded out on delete (no click). A `displayTimer`
 re-emits while playing so the OLED shows a live `BAR x.y` transport (bar.beat) on the big
-line, with `TRK sel/n loopBars` on the small line. 6 tracks. The OLED shows LOOP ARMED /
-REC n / BAR x.y + TRK n. Controller calls `looper.noteStarted()` on every pad press
-(begins an armed take) + `looper.setBpm()` + `selectLoopTrack()`. WebAudioLooper unit
+line, with `TRK sel/n loopBars` on the small line. 6 tracks. The OLED shows LOOPER READY /
+COUNT n / REC n / BAR x.y + TRK n. Controller calls `looper.noteStarted()` on every pad press
+(marks activity while recording the master) + `looper.setBpm()` + `selectLoopTrack()`. WebAudioLooper unit
 tests (fake AudioContext drives capture/overdub/metronome/select-clear) + controller
 wiring tests.
 

@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { WebAudioLooper } from '../webAudioLooper';
 import type { WebAudioSynth } from '../webAudioSynth';
 import type { LooperStore, SerializedLooper } from '../../../application/persistence';
+import type { TransportControl } from '../../../application/ports';
+
+// Spies the rig-control the looper drives on record (suspend for the count-in, resume at bar 1).
+class FakeTransport implements TransportControl {
+  suspends = 0;
+  resumes = 0;
+  suspend(): void {
+    this.suspends++;
+  }
+  resumeFromTop(): void {
+    this.resumes++;
+  }
+}
 
 // An in-memory LooperStore: keeps the last saved state and replays it on load, so a
 // round-trip (record -> persist -> "reload" a fresh looper -> restore) is testable.
@@ -123,12 +136,12 @@ class FakeCtx {
   }
 }
 
-function makeLooper() {
+function makeLooper(transport?: TransportControl) {
   const ctx = new FakeCtx();
   const live = new FakeNode();
   const loopOut = new FakeGain();
   const synth = { audioGraph: () => ({ ctx, live, loopOut }) } as unknown as WebAudioSynth;
-  const looper = new WebAudioLooper(synth);
+  const looper = new WebAudioLooper(synth, undefined, transport);
   return { looper, ctx, live, loopOut };
 }
 
@@ -146,8 +159,9 @@ function pump(ctx: FakeCtx, value: number, count: number): void {
   }
 }
 
-// Record the master: arm, first key (anchor), play `playBlocks`, mark the last note,
-// then optionally let a `tailBlocks` release/reverb tail ring, then stop.
+// Record the master: enter looper mode, click to start the take (count-in), wait out the count-in
+// so capture begins at bar 1, play `playBlocks`, mark the last note, optionally let a `tailBlocks`
+// tail ring, then finalize.
 function recordMaster(
   looper: WebAudioLooper,
   ctx: FakeCtx,
@@ -155,15 +169,15 @@ function recordMaster(
 ): void {
   const value = opts.value ?? 0.5;
   looper.click(); // enter looper mode
-  looper.click(); // arm
-  looper.noteStarted(); // first key -> rec, anchor here
-  pump(ctx, value, opts.playBlocks); // the playing
+  looper.click(); // idle -> beginTake: the count-in starts
+  passCountIn(ctx); // wait out the count-in -> capture begins at bar 1
+  pump(ctx, value, opts.playBlocks); // the playing (from bar 1)
   looper.noteEnded(); // last note lifts -> sets the loop length reference
   if (opts.tailBlocks) pump(ctx, value * 0.6, opts.tailBlocks); // the ringing tail
   looper.click(); // finalize
 }
 
-// Advance past an overdub's 4-beat count-in so capturing has begun.
+// Advance past a take's 4-beat count-in so capturing has begun (master AND overdub use it).
 function passCountIn(ctx: FakeCtx): void {
   ctx.currentTime += 2.3; // 4 beats @ 120bpm + lead, on the audio clock
   vi.advanceTimersByTime(2300); // fire the scheduled "begin capture" step
@@ -178,21 +192,22 @@ function recordOverdub(looper: WebAudioLooper, ctx: FakeCtx, value: number, bloc
 }
 
 describe('WebAudioLooper', () => {
-  it('arms without recording, then captures the master starting at the first key', () => {
+  it('counts in, then captures the master from bar 1 (nothing captured during the count-in)', () => {
     const { looper, ctx } = makeLooper();
     looper.setBpm(120);
 
     looper.click(); // idle -> enter looper mode
     expect(looper.view().active).toBe(true);
-    looper.click(); // -> armed
-    expect(looper.view().mode).toBe('armed');
-
-    // blocks BEFORE the first key must NOT be captured (no leading silence)
-    pump(ctx, 0, 4);
-
-    looper.noteStarted(); // first key -> rec
+    looper.click(); // -> rec: the count-in begins
     expect(looper.view().mode).toBe('rec');
-    pump(ctx, 0.5, 40); // under a bar, so no tail wraps onto the start
+    expect(looper.view().countdown).toBe(4);
+
+    // blocks DURING the count-in must NOT be captured (capture begins at bar 1)
+    pump(ctx, 0.9, 4);
+
+    passCountIn(ctx);
+    expect(looper.view().countdown).toBe(0); // count-in done, capturing at bar 1
+    pump(ctx, 0.5, 40); // play from bar 1, under a bar so no tail wraps onto the start
     looper.noteEnded();
 
     looper.click(); // rec -> play (finalize master)
@@ -200,8 +215,8 @@ describe('WebAudioLooper', () => {
     expect(v.mode).toBe('play');
     expect(v.trackCount).toBe(1);
 
-    // one looping source, playing a frozen 2-channel buffer; data[0] being 0.5 (not a
-    // leading zero) proves the pre-key blocks were excluded.
+    // one looping source, playing a frozen 2-channel buffer; data[0] being 0.5 (not the 0.9
+    // count-in blocks) proves nothing before the downbeat was captured.
     expect(ctx.sources).toHaveLength(1);
     const src = ctx.sources[0];
     expect(src.loop).toBe(true);
@@ -234,9 +249,9 @@ describe('WebAudioLooper', () => {
     looper.click();
     expect(looper.view().active).toBe(true);
     expect(looper.view().mode).toBe('idle');
-    // second click arms; record a master
+    // second click starts the take (count-in); record a master
     looper.click();
-    looper.noteStarted();
+    passCountIn(ctx);
     pump(ctx, 0.5, 40);
     looper.noteEnded();
     looper.click(); // finalize -> play
@@ -447,7 +462,7 @@ describe('WebAudioLooper', () => {
     const { looper, ctx, live, loopOut } = makeLooper();
     looper.setBpm(120);
     looper.click(); // enter looper mode
-    looper.click(); // arm -> metronome scheduler starts
+    looper.click(); // beginTake -> count-in clicks + metronome scheduled
     ctx.currentTime = 1.0; // advance past a couple of beats
     vi.advanceTimersByTime(30); // fire the lookahead scheduler
 
@@ -460,12 +475,73 @@ describe('WebAudioLooper', () => {
     looper.clear();
   });
 
-  it('does not record while only armed (no master block leaks in)', () => {
-    const { looper, ctx } = makeLooper();
+  it('drives the rig on record: suspend for the count-in, then rewind + resume at bar 1', () => {
+    const transport = new FakeTransport();
+    const { looper, ctx } = makeLooper(transport);
+    looper.setBpm(120);
     looper.click(); // enter looper mode
-    looper.click(); // armed
-    pump(ctx, 0.9, 10); // audio while armed
-    looper.click(); // armed -> idle (cancelled, never pressed a key)
+    looper.click(); // beginTake (master) -> halt the rig for the count-in
+    expect(transport.suspends).toBe(1);
+    expect(transport.resumes).toBe(0); // still counting in
+    passCountIn(ctx);
+    expect(transport.resumes).toBe(1); // downbeat: rewind the rig to bar 1 + resume
+    pump(ctx, 0.5, 40);
+    looper.noteEnded();
+    looper.click(); // finalize the master
+    // an overdub drives the rig the same way
+    looper.click(); // beginTake (overdub)
+    expect(transport.suspends).toBe(2);
+    passCountIn(ctx);
+    expect(transport.resumes).toBe(2);
+  });
+
+  it('a re-press during the count-in resumes the rig from the top', () => {
+    const transport = new FakeTransport();
+    const { looper, ctx } = makeLooper(transport);
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 }); // -> suspends 1, resumes 1
+    looper.click(); // overdub count-in -> suspend the rig
+    const resumesBefore = transport.resumes;
+    looper.click(); // re-press while counting in -> abandon + resume the rig from bar 1
+    expect(transport.resumes).toBe(resumesBefore + 1);
+    expect(looper.view().mode).toBe('play');
+  });
+
+  it('aborting an overdub count-in stops the layers scheduled for the cancelled downbeat (no zombie)', () => {
+    const { looper, ctx } = makeLooper();
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 });
+    looper.click(); // play -> overdub count-in: restartTracks schedules the master source at the downbeat
+    expect(looper.view().countdown).toBe(4);
+    expect(ctx.sources[ctx.sources.length - 1].stopped).toBe(false); // scheduled to start, not yet stopped
+    looper.toggleStop(); // pull DOWN during the count-in -> abandon + stop everything
+    expect(looper.view().stopped).toBe(true);
+    // the source scheduled at the (now-cancelled) downbeat must be stopped, or it fires untracked
+    expect(ctx.sources.every((s) => s.stopped)).toBe(true);
+  });
+
+  it('clearing during a count-in un-suspends the rig (drums are never left stuck-stopped)', () => {
+    const transport = new FakeTransport();
+    const { looper, ctx } = makeLooper(transport);
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 }); // suspends 1, resumes 1
+    looper.click(); // overdub count-in -> suspend the rig
+    expect(looper.view().countdown).toBe(4);
+    const resumesBefore = transport.resumes;
+    looper.clear(); // long-press to wipe DURING the count-in
+    expect(transport.resumes).toBe(resumesBefore + 1); // rig resumed, not left halted forever
+    expect(looper.view().mode).toBe('idle');
+  });
+
+  it('does not record during the master count-in; a re-press cancels back to idle', () => {
+    const { looper, ctx } = makeLooper();
+    looper.setBpm(120);
+    looper.click(); // enter looper mode
+    looper.click(); // idle -> rec (count-in begins)
+    expect(looper.view().mode).toBe('rec');
+    expect(looper.view().countdown).toBe(4);
+    pump(ctx, 0.9, 10); // audio DURING the count-in must not be captured
+    looper.click(); // re-press while counting in -> abandon back to idle
     expect(looper.view().mode).toBe('idle');
     expect(ctx.sources).toHaveLength(0); // nothing was recorded
   });

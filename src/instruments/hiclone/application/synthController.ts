@@ -236,7 +236,7 @@ export class SynthController {
   pressPad(voiceId: string, degree: Degree): void {
     if (!this.power || this.inspect) return;
     this.dispatchPress(voiceId, degree);
-    this.looper.noteStarted(); // if the looper is armed, this first key begins the take
+    this.looper.noteStarted(); // marks last-played activity while recording the master (length snap)
 
     if (this.mode === 'DRUM') {
       this.flash(drumLabel(degree, this.drumKit)); // the sound's name (sample kits) / role (synth)
@@ -757,17 +757,14 @@ export class SynthController {
     const keyScale = `${NOTE_NAMES[this.root]} ${SCALE_LABELS[this.scale]}`;
     const lv = this.looper.view();
     // The looper OLED only shows while you are IN looper mode (active). Idle-active =
-    // entered, ready to record. Armed = waiting for the first key (metronome counting you
-    // in). Recording = REC/COUNT. Playing = transport / STOP. Not active -> normal display.
+    // entered, ready to record. Recording = the 4..1 COUNT-in then REC + take number.
+    // Playing = transport / STOP. Not active -> normal display.
     if (lv.active) {
       if (lv.mode === 'idle') {
         return { big: flashing ? this.flashText : 'LOOPER', small: 'READY' };
       }
-      if (lv.mode === 'armed') {
-        return { big: flashing ? this.flashText : keyScale, small: 'LOOP ARMED' };
-      }
       if (lv.mode === 'rec') {
-        // count-in (overdub) shows the 4..1 countdown; otherwise REC + the take number.
+        // the count-in shows the 4..1 countdown; then REC + the take number.
         const big = lv.countdown > 0 ? `COUNT ${lv.countdown}` : `REC ${lv.recTrack + 1}`;
         return { big, small: flashing ? this.flashText : keyScale };
       }

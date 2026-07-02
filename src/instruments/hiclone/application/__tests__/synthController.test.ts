@@ -66,7 +66,7 @@ describe('looper wiring', () => {
     expect(looper.cleared).toBe(1);
   });
 
-  it('every pad press signals the looper (so an armed take starts on the first key)', () => {
+  it('every pad press signals the looper (marks activity while recording the master)', () => {
     c.pressPad('p1', 1);
     c.pressPad('p2', 3);
     expect(looper.notes).toBe(2);
@@ -88,13 +88,18 @@ describe('looper wiring', () => {
     expect(looper.bpm).toBe(121);
   });
 
-  it('the OLED reflects armed / rec / play looper states', () => {
+  it('the OLED reflects idle / count-in / rec / play looper states', () => {
     looper.active = true; // the looper OLED only shows while in looper mode
-    looper.mode = 'armed';
+    looper.mode = 'idle';
     looper.emit();
-    expect(c.getState().screenSmall).toBe('LOOP ARMED');
+    expect(c.getState().screenBig).toBe('LOOPER');
+    expect(c.getState().screenSmall).toBe('READY');
     looper.mode = 'rec';
     looper.recTrack = 0;
+    looper.countdown = 3; // counting in
+    looper.emit();
+    expect(c.getState().screenBig).toBe('COUNT 3');
+    looper.countdown = 0; // capturing
     looper.emit();
     expect(c.getState().screenBig).toBe('REC 1');
     looper.mode = 'play';
@@ -303,7 +308,7 @@ describe('stepping lifecycle', () => {
   it('steps only in ARP/REPEAT while a pad is held', () => {
     switchMode('ARP');
     step();
-    expect(arpCount()).toBe(0); // armed mode but nothing held
+    expect(arpCount()).toBe(0); // ARP mode but nothing held -> no stepping
     c.pressPad('p1', 1);
     const held = arpCount();
     step();

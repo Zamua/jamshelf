@@ -63,6 +63,31 @@ HiClone also keeps one IndexedDB record in db `jamshelf`, store `looper`), so ea
 keeps its own memory. Deploy is still ONE static SPA (the host's SPA fallback serves `/<id>` deep
 links; a cold deep-link snaps straight to the play pose, no float).
 
+**Rigs (`/rig/<uuid>`, added 2026-07-02).** A rig hosts several instruments in ONE session sharing
+a tempo. The shelf has a "＋ new rig" button -> a build overlay (multi-select instruments) ->
+`createRig()` stores the config (`src/rig/rigStore.ts`, localStorage keyed by uuid, `{instruments,
+desk}`) -> navigates to `/rig/<uuid>`. `Experience.parsePath` routes shelf / single (`/<id>`) / rig.
+In rig mode the "desk" instrument is React state (not the URL), switched by a **dock** (bottom tabs);
+`activeId` = the desk instrument, so the Stage floats it in exactly like single-play. Because EVERY
+instrument stays mounted + audio-live (the mount-all architecture), the drum beat keeps rolling while
+you switch the desk to the HiClone (chords) or StyloClone (lead). A **transport bar** (top) holds one
+shared BPM + a global play/stop. Sync wiring: each tempo instrument's hook returns an optional
+**`InstrumentTransport`** (`shared/instrument.ts`: setBpm/getBpm/play/stop/isPlaying); the rig bar
+pushes one BPM to all + toggles the sequenced ones. HiClone gained a public `setBpm`; the TR-B0B's
+transport drives its 16-step sequencer; the StyloClone has no transport (free real-time lead). v1 is
+shared-BPM + the beat as the audible clock; **NOT yet done: a single shared CLOCK so the HiClone arp is
+sample-phase-locked to the drum grid** (each instrument still runs its own IntervalClock, so two
+auto-sequencers would drift - fine for beat + live chords + live lead, the intended jam).
+
+**The TR-B0B instrument** (`src/instruments/trb0b/`) is an unbranded TR-808-style 16-step drum machine:
+8 synth voices (BD/SD/TOM/CLAP/CH/OH/CB/CY, all sample-free in `webAudioDrums.ts`), a pure sequencer
+domain (`sequencer.ts`: pattern grid + step advance), a controller driven by a `Clock` (16th-note ticks
+advance the playhead + trigger active voices), per-voice LEVEL knobs (the 808's per-instrument level),
+and the 3D device (charcoal body, the 16 step buttons in color groups of 4, voice-select row, TEMPO
+knob, START/STOP). The `Clock` port is shaped to be swapped for the rig's shared transport later. Note
+knob indicators sweep min=lower-left to max=lower-right (a fixed inversion). Per-step VELOCITY was
+deferred (UX undecided; the drum engine's `trigger(voice, accent)` already reserves an accent gain).
+
 **The StyloClone instrument** (`src/instruments/styloclone/`) is a faithful, unbranded 1968 Dubreq
 Stylophone: a strictly MONOPHONIC 20-key stylus synth (A2 -> E4, piano interleave) with a
 relaxation-oscillator buzz, a ~7Hz vibrato, tune + volume pots, a sound selector (BUZZ/ROUND/REED)

@@ -1,38 +1,35 @@
-import { useThree, type ThreeEvent } from '@react-three/fiber';
+import { useMemo } from 'react';
+import { useThree } from '@react-three/fiber';
 import { RoundedBox, Text } from '@react-three/drei';
 import type { DeviceProps } from '../deviceProps';
-import { TUNE_RANGE_CENTS } from '../../application/state';
 import {
+  BADGE,
   BODY,
-  BRAND,
   CAM_DIST,
   CAM_FOV,
   FRONT_Z,
-  PLATE,
+  GRILLE,
+  KEYBOARD,
   POWER,
-  SPEAKER,
-  TAGLINE,
-  TUNE,
   VIBRATO,
-  VOLUME,
-  keySpecs,
+  keyCells,
 } from './layout';
 import { PALETTE, dim } from './palette';
-import { BRAND_FONT, LABEL_FONT } from './fonts';
+import { BRAND_FONT } from './fonts';
+import { makeKeyboardTexture } from './keyboardTexture';
+import { makeGrilleTexture } from './grilleTexture';
 import { Chassis } from './Chassis';
 import { Key } from './Key';
-import { Speaker } from './Speaker';
 import { Switch } from './Switch';
-import { Pot } from './Pot';
 import { Stylus } from './Stylus';
 
-// The voice selector: a small tile showing the current voice; tap to cycle (BUZZ/ROUND/REED).
-const VOICE_TILE = { x: -1.9, y: 0.34, w: 0.8, h: 0.38 } as const;
-
-// The modeled StyloClone, assembled in a landscape group. Purely presentational: renders the
-// ViewModel and fires raw input through the handlers.
+// The modeled StyloClone, faithful to the black-and-silver Stylophone: a black slab with a silver
+// slat grille + logo badge up top, a stylus channel, and a white lower strip holding the POWER +
+// VIBRATO switches and the FLAT etched keyboard. Purely presentational.
 export function Device({ vm, handlers }: DeviceProps) {
-  const keys = keySpecs();
+  const keyboardTex = useMemo(() => makeKeyboardTexture(), []);
+  const grilleTex = useMemo(() => makeGrilleTexture(), []);
+  const cells = useMemo(() => keyCells(), []);
 
   // Fit-scale to the viewport from the fixed app camera (shared convention with the HiClone).
   const size = useThree((s) => s.size);
@@ -41,125 +38,71 @@ export function Device({ vm, handlers }: DeviceProps) {
   const visW = visH * aspect;
   const scale = Math.min(1, (visW * 0.94) / BODY.w, (visH * 0.94) / BODY.h);
 
-  const ink = vm.power ? PALETTE.ink : dim(PALETTE.ink, 0.3);
-  const red = vm.power ? PALETTE.red : PALETTE.redDim;
+  // map a normalized keyboard-panel coord (y up) into world space on the plate
+  const kx = (nx: number) => KEYBOARD.x + (nx - 0.5) * KEYBOARD.w;
+  const ky = (ny: number) => KEYBOARD.y + (ny - 0.5) * KEYBOARD.h;
+  const plateZ = FRONT_Z + 0.04;
 
-  const cycleVoice = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    handlers.resume();
-    handlers.onVoiceCycle();
-  };
+  const badgeText = vm.power ? PALETTE.badgeText : dim(PALETTE.badgeText, 0.4);
 
   return (
     <group scale={scale}>
       <Chassis power={vm.power} />
 
-      {/* the 20 keys on the silver plate */}
-      {keys.map((spec) => (
-        <Key
-          key={spec.midi}
-          spec={spec}
-          lit={vm.litKey === spec.midi}
-          power={vm.power}
-          z={PLATE.z + PLATE.raise + 0.03}
-          handlers={handlers}
-        />
-      ))}
+      {/* silver slat speaker grille (top) */}
+      <mesh position={[GRILLE.x, GRILLE.y, FRONT_Z + 0.008]}>
+        <planeGeometry args={[GRILLE.w, GRILLE.h]} />
+        <meshStandardMaterial map={grilleTex} metalness={0.35} roughness={0.5} />
+      </mesh>
 
-      <Speaker x={SPEAKER.x} y={SPEAKER.y} r={SPEAKER.r} power={vm.power} />
-
-      {/* wordmark + tagline */}
-      <Text
-        font={BRAND_FONT}
-        position={[BRAND.x, BRAND.y, FRONT_Z + 0.01]}
-        fontSize={0.36}
-        color={red}
-        anchorX="center"
-        anchorY="middle"
-        letterSpacing={0.01}
-      >
-        {BRAND.text}
-      </Text>
-      <Text
-        font={LABEL_FONT}
-        position={[TAGLINE.x, TAGLINE.y, FRONT_Z + 0.01]}
-        fontSize={0.15}
-        color={ink}
-        anchorX="center"
-        anchorY="middle"
-        letterSpacing={0.12}
-      >
-        {TAGLINE.text}
-      </Text>
-
-      {/* voice selector tile */}
-      <group position={[VOICE_TILE.x, VOICE_TILE.y, FRONT_Z]}>
-        <RoundedBox
-          args={[VOICE_TILE.w, VOICE_TILE.h, 0.08]}
-          radius={0.05}
-          smoothness={3}
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerUp={cycleVoice}
-          onPointerCancel={cycleVoice}
-        >
-          <meshStandardMaterial color={vm.power ? PALETTE.switchBody : dim(PALETTE.switchBody, 0.4)} metalness={0.3} roughness={0.6} />
+      {/* the logo badge on the grille */}
+      <group position={[BADGE.x, BADGE.y, FRONT_Z + 0.02]}>
+        <RoundedBox args={[BADGE.w, BADGE.h, 0.05]} radius={0.06} smoothness={4}>
+          <meshStandardMaterial color={PALETTE.badge} metalness={0.2} roughness={0.5} />
         </RoundedBox>
         <Text
-          font={LABEL_FONT}
-          position={[0, 0, 0.06]}
-          fontSize={0.16}
-          color={vm.power ? PALETTE.bodyHi : dim(PALETTE.bodyHi, 0.3)}
+          font={BRAND_FONT}
+          position={[0, 0, 0.04]}
+          fontSize={0.28}
+          color={badgeText}
           anchorX="center"
           anchorY="middle"
-          letterSpacing={0.06}
+          letterSpacing={0.005}
         >
-          {vm.voice}
-        </Text>
-        <Text
-          font={LABEL_FONT}
-          position={[0, -VOICE_TILE.h * 0.72, 0.02]}
-          fontSize={0.12}
-          color={ink}
-          anchorX="center"
-          anchorY="middle"
-          letterSpacing={0.05}
-        >
-          sound
+          {BADGE.text}
         </Text>
       </group>
 
-      {/* controls row: vibrato switch, tune pot, volume pot, power switch */}
-      <Switch
-        x={VIBRATO.x}
-        y={VIBRATO.y}
-        w={VIBRATO.w}
-        h={VIBRATO.h}
-        on={vm.vibrato}
-        power={vm.power}
-        label="vibrato"
-        onToggle={handlers.onVibratoToggle}
-        resume={handlers.resume}
-      />
-      <Pot
-        x={TUNE.x}
-        y={TUNE.y}
-        r={TUNE.r}
-        value={(vm.tune + TUNE_RANGE_CENTS) / (TUNE_RANGE_CENTS * 2)}
-        power={vm.power}
-        label="tune"
-        onChange={(v) => handlers.onTune(v * TUNE_RANGE_CENTS * 2 - TUNE_RANGE_CENTS)}
-        resume={handlers.resume}
-      />
-      <Pot
-        x={VOLUME.x}
-        y={VOLUME.y}
-        r={VOLUME.r}
-        value={vm.volume}
-        power={vm.power}
-        label="volume"
-        onChange={handlers.onVolume}
-        resume={handlers.resume}
-      />
+      {/* the stylus + its channel */}
+      <Stylus />
+
+      {/* the flat etched keyboard plate (canvas texture) */}
+      <mesh position={[KEYBOARD.x, KEYBOARD.y, FRONT_Z + 0.036]}>
+        <planeGeometry args={[KEYBOARD.w, KEYBOARD.h]} />
+        <meshStandardMaterial map={keyboardTex} metalness={0.12} roughness={0.6} />
+      </mesh>
+
+      {/* per-key hit planes + lit glow, mapped from the shared cell geometry */}
+      {cells.map((c) => {
+        const cx = kx(c.hit.x + c.hit.w / 2);
+        const cy = ky(c.hit.y + c.hit.h / 2);
+        return (
+          <Key
+            key={c.midi}
+            midi={c.midi}
+            xw={cx}
+            yw={cy}
+            ww={c.hit.w * KEYBOARD.w}
+            hw={c.hit.h * KEYBOARD.h}
+            z={plateZ}
+            lit={vm.litKey === c.midi}
+            power={vm.power}
+            handlers={handlers}
+          />
+        );
+      })}
+
+      {/* POWER + VIBRATO switches on the white strip (the only faithful front controls) */}
       <Switch
         x={POWER.x}
         y={POWER.y}
@@ -171,8 +114,17 @@ export function Device({ vm, handlers }: DeviceProps) {
         onToggle={handlers.onPower}
         resume={handlers.resume}
       />
-
-      <Stylus />
+      <Switch
+        x={VIBRATO.x}
+        y={VIBRATO.y}
+        w={VIBRATO.w}
+        h={VIBRATO.h}
+        on={vm.vibrato}
+        power={vm.power}
+        label="vibrato"
+        onToggle={handlers.onVibratoToggle}
+        resume={handlers.resume}
+      />
     </group>
   );
 }

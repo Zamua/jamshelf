@@ -16,12 +16,13 @@ interface SwitchProps {
   resume: () => void;
 }
 
-// A two-position toggle switch (vibrato, power): a dark recessed slot with a cream nub that sits
-// UP when on, DOWN when off. Tapping anywhere on it toggles. Fires on onPointerUp (R3F onClick is
-// dead on touch in this app).
+// A faithful vertical slide switch (POWER, VIBRATO) on the white strip: a dark recessed track with
+// a silver nub that sits DOWN when on, UP when off (matching the Stylophone's OFF-top/ON-bottom
+// power slider). Tapping anywhere toggles. Fires on onPointerUp (R3F onClick is dead on touch).
 export function Switch({ x, y, w, h, on, power, label, onToggle, resume }: SwitchProps) {
-  const nubY = on ? h * 0.22 : -h * 0.22;
+  const nubY = on ? -h * 0.2 : h * 0.2;
   const nub = power ? PALETTE.switchNub : dim(PALETTE.switchNub, 0.4);
+  const ink = power ? PALETTE.keyNum : dim(PALETTE.keyNum, 0.3);
 
   const tap = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
@@ -31,23 +32,23 @@ export function Switch({ x, y, w, h, on, power, label, onToggle, resume }: Switc
 
   return (
     <group position={[x, y, FRONT_Z]}>
-      {/* dark housing */}
-      <RoundedBox args={[w, h, 0.08]} radius={0.05} smoothness={3} onPointerDown={(e) => e.stopPropagation()} onPointerUp={tap} onPointerCancel={tap}>
-        <meshStandardMaterial color={PALETTE.switchBody} metalness={0.3} roughness={0.6} />
+      {/* dark recessed track */}
+      <RoundedBox args={[w, h, 0.05]} radius={0.04} smoothness={3} onPointerDown={(e) => e.stopPropagation()} onPointerUp={tap} onPointerCancel={tap}>
+        <meshStandardMaterial color={PALETTE.switchTrack} metalness={0.3} roughness={0.6} />
       </RoundedBox>
-      {/* the sliding nub */}
-      <RoundedBox args={[w * 0.72, h * 0.4, 0.12]} radius={0.04} smoothness={3} position={[0, nubY, 0.06]}>
-        <meshStandardMaterial color={nub} metalness={0.1} roughness={0.5} />
+      {/* the sliding silver nub */}
+      <RoundedBox args={[w * 0.78, h * 0.44, 0.11]} radius={0.03} smoothness={3} position={[0, nubY, 0.05]}>
+        <meshStandardMaterial color={nub} metalness={0.5} roughness={0.4} />
       </RoundedBox>
-      {/* label below */}
+      {/* label below the switch (kept inside the white strip, narrow so the two don't collide) */}
       <Text
         font={LABEL_FONT}
-        position={[0, -h * 0.72, 0.02]}
-        fontSize={0.13}
-        color={power ? PALETTE.ink : dim(PALETTE.ink, 0.3)}
+        position={[0, -h * 0.64, 0.02]}
+        fontSize={0.088}
+        color={ink}
         anchorX="center"
         anchorY="middle"
-        letterSpacing={0.04}
+        letterSpacing={0}
       >
         {label}
       </Text>

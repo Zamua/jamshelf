@@ -1,34 +1,38 @@
-// The StyloClone palette (hex). Faithful to the cream-and-silver 1968 Stylophone with the
-// classic red wordmark. Single source of truth for the 3D lane.
+// The StyloClone palette (hex). Faithful to the black-and-silver 1968/reissue Stylophone: a
+// black body, a big silver slat speaker grille, a black logo badge, and a flat tan/silver etched
+// metal keyboard on a white lower strip. Single source of truth for the 3D lane.
 export const PALETTE = {
-  body: '#e7dfc8', // cream ABS shell
-  bodyHi: '#f2ecd8',
-  bodyShadow: '#c9c0a4',
-  plate: '#c7ccd2', // brushed-silver keyboard plate
-  plateEdge: '#9aa0a8',
-  keySilver: '#d9dde2', // natural key contact
-  keySilverHi: '#eef1f4',
-  keyDark: '#31353b', // accidental (black) key contact
-  keyDarkHi: '#474c54',
-  gap: '#232529', // dark gaps between contacts (the PCB etch)
-  red: '#d94f3d', // the STYLOPHONE-style wordmark
-  redDim: '#7c3129',
-  ink: '#33312a', // dark labels on the cream
-  glow: '#ffd9a0', // the pressed-key highlight
-  switchBody: '#2a2c30',
-  switchNub: '#e7dfc8',
-  potBody: '#2a2c30',
-  potIndicator: '#e7dfc8',
-  stylus: '#26282c',
-  cord: '#3a3d42',
+  body: '#232426', // black ABS shell
+  bodyHi: '#33353a',
+  bodyEdge: '#151517',
+  grilleDark: '#1c1d1f', // grille background between the slats
+  slat: '#c9cdd2', // the silver grille slats
+  slatHi: '#e7eaee',
+  badge: '#17181a', // the logo badge
+  badgeText: '#f3f5f8', // white script wordmark
+  strip: '#eef0f2', // the white lower panel that holds the keyboard + switches
+  stripEdge: '#c3c7cc',
+  plate: '#0d0d0e', // the keyboard's etched black background (the lines between keys)
+  key: '#c8b98f', // the flat tan/silver key metal (naturals AND sharps, same color)
+  keyHi: '#ddd0aa',
+  keyEdge: '#9a8c66',
+  keyNum: '#2a2a2c', // the printed key numbers
+  glow: '#ffd27a', // the pressed-key highlight overlay
+  ink: '#e9ebee', // labels on the black body
+  inkDim: '#8b8d92',
+  switchTrack: '#0e0e10',
+  switchNub: '#c9cdd2',
+  stylus: '#1a1b1d',
+  stylusTip: '#c9a24a', // the brass stylus tip
+  cord: '#26272a',
 } as const;
 
 // Dim a hex color toward gray when the device is powered off.
-export function dim(hex: string, amount = 0.55): string {
+export function dim(hex: string, amount = 0.5): string {
   const n = parseInt(hex.slice(1), 16);
   const r = (n >> 16) & 255;
   const g = (n >> 8) & 255;
   const b = n & 255;
-  const mix = (c: number) => Math.round(c * (1 - amount) + 128 * amount);
+  const mix = (c: number) => Math.round(c * (1 - amount) + 110 * amount);
   return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }

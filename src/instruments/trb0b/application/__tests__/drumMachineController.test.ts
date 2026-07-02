@@ -7,9 +7,11 @@ class SpySynth implements DrumMachinePort {
   hits: DrumVoice[] = [];
   muted = false;
   volume = 1;
+  levels: Partial<Record<DrumVoice, number>> = {};
   resume() {}
   trigger(v: DrumVoice) { this.hits.push(v); }
   setVolume(v: number) { this.volume = v; }
+  setLevel(v: DrumVoice, l: number) { this.levels[v] = l; }
   setMuted(m: boolean) { this.muted = m; }
 }
 
@@ -103,6 +105,19 @@ describe('DrumMachineController', () => {
     expect(synth.muted).toBe(true);
     c.toggleStep(4); // ignored while off
     expect(c.getState().pattern.BD[4]).toBe(false);
+  });
+
+  it('sets and persists per-voice levels, pushing them to the synth', () => {
+    c.setLevel('SD', 0.4);
+    expect(c.getState().levels.SD).toBe(0.4);
+    expect(synth.levels.SD).toBe(0.4);
+    c.setLevel('BD', 5); // clamps
+    expect(c.getState().levels.BD).toBe(1);
+    // restore into a fresh controller + synth
+    const synth2 = new SpySynth();
+    const c2 = new DrumMachineController(synth2, new FakeClock(), store);
+    expect(c2.getState().levels.SD).toBe(0.4);
+    expect(synth2.levels.SD).toBe(0.4); // applied on construct
   });
 
   it('clamps bpm and volume', () => {

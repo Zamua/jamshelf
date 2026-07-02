@@ -9,14 +9,16 @@ export const BODY_RADIUS = 0.1;
 export const CAM_DIST = 7;
 export const CAM_FOV = 42;
 
-export const BRAND = { x: 1.35, y: 1.2, text: 'TR-B0B' } as const;
-export const SUBTITLE = { x: 1.35, y: 0.9, text: 'RHYTHM COMPOSER' } as const;
+export const BRAND = { x: 1.4, y: 1.28, text: 'TR-B0B' } as const;
+export const SUBTITLE = { x: 1.4, y: 1.03, text: 'RHYTHM COMPOSER' } as const;
 
 export const TEMPO = { x: -2.2, y: 0.82, r: 0.4 } as const;
 export const PLAY = { x: -2.2, y: -0.55, w: 0.74, h: 0.6 } as const; // START/STOP
 
-// the 8 voice-select buttons (top row)
-export const VOICE_ROW = { y: 0.45, startX: -1.35, spanW: 3.85, w: 0.44, h: 0.42 } as const;
+// the columnar voice section: a LEVEL knob (top) over a voice-SELECT button, one column per voice
+// (the 808's per-instrument LEVEL row + instrument select). Both share the same column x.
+export const LEVEL_ROW = { y: 0.62, r: 0.135 } as const;
+export const VOICE_ROW = { y: 0.1, startX: -1.35, spanW: 3.85, w: 0.44, h: 0.4 } as const;
 export function voiceX(i: number): number {
   return VOICE_ROW.startX + (i + 0.5) * (VOICE_ROW.spanW / VOICES.length);
 }

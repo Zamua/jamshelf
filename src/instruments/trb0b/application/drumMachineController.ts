@@ -10,7 +10,7 @@ import {
   type Pattern,
 } from '../domain/sequencer';
 import type { Clock, DrumMachinePort, DrumSettings, SettingsStore } from './ports';
-import { MAX_BPM, MIN_BPM, type Listener, type ViewModel } from './state';
+import { MAX_BPM, MIN_BPM, defaultLevels, type Listener, type ViewModel } from './state';
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
@@ -32,7 +32,13 @@ export function coerceSettings(raw: unknown, fallback: DrumSettings): DrumSettin
   const bpm = typeof o.bpm === 'number' && Number.isFinite(o.bpm) ? clamp(o.bpm, MIN_BPM, MAX_BPM) : fallback.bpm;
   const volume = typeof o.volume === 'number' && Number.isFinite(o.volume) ? clamp(o.volume, 0, 1) : fallback.volume;
   const selected = VOICES.includes(o.selected as DrumVoice) ? (o.selected as DrumVoice) : fallback.selected;
-  return { pattern, bpm, volume, selected };
+  const levels = defaultLevels();
+  const rawLev = (o.levels ?? {}) as Record<string, unknown>;
+  for (const v of VOICES) {
+    const lv = rawLev[v];
+    if (typeof lv === 'number' && Number.isFinite(lv)) levels[v] = clamp(lv, 0, 1);
+  }
+  return { pattern, bpm, volume, selected, levels };
 }
 
 // Framework-agnostic controller for the TR-B0B. Owns the pattern + transport, drives the
@@ -46,6 +52,7 @@ export class DrumMachineController {
   private selected: DrumVoice = 'BD';
   private pattern: Pattern = emptyPattern();
   private volume = 0.85;
+  private levels: Record<DrumVoice, number> = defaultLevels();
   private inspect = false;
 
   private listeners = new Set<Listener>();
@@ -66,8 +73,10 @@ export class DrumMachineController {
       this.bpm = s.bpm;
       this.volume = s.volume;
       this.selected = s.selected;
+      this.levels = s.levels;
     }
     this.synth.setVolume(this.volume);
+    for (const v of VOICES) this.synth.setLevel(v, this.levels[v]);
     this.synth.setMuted(!this.power);
     this.clock.setBeatsPerTick(0.25); // one step = a 16th note
     this.clock.setBpm(this.bpm);
@@ -91,12 +100,13 @@ export class DrumMachineController {
       selected: this.selected,
       pattern: this.pattern,
       volume: this.volume,
+      levels: { ...this.levels },
       inspect: this.inspect,
     };
   }
 
   private snapshotSettings(): DrumSettings {
-    return { pattern: this.pattern, bpm: this.bpm, volume: this.volume, selected: this.selected };
+    return { pattern: this.pattern, bpm: this.bpm, volume: this.volume, selected: this.selected, levels: { ...this.levels } };
   }
 
   private maybeSave(): void {
@@ -175,6 +185,13 @@ export class DrumMachineController {
   setVolume(v: number): void {
     this.volume = clamp(v, 0, 1);
     this.synth.setVolume(this.volume);
+    this.publish();
+  }
+
+  // The per-voice LEVEL knob (the 808's per-instrument level).
+  setLevel(voice: DrumVoice, level: number): void {
+    this.levels = { ...this.levels, [voice]: clamp(level, 0, 1) };
+    this.synth.setLevel(voice, this.levels[voice]);
     this.publish();
   }
 

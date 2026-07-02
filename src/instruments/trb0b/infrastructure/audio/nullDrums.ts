@@ -5,5 +5,6 @@ export class NullDrums implements DrumMachinePort {
   resume(): void {}
   trigger(): void {}
   setVolume(): void {}
+  setLevel(): void {}
   setMuted(): void {}
 }

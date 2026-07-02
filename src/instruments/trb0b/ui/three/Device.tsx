@@ -2,11 +2,12 @@ import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { RoundedBox, Text } from '@react-three/drei';
 import type { DeviceProps } from '../deviceProps';
 import { VOICES, VOICE_LABEL, type DrumVoice } from '../../domain/sequencer';
-import { BODY, BODY_RADIUS, BRAND, CAM_DIST, CAM_FOV, FRONT_Z, PLAY, SUBTITLE, TEMPO, stepX, voiceX } from './layout';
+import { BODY, BODY_RADIUS, BRAND, CAM_DIST, CAM_FOV, FRONT_Z, LEVEL_ROW, PLAY, SUBTITLE, TEMPO, stepX, voiceX } from './layout';
 import { PALETTE, dim, stepColor } from './palette';
 import { BRAND_FONT, LABEL_FONT } from './fonts';
 import { StepButton } from './StepButton';
 import { VoiceButton } from './VoiceButton';
+import { LevelKnob } from './LevelKnob';
 import { Knob } from './Knob';
 
 // short button labels for the voice row
@@ -43,7 +44,7 @@ export function Device({ vm, handlers }: DeviceProps) {
         <meshStandardMaterial color={PALETTE.panel} metalness={0.15} roughness={0.7} />
       </mesh>
       {/* orange accent line under the branding */}
-      <mesh position={[0.5, 0.72, FRONT_Z + 0.004]}>
+      <mesh position={[0.5, 0.86, FRONT_Z + 0.004]}>
         <planeGeometry args={[4.35, 0.014]} />
         <meshBasicMaterial color={vm.power ? PALETTE.orange : PALETTE.orangeDim} toneMapped={false} />
       </mesh>
@@ -72,6 +73,24 @@ export function Device({ vm, handlers }: DeviceProps) {
           {vm.playing ? 'STOP' : 'START'}
         </Text>
       </group>
+
+      {/* per-voice LEVEL knobs (one above each voice column) + a row label */}
+      <Text font={LABEL_FONT} position={[-1.72, LEVEL_ROW.y, FRONT_Z + 0.01]} fontSize={0.1} color={vm.power ? PALETTE.orange : PALETTE.orangeDim} anchorX="center" anchorY="middle" rotation={[0, 0, Math.PI / 2]} letterSpacing={0.08}>
+        LEVEL
+      </Text>
+      {VOICES.map((v, i) => (
+        <LevelKnob
+          key={'lvl-' + v}
+          voice={v}
+          x={voiceX(i)}
+          y={LEVEL_ROW.y}
+          r={LEVEL_ROW.r}
+          level={vm.levels[v]}
+          power={vm.power}
+          onLevel={handlers.onLevel}
+          resume={handlers.resume}
+        />
+      ))}
 
       {/* voice-select row */}
       {VOICES.map((v, i) => (

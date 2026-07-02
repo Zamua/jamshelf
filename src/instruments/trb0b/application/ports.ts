@@ -8,7 +8,8 @@ import type { DrumVoice, Pattern } from '../domain/sequencer';
 export interface DrumMachinePort {
   resume(): void;
   trigger(voice: DrumVoice, accent?: boolean): void;
-  setVolume(v: number): void; // 0..1
+  setVolume(v: number): void; // master 0..1
+  setLevel(voice: DrumVoice, level: number): void; // per-voice level 0..1 (the 808 LEVEL knob)
   setMuted(muted: boolean): void; // power gate
 }
 
@@ -30,6 +31,7 @@ export interface DrumSettings {
   readonly bpm: number;
   readonly volume: number;
   readonly selected: DrumVoice;
+  readonly levels: Record<DrumVoice, number>; // per-voice level 0..1
 }
 
 export interface SettingsStore {

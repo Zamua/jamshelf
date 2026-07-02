@@ -46,6 +46,7 @@ export function useDrumMachine(enabled = true) {
         if (step >= 0 && step < STEPS) controller.toggleStep(step);
       },
       onVoiceSelect: (voice) => controller.selectVoice(voice),
+      onLevel: (voice, level) => controller.setLevel(voice, level),
       onPlayStop: () => {
         controller.resume();
         controller.togglePlay();

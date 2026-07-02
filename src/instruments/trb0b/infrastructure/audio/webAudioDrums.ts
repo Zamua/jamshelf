@@ -11,6 +11,7 @@ export class WebAudioDrums implements DrumMachinePort {
   private noise: AudioBuffer | null = null;
   private volume = 0.85;
   private muted = false;
+  private levels: Partial<Record<DrumVoice, number>> = {}; // per-voice level (1 if unset)
 
   resume(): void {
     if (!this.ctx) this.build();
@@ -31,7 +32,7 @@ export class WebAudioDrums implements DrumMachinePort {
     if (!this.ctx) this.build();
     if (!this.ctx || !this.master) return;
     const t = this.ctx.currentTime;
-    const gain = accent ? 1.3 : 1;
+    const gain = (accent ? 1.3 : 1) * (this.levels[voice] ?? 1);
     switch (voice) {
       case 'BD': this.kick(t, gain); break;
       case 'SD': this.snare(t, gain); break;
@@ -47,6 +48,10 @@ export class WebAudioDrums implements DrumMachinePort {
   setVolume(v: number): void {
     this.volume = v;
     if (this.ctx && this.master && !this.muted) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
+  }
+
+  setLevel(voice: DrumVoice, level: number): void {
+    this.levels[voice] = level;
   }
 
   setMuted(muted: boolean): void {

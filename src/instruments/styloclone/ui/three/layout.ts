@@ -18,8 +18,8 @@ export const GRILLE = { x: 0, y: 0.62, w: 4.5, h: 1.5 } as const;
 export const BADGE = { x: 0.98, y: 0.96, w: 1.92, h: 0.44, text: 'StyloClone' } as const;
 export const CHANNEL = { x: 0, y: -0.4, w: 4.5, h: 0.32 } as const; // stylus rests here
 export const STRIP = { x: 0, y: -1.06, w: 4.72, h: 0.92 } as const; // white lower panel
-export const POWER = { x: -2.06, y: -1.0, w: 0.24, h: 0.56 } as const; // vertical slide switch
-export const VIBRATO = { x: -1.52, y: -1.0, w: 0.24, h: 0.56 } as const; // vertical slide switch
+export const POWER = { x: -2.14, y: -1.06, w: 0.22, h: 0.46 } as const; // vertical slide switch
+export const VIBRATO = { x: -1.6, y: -1.06, w: 0.22, h: 0.46 } as const; // vertical slide switch
 export const KEYBOARD = { x: 0.5, y: -1.04, w: 3.4, h: 0.86 } as const; // the flat etched plate
 
 // The tethered stylus: rests horizontally in the channel, brass tip pointing right.

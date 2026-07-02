@@ -15,7 +15,7 @@ import {
   keyCells,
 } from './layout';
 import { PALETTE, dim } from './palette';
-import { BRAND_FONT } from './fonts';
+import { SCRIPT_FONT } from './fonts';
 import { makeKeyboardTexture } from './keyboardTexture';
 import { makeGrilleTexture } from './grilleTexture';
 import { Chassis } from './Chassis';
@@ -61,13 +61,13 @@ export function Device({ vm, handlers }: DeviceProps) {
           <meshStandardMaterial color={PALETTE.badge} metalness={0.2} roughness={0.5} />
         </RoundedBox>
         <Text
-          font={BRAND_FONT}
-          position={[0, 0, 0.04]}
-          fontSize={0.28}
+          font={SCRIPT_FONT}
+          position={[0, -0.02, 0.04]}
+          fontSize={0.34}
           color={badgeText}
           anchorX="center"
           anchorY="middle"
-          letterSpacing={0.005}
+          letterSpacing={0}
         >
           {BADGE.text}
         </Text>
@@ -110,7 +110,8 @@ export function Device({ vm, handlers }: DeviceProps) {
         h={POWER.h}
         on={vm.power}
         power={true}
-        label="power"
+        label="POWER"
+        offOn
         onToggle={handlers.onPower}
         resume={handlers.resume}
       />
@@ -121,7 +122,7 @@ export function Device({ vm, handlers }: DeviceProps) {
         h={VIBRATO.h}
         on={vm.vibrato}
         power={vm.power}
-        label="vibrato"
+        label="VIBRATO"
         onToggle={handlers.onVibratoToggle}
         resume={handlers.resume}
       />

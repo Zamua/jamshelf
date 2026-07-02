@@ -28,14 +28,14 @@ export function Stylus() {
       >
         STYLUS
       </Text>
-      {/* the pen barrel, lying horizontally, tip pointing right */}
+      {/* the pen barrel, lying horizontally, brass tip pointing LEFT (matches the Stylophone) */}
       <group position={[x, y, zc + 0.05]}>
         <mesh rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[r, r * 0.82, len, 16]} />
+          <cylinderGeometry args={[r * 0.82, r, len, 16]} />
           <meshStandardMaterial color={PALETTE.stylus} metalness={0.45} roughness={0.4} />
         </mesh>
-        {/* brass tip */}
-        <mesh position={[len / 2, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
+        {/* brass tip on the left end */}
+        <mesh position={[-len / 2, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
           <coneGeometry args={[r * 0.95, r * 2.4, 16]} />
           <meshStandardMaterial color={PALETTE.stylusTip} metalness={0.85} roughness={0.3} />
         </mesh>

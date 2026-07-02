@@ -58,6 +58,27 @@
   text-transform: uppercase;
   color: #8a7256;
 }
+/* carousel position dots, above the footer */
+.carousel-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(52px + env(safe-area-inset-bottom, 0));
+  display: flex;
+  justify-content: center;
+  gap: 9px;
+}
+.carousel-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6b563f;
+  transition: background 0.25s, transform 0.25s;
+}
+.carousel-dot.is-on {
+  background: #f0a93a;
+  transform: scale(1.25);
+}
 
 /* ---- play chrome ---- */
 .back-to-shelf {

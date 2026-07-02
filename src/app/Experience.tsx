@@ -1,12 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Stage, type StageInstrument } from '../stage/Stage';
+import { Stage, type StageInstrument, type Carousel } from '../stage/Stage';
 import { EyeIcon } from './EyeIcon';
 import { INSTRUMENTS, instrumentById } from '../instruments/registry';
 import type { AnyInstrumentModule } from '../shared/instrument';
 import './experience.css';
 
 const FLOAT_MS = 1250; // matches the Stage's float DURATION; the device plays after it lands
+const CAROUSEL_DRAG_PX = 240; // px of horizontal drag per one carousel step
+const indexOfId = (id: string | null) => INSTRUMENTS.findIndex((m) => m.manifest.id === id);
 
 interface Spin {
   x: number;
@@ -95,10 +97,24 @@ function StageHost({ activeId, onNavigate }: { activeId: string | null; onNaviga
   const [inspect, setInspect] = useState(false);
   const spin = useRef<Spin>({ x: 0, y: 0, vx: 0, vy: 0, dragging: false });
 
+  // The carousel: `carouselIndex` is the settled centered instrument (React state, drives the
+  // label + dots); `carousel` is the live fractional position the Stage animates (so a swipe
+  // slides smoothly + snaps).
+  const startIndex = Math.max(0, indexOfId(activeId));
+  const [carouselIndex, setCarouselIndex] = useState(startIndex);
+  const carousel = useRef<Carousel>({ pos: startIndex, target: startIndex, dragging: false });
+
   // The active device only becomes interactive once it has landed on the desk (after the float).
   const [interactive, setInteractive] = useState(activeId !== null);
   useEffect(() => {
     if (activeId !== null) {
+      // center the carousel on the opened instrument so returning to the shelf shows it centered
+      const i = indexOfId(activeId);
+      if (i >= 0) {
+        setCarouselIndex(i);
+        carousel.current.target = i;
+        carousel.current.pos = i;
+      }
       const t = setTimeout(() => setInteractive(true), FLOAT_MS);
       return () => clearTimeout(t);
     }
@@ -145,11 +161,48 @@ function StageHost({ activeId, onNavigate }: { activeId: string | null; onNaviga
     spin.current.dragging = false;
   };
 
+  // Swipe-to-browse the carousel (shelf mode). A window-level drag moves the live position; the
+  // per-device tap catcher (in the Stage) still fires its tap only if the pointer barely moved, so
+  // a swipe never opens a device. On release we snap to the nearest instrument (clamped to range).
+  const swipe = useRef<{ x: number; startPos: number } | null>(null);
+  useEffect(() => {
+    if (activeId !== null) return; // only browse on the shelf
+    const n = INSTRUMENTS.length;
+    const down = (e: PointerEvent) => {
+      swipe.current = { x: e.clientX, startPos: carousel.current.pos };
+      carousel.current.dragging = true;
+    };
+    const move = (e: PointerEvent) => {
+      const s = swipe.current;
+      if (!s) return;
+      const next = s.startPos - (e.clientX - s.x) / CAROUSEL_DRAG_PX;
+      carousel.current.pos = Math.max(-0.35, Math.min(n - 1 + 0.35, next)); // slight overscroll
+    };
+    const up = () => {
+      if (!swipe.current) return;
+      swipe.current = null;
+      carousel.current.dragging = false;
+      const snapped = Math.max(0, Math.min(n - 1, Math.round(carousel.current.pos)));
+      carousel.current.target = snapped;
+      setCarouselIndex(snapped);
+    };
+    window.addEventListener('pointerdown', down);
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return () => {
+      window.removeEventListener('pointerdown', down);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+  }, [activeId]);
+
   const active = activeId ? entries[activeId] : null;
 
   // Build a device node per instrument. The active device gets real handlers only once it has
   // landed and is not being inspected; otherwise (mid-float, inspecting, or a shelf device) its
-  // taps are no-ops. Shelf devices are shielded by the tap-to-open catcher anyway.
+  // taps are no-ops. Shelf devices are shielded by the tap catcher anyway.
   const stageInstruments: StageInstrument[] = INSTRUMENTS.map((module) => {
     const mid = module.manifest.id;
     const entry = entries[mid];
@@ -160,9 +213,17 @@ function StageHost({ activeId, onNavigate }: { activeId: string | null; onNaviga
     return { id: mid, label: module.manifest.name, node: <Device vm={entry.vm} handlers={handlers} /> };
   });
 
-  const openInstrument = (id: string) => {
-    entries[id]?.handlers.resume(); // unlock + build that instrument's audio on the first gesture
-    onNavigate(`/${id}`);
+  // Tapping a device on the shelf: the CENTERED one opens (floats to the desk); a side one just
+  // recenters the carousel onto it (bring it to the front first).
+  const onDeviceTap = (i: number) => {
+    if (i === Math.round(carousel.current.pos)) {
+      const id = INSTRUMENTS[i].manifest.id;
+      entries[id]?.handlers.resume(); // unlock + build that instrument's audio on the first gesture
+      onNavigate(`/${id}`);
+    } else {
+      carousel.current.target = i;
+      setCarouselIndex(i);
+    }
   };
 
   const onPointerMissed = () => {
@@ -177,9 +238,11 @@ function StageHost({ activeId, onNavigate }: { activeId: string | null; onNaviga
       <Stage
         instruments={stageInstruments}
         activeId={activeId}
+        centeredIndex={carouselIndex}
         inspect={inspect}
         spinRef={spin}
-        onShelfTap={openInstrument}
+        carouselRef={carousel}
+        onDeviceTap={onDeviceTap}
         onPointerMissed={onPointerMissed}
       />
 
@@ -198,7 +261,12 @@ function StageHost({ activeId, onNavigate }: { activeId: string | null; onNaviga
       {/* shelf chrome */}
       <div className={'overlay shelf-chrome' + (activeId === null ? ' is-on' : '')}>
         <header className="shelf-title">jam<span>shelf</span></header>
-        <footer className="shelf-foot">tap an instrument to play</footer>
+        <div className="carousel-dots">
+          {INSTRUMENTS.map((m, i) => (
+            <span key={m.manifest.id} className={'carousel-dot' + (i === carouselIndex ? ' is-on' : '')} />
+          ))}
+        </div>
+        <footer className="shelf-foot">swipe to browse, tap to play</footer>
       </div>
 
       {/* play chrome */}

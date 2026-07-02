@@ -4,20 +4,23 @@ import { Group, Vector3, MathUtils, type Camera } from 'three';
 import { StudioLights } from '../shared/StudioLights';
 import { ShelfLabel } from './ShelfLabel';
 
-// The two ends of the one continuous move. progress 0 = resting on the shelf (propped, up high,
-// viewed head-on); progress 1 = lying on the desk (flat, lower + forward, viewed top-down).
-// Everything lerps between these by an eased progress, so the tapped device floats off the shelf
-// onto the desk while the camera swings overhead - one move, no cut. Multi-instrument: each
-// device has its OWN shelf slot (an x offset) and its own float progress; only the ACTIVE one
-// floats to the desk, the others hold their slot.
+// The two ends of the one continuous move. progress 0 = resting on the shelf (a swipeable
+// CAROUSEL: the centered instrument large + head-on, its neighbours smaller + pushed to the
+// sides); progress 1 = the tapped instrument lying on the desk (flat, viewed top-down). The
+// active device floats between its carousel slot and the desk while the camera swings overhead.
 
-const SHELF_Y = 3.04;
+const SHELF_Y = 3.0;
 const SHELF_Z = -0.35;
-const SHELF_TILT = -0.32;
-// device shelf scale: a single hero fills the shelf; with several instruments they shrink + space out
-const SHELF_SCALE_SOLO = 0.82;
-const SHELF_SCALE_MULTI = 0.36;
-const SLOT_SPACING = 1.5; // x gap between shelf slots (world units)
+const SHELF_TILT = -0.3;
+
+// Carousel layout: the centered device (offset 0) is large + head-on; each step to the side
+// pushes the device out in x, shrinks it, drops + pushes it back, and yaws it to face inward.
+const CAR_X_STEP = 1.7; // x per unit of carousel offset
+const CAR_CENTER_SCALE = 0.6;
+const CAR_SIDE_SCALE = 0.36;
+const CAR_SIDE_DROP = 0.3; // y drop for a fully-side device
+const CAR_SIDE_BACK = 0.5; // z push-back for a fully-side device
+const CAR_SIDE_YAW = 0.55; // inward yaw (rad) for a fully-side device
 
 const PLAY_POS = new Vector3(0, -2.12, 3.1);
 const PLAY_TILT = -Math.PI / 2;
@@ -47,6 +50,14 @@ interface Spin {
   y: number;
   vx: number;
   vy: number;
+  dragging: boolean;
+}
+
+// The live carousel position: `pos` is the fractional centered index (moves with the finger),
+// `target` the integer it snaps to, `dragging` gates the snap ease.
+export interface Carousel {
+  pos: number;
+  target: number;
   dragging: boolean;
 }
 
@@ -81,9 +92,23 @@ function eased(t: number): number {
   return c * c * c * (c * (c * 6 - 15) + 10);
 }
 
-// The shelf slot pose for an instrument: propped back at its x offset up on the wall shelf.
-function shelfPose(shelfX: number, scale: number): { pos: Vector3; tilt: number; scale: number } {
-  return { pos: new Vector3(shelfX, SHELF_Y, SHELF_Z), tilt: SHELF_TILT, scale };
+interface ShelfPose {
+  pos: Vector3;
+  tilt: number;
+  scale: number;
+  yaw: number;
+}
+
+// The carousel shelf pose for a device at signed offset `o` from the centered slot.
+function carouselPose(o: number): ShelfPose {
+  const a = Math.min(Math.abs(o), 1); // side-ness, clamped (further devices stay fully "side")
+  const s = Math.sign(o);
+  return {
+    pos: new Vector3(o * CAR_X_STEP, SHELF_Y - a * CAR_SIDE_DROP, SHELF_Z - a * CAR_SIDE_BACK),
+    tilt: SHELF_TILT,
+    scale: MathUtils.lerp(CAR_CENTER_SCALE, CAR_SIDE_SCALE, a),
+    yaw: -s * a * CAR_SIDE_YAW,
+  };
 }
 
 function WarmLights() {
@@ -104,9 +129,9 @@ function Room() {
         <planeGeometry args={[48, 34]} />
         <meshStandardMaterial color="#4a3122" roughness={0.96} metalness={0} />
       </mesh>
-      <group position={[0, 1.95, -0.55]}>
+      <group position={[0, 1.9, -0.6]}>
         <mesh>
-          <boxGeometry args={[11.4, 0.42, 2.5]} />
+          <boxGeometry args={[13.5, 0.42, 2.5]} />
           <meshStandardMaterial color="#6e4a2f" roughness={0.72} metalness={0.04} />
         </mesh>
       </group>
@@ -123,26 +148,19 @@ function Room() {
 }
 
 // Pose ONE device group, blending its shelf slot -> desk (fe) -> inspect (ie). `spin` is the
-// user's drag rotation (applied only while inspecting). The float arc pops UP then bows FORWARD.
-function applyDevicePose(
-  device: Group,
-  shelf: { pos: Vector3; tilt: number; scale: number },
-  fe: number,
-  ie: number,
-  spin: Spin,
-  t1: Vector3,
-): void {
+// user's drag rotation (applied only while inspecting). The carousel yaw fades out as it floats.
+function applyDevicePose(device: Group, shelf: ShelfPose, fe: number, ie: number, spin: Spin, t1: Vector3): void {
   t1.lerpVectors(shelf.pos, PLAY_POS, fe).lerp(INSPECT_POS, ie);
   const out = 1 - ie;
   t1.y += Math.sin(Math.sqrt(fe) * Math.PI) * FLOAT_LIFT * out;
   t1.z += Math.sin(fe * Math.PI) * FLOAT_BOW * out;
   device.position.copy(t1);
   const baseTilt = MathUtils.lerp(MathUtils.lerp(shelf.tilt, PLAY_TILT, fe), INSPECT_TILT, ie);
-  device.rotation.set(baseTilt + spin.x * ie, spin.y * ie, 0);
+  const yaw = shelf.yaw * (1 - fe) * (1 - ie); // inward carousel yaw, only while shelved
+  device.rotation.set(baseTilt + spin.x * ie, yaw + spin.y * ie, 0);
   device.scale.setScalar(MathUtils.lerp(MathUtils.lerp(shelf.scale, PLAY_SCALE, fe), INSPECT_SCALE, ie));
 }
 
-// Pose the camera by the ACTIVE instrument's float/inspect progress (shelf -> desk -> inspect).
 function applyCameraPose(camera: Camera, fe: number, ie: number, t2: Vector3, tUp: Vector3, tgt: Vector3): void {
   t2.lerpVectors(SHELF_CAM, PLAY_CAM, fe).lerp(INSPECT_CAM, ie);
   camera.position.copy(t2);
@@ -156,7 +174,18 @@ function advance(p: { current: number }, target: number, step: number): void {
   else if (p.current > target) p.current = Math.max(target, p.current - step);
 }
 
-// Drives the shared camera by the active instrument's float + inspect targets.
+// Eases the carousel position toward its snap target when the finger is off (a soft settle).
+function CarouselTick({ carouselRef }: { carouselRef: React.RefObject<Carousel> }) {
+  useFrame((_, dt) => {
+    const c = carouselRef.current;
+    if (c.dragging) return;
+    const k = Math.min(1, dt * 9);
+    c.pos += (c.target - c.pos) * k;
+    if (Math.abs(c.target - c.pos) < 1e-3) c.pos = c.target;
+  });
+  return null;
+}
+
 function CameraRig({ floatTarget, inspectTarget }: { floatTarget: number; inspectTarget: number }) {
   const fRaw = useRef(floatTarget);
   const iRaw = useRef(inspectTarget);
@@ -176,52 +205,66 @@ function CameraRig({ floatTarget, inspectTarget }: { floatTarget: number; inspec
   return null;
 }
 
-// One device: its own group + float/inspect progress, posed from its shelf slot. Only the active
-// device gets a nonzero floatTarget (floats to the desk); the rest hold their slot. On the shelf an
-// invisible catcher taps to open. `spinRef` is only meaningful for the active (inspecting) device.
+// One device: its own group + float/inspect progress. Its shelf pose is the LIVE carousel pose
+// for its offset from the centered slot (read from carouselRef each frame, so a swipe slides it).
+// Only the active device floats to the desk; the rest ride the carousel. A tap (small movement)
+// reports up via onTap; a drag past threshold is a swipe (handled by StageHost) and NOT a tap.
 function DeviceRig({
+  index,
   node,
-  shelf,
   floatTarget,
   inspectTarget,
   spinRef,
-  showCatcher,
+  carouselRef,
+  interactiveShelf,
   onTap,
 }: {
+  index: number;
   node: ReactNode;
-  shelf: { pos: Vector3; tilt: number; scale: number };
   floatTarget: number;
   inspectTarget: number;
   spinRef: React.RefObject<Spin>;
-  showCatcher: boolean;
-  onTap: () => void;
+  carouselRef: React.RefObject<Carousel>;
+  interactiveShelf: boolean;
+  onTap: (index: number) => void;
 }) {
   const ref = useRef<Group>(null);
   const fRaw = useRef(floatTarget);
   const iRaw = useRef(inspectTarget);
   const t1 = useRef(new Vector3());
-  const stop = (e: ThreeEvent<PointerEvent>) => e.stopPropagation();
+  const down = useRef<{ x: number; y: number } | null>(null);
+
+  const pose = () => carouselPose(index - carouselRef.current.pos);
+
   useLayoutEffect(() => {
-    if (ref.current) applyDevicePose(ref.current, shelf, eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current);
+    if (ref.current) applyDevicePose(ref.current, pose(), eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current);
     ref.current?.updateMatrixWorld(true);
   });
   useFrame((_, dt) => {
     advance(fRaw, floatTarget, dt / DURATION);
     advance(iRaw, inspectTarget, dt / INSPECT_DURATION);
     stepSpin(spinRef.current, dt);
-    if (ref.current) applyDevicePose(ref.current, shelf, eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current);
+    if (ref.current) applyDevicePose(ref.current, pose(), eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current);
   });
+
+  const onDown = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    down.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY };
+  };
+  const onUp = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    const d = down.current;
+    down.current = null;
+    if (!d) return;
+    const moved = Math.hypot(e.nativeEvent.clientX - d.x, e.nativeEvent.clientY - d.y);
+    if (moved < 12) onTap(index); // a tap, not a swipe
+  };
+
   return (
     <group ref={ref}>
       {node}
-      {showCatcher && (
-        <mesh
-          onPointerDown={stop}
-          onPointerUp={(e) => {
-            stop(e);
-            onTap();
-          }}
-        >
+      {interactiveShelf && (
+        <mesh onPointerDown={onDown} onPointerUp={onUp}>
           <sphereGeometry args={[2.4, 16, 16]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
@@ -238,21 +281,31 @@ export interface StageInstrument {
 
 interface StageProps {
   instruments: StageInstrument[];
-  activeId: string | null; // null = shelf mode
+  activeId: string | null; // null = shelf (carousel) mode
+  centeredIndex: number; // which instrument the carousel label names
   inspect: boolean;
   spinRef: React.RefObject<Spin>;
-  onShelfTap: (id: string) => void;
+  carouselRef: React.RefObject<Carousel>;
+  onDeviceTap: (index: number) => void;
   onPointerMissed: () => void;
 }
 
-// The ONE persistent canvas behind the whole app. All instruments are mounted at once (each at a
-// shelf slot); tapping one floats THAT device to the desk while the camera swings overhead. Nothing
-// remounts, so the float is a continuous move for every instrument.
-export function Stage({ instruments, activeId, inspect, spinRef, onShelfTap, onPointerMissed }: StageProps) {
-  const n = instruments.length;
-  const shelfScale = n > 1 ? SHELF_SCALE_MULTI : SHELF_SCALE_SOLO;
+// The ONE persistent canvas behind the whole app. On the shelf the instruments form a swipeable
+// carousel; tapping the centered one floats it to the desk. Nothing remounts, so the float is a
+// continuous move for every instrument.
+export function Stage({
+  instruments,
+  activeId,
+  centeredIndex,
+  inspect,
+  spinRef,
+  carouselRef,
+  onDeviceTap,
+  onPointerMissed,
+}: StageProps) {
   const camFloat = activeId ? 1 : 0;
   const camInspect = inspect ? 1 : 0;
+  const centered = instruments[centeredIndex];
 
   return (
     <Canvas
@@ -270,26 +323,27 @@ export function Stage({ instruments, activeId, inspect, spinRef, onShelfTap, onP
       <StudioLights />
       <Room />
 
+      {/* the carousel label names the centered instrument (only while on the shelf) */}
+      {activeId === null && centered && <ShelfLabel text={centered.label} />}
+
       {instruments.map((inst, i) => {
-        const shelfX = (i - (n - 1) / 2) * SLOT_SPACING;
         const isActive = inst.id === activeId;
         return (
-          <group key={inst.id}>
-            {/* only show the shelf label for a device resting on the shelf (not the active/played one) */}
-            {!isActive && <ShelfLabel text={inst.label} x={shelfX} scale={n > 1 ? 0.5 : 1} />}
-            <DeviceRig
-              node={inst.node}
-              shelf={shelfPose(shelfX, shelfScale)}
-              floatTarget={isActive ? 1 : 0}
-              inspectTarget={isActive && inspect ? 1 : 0}
-              spinRef={spinRef}
-              showCatcher={activeId === null}
-              onTap={() => onShelfTap(inst.id)}
-            />
-          </group>
+          <DeviceRig
+            key={inst.id}
+            index={i}
+            node={inst.node}
+            floatTarget={isActive ? 1 : 0}
+            inspectTarget={isActive && inspect ? 1 : 0}
+            spinRef={spinRef}
+            carouselRef={carouselRef}
+            interactiveShelf={activeId === null}
+            onTap={onDeviceTap}
+          />
         );
       })}
 
+      <CarouselTick carouselRef={carouselRef} />
       <CameraRig floatTarget={camFloat} inspectTarget={camInspect} />
     </Canvas>
   );

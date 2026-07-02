@@ -163,19 +163,25 @@ function WarmLights() {
   );
 }
 
-function Room() {
+// `showShelf` hides the wall + shelf plank in rig play (a top-down view where they would sit
+// between the camera and the desk and obstruct the instruments); the desk stays.
+function Room({ showShelf }: { showShelf: boolean }) {
   return (
     <group>
-      <mesh position={[0, 0.5, -3.6]}>
-        <planeGeometry args={[48, 34]} />
-        <meshStandardMaterial color="#4a3122" roughness={0.96} metalness={0} />
-      </mesh>
-      <group position={[0, 1.9, -0.6]}>
-        <mesh>
-          <boxGeometry args={[13.5, 0.42, 2.5]} />
-          <meshStandardMaterial color="#6e4a2f" roughness={0.72} metalness={0.04} />
-        </mesh>
-      </group>
+      {showShelf && (
+        <>
+          <mesh position={[0, 0.5, -3.6]}>
+            <planeGeometry args={[48, 34]} />
+            <meshStandardMaterial color="#4a3122" roughness={0.96} metalness={0} />
+          </mesh>
+          <group position={[0, 1.9, -0.6]}>
+            <mesh>
+              <boxGeometry args={[13.5, 0.42, 2.5]} />
+              <meshStandardMaterial color="#6e4a2f" roughness={0.72} metalness={0.04} />
+            </mesh>
+          </group>
+        </>
+      )}
       <mesh position={[0, -2.34, 1.6]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[30, 18]} />
         <meshStandardMaterial color="#5e3f29" roughness={0.82} metalness={0.05} />
@@ -454,7 +460,7 @@ export function Stage({
     >
       <WarmLights />
       <StudioLights />
-      <Room />
+      <Room showShelf={!rigPlay} />
 
       {/* the carousel label names the centered instrument (only on the plain shelf) */}
       {activeId === null && !build && !rigPlay && centered && <ShelfLabel text={centered.label} />}

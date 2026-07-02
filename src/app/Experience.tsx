@@ -4,7 +4,7 @@ import { Stage, type StageInstrument, type Carousel } from '../stage/Stage';
 import { EyeIcon } from './EyeIcon';
 import { INSTRUMENTS, instrumentById } from '../instruments/registry';
 import type { AnyInstrumentModule, InstrumentTransport } from '../shared/instrument';
-import { createRig, loadRig, saveDesk, type RigConfig } from '../rig/rigStore';
+import { createRig, loadRig, scatterFor, type Placement, type RigConfig } from '../rig/rigStore';
 import './experience.css';
 
 const FLOAT_MS = 1250; // matches the Stage's float DURATION; the device plays after it lands
@@ -75,49 +75,40 @@ function parsePath(pathname: string): { kind: 'shelf' | 'single' | 'rig' | 'bad'
 }
 
 // The whole experience: ONE persistent 3D stage hosting every instrument, plus the HTML chrome.
-// The route sets which instrument is on the desk: '/<id>' plays one; '/rig/<uuid>' plays a rig
-// (several instruments sharing a transport, switched via a dock). The active device floats
-// continuously to the desk - no remount.
+// The route sets the mode: '/<id>' plays one instrument; '/rig/<uuid>' opens a rig - the
+// instruments lie scattered flat on the desk and the camera flies between them (top-down all-view,
+// tap to zoom into one, swipe to move to the next).
 export function Experience() {
   const navigate = useNavigate();
   const location = useLocation();
   const parsed = parsePath(location.pathname);
 
-  // Resolve the rig config for a rig route (falling back to all instruments if none was stored).
-  const rig: RigConfig | null =
-    parsed.kind === 'rig' ? loadRig(parsed.uuid!) ?? { instruments: INSTRUMENTS.map((m) => m.manifest.id), desk: INSTRUMENTS[0].manifest.id } : null;
+  const rig: RigConfig | null = parsed.kind === 'rig' ? loadRig(parsed.uuid!) : null;
 
   useEffect(() => {
-    if (parsed.kind === 'bad') navigate('/', { replace: true });
-  }, [parsed.kind, navigate]);
-
-  // In a rig, which instrument is on the desk (switched by the dock); otherwise the single id.
-  const [desk, setDesk] = useState(rig ? rig.desk : '');
-  useEffect(() => {
-    if (rig && !rig.instruments.includes(desk)) setDesk(rig.desk);
+    // a rig route with no stored config is invalid (rigs are made via the build flow)
+    if (parsed.kind === 'bad' || (parsed.kind === 'rig' && !rig)) navigate('/', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parsed.uuid]);
+  }, [parsed.kind, parsed.uuid]);
 
-  const activeId = parsed.kind === 'single' ? parsed.id! : parsed.kind === 'rig' ? desk : null;
+  // The FOCUSED instrument in a rig (null = the top-down all-view). Reset when the rig changes.
+  const [focused, setFocused] = useState<string | null>(null);
+  useEffect(() => {
+    setFocused(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsed.uuid, parsed.kind]);
 
-  // Build the provider stack (one hook per instrument) around the StageHost. Only the instrument
-  // on the desk is `enabled` (responds to the desktop keyboard); the rest are mounted + audio-live.
+  const activeId = parsed.kind === 'single' ? parsed.id! : parsed.kind === 'rig' ? focused : null;
+
+  // Build the provider stack (one hook per instrument) around the StageHost. Only the focused/played
+  // instrument is `enabled` (desktop keyboard); the rest are mounted + audio-live.
   const tree = INSTRUMENTS.reduceRight<ReactNode>(
     (children, module) => (
       <InstrumentProvider key={module.manifest.id} module={module} enabled={module.manifest.id === activeId}>
         {children}
       </InstrumentProvider>
     ),
-    <StageHost
-      activeId={activeId}
-      rig={rig}
-      rigUuid={parsed.kind === 'rig' ? parsed.uuid! : null}
-      onSwitchDesk={(id) => {
-        setDesk(id);
-        if (parsed.kind === 'rig') saveDesk(parsed.uuid!, id);
-      }}
-      onNavigate={navigate}
-    />,
+    <StageHost activeId={activeId} rig={rig} focused={focused} onFocus={setFocused} onNavigate={navigate} />,
   );
 
   return <div className="experience">{tree}</div>;
@@ -126,14 +117,14 @@ export function Experience() {
 function StageHost({
   activeId,
   rig,
-  rigUuid,
-  onSwitchDesk,
+  focused,
+  onFocus,
   onNavigate,
 }: {
   activeId: string | null;
   rig: RigConfig | null;
-  rigUuid: string | null;
-  onSwitchDesk: (id: string) => void;
+  focused: string | null;
+  onFocus: (id: string | null) => void;
   onNavigate: (to: string) => void;
 }) {
   const entries = useContext(InstrumentsCtx);
@@ -143,13 +134,14 @@ function StageHost({
 
   // Rig transport: a shared BPM pushed to every tempo instrument, plus a global play/stop.
   const rigTransportIds = rig ? rig.instruments.filter((id) => entries[id]?.transport) : [];
+  const rigKey = rig ? rig.instruments.join(',') : '';
   const [rigBpm, setRigBpm] = useState(120);
   useEffect(() => {
     if (!rig) return;
     const first = rig.instruments.find((id) => entries[id]?.transport);
     if (first) setRigBpm(entries[first].transport!.getBpm());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rigUuid]);
+  }, [rigKey]);
   const pushBpm = (next: number) => {
     const bpm = Math.max(40, Math.min(240, Math.round(next)));
     setRigBpm(bpm);
@@ -165,10 +157,10 @@ function StageHost({
     }
   };
 
-  // Rig-build mode (in the 3D room): the camera pulls back to the shelf + a board; tapping an
-  // instrument flies it onto/off the board. `building` is the mode; `boardIds` are the placed ones.
+  // Rig-BUILD mode (in the 3D room): the camera frames the shelf + desk; tapping a shelf instrument
+  // flies it down to lie flat on the desk (a scattered placement); tapping it there flies it back.
   const [building, setBuilding] = useState(false);
-  const [boardIds, setBoardIds] = useState<string[]>([]);
+  const [placements, setPlacements] = useState<Record<string, Placement>>({});
 
   // The carousel: `carouselIndex` is the settled centered instrument (React state, drives the
   // label + dots); `carousel` is the live fractional position the Stage animates (so a swipe
@@ -239,7 +231,7 @@ function StageHost({
   // a swipe never opens a device. On release we snap to the nearest instrument (clamped to range).
   const swipe = useRef<{ x: number; startPos: number } | null>(null);
   useEffect(() => {
-    if (activeId !== null || building) return; // only browse on the shelf (not while building a rig)
+    if (activeId !== null || building || rig) return; // carousel browse: only on the plain shelf
     const n = INSTRUMENTS.length;
     const down = (e: PointerEvent) => {
       swipe.current = { x: e.clientX, startPos: carousel.current.pos };
@@ -269,7 +261,39 @@ function StageHost({
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
     };
-  }, [activeId, building]);
+  }, [activeId, building, rig]);
+
+  // Swipe to move to the next/prev instrument while FOCUSED in a rig. The swipe must START in the
+  // empty vertical margins (a landscape device leaves top/bottom bands clear on a portrait screen),
+  // so a horizontal drag ON the instrument body still plays it and never cycles.
+  useEffect(() => {
+    if (!rig || focused === null) return;
+    const order = rig.instruments;
+    let start: { x: number; y: number } | null = null;
+    const down = (e: PointerEvent) => {
+      const marginY = window.innerHeight * 0.24;
+      const inMargin = e.clientY < marginY || e.clientY > window.innerHeight - marginY;
+      start = inMargin ? { x: e.clientX, y: e.clientY } : null;
+    };
+    const up = (e: PointerEvent) => {
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      start = null;
+      if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy)) return; // needs a clear horizontal swipe
+      const cur = order.indexOf(focused);
+      const next = order[(cur + (dx < 0 ? 1 : -1) + order.length) % order.length]; // swipe left = next
+      entries[next]?.handlers?.resume?.();
+      onFocus(next);
+    };
+    window.addEventListener('pointerdown', down);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', () => (start = null));
+    return () => {
+      window.removeEventListener('pointerdown', down);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [rig, focused, entries, onFocus]);
 
   const active = activeId ? entries[activeId] : null;
 
@@ -286,13 +310,27 @@ function StageHost({
     return { id: mid, label: module.manifest.name, node: <Device vm={entry.vm} handlers={handlers} /> };
   });
 
-  // Tapping a device. In BUILD mode: toggle it on/off the board (fly it down/up). On the shelf: the
-  // CENTERED one opens (floats to the desk); a side one just recenters the carousel onto it.
+  // Tapping a device.
+  //  - BUILD: add it to the desk (fly down to a scattered flat spot) or remove it (fly back up).
+  //  - RIG all-view: focus + zoom the camera into it to play it.
+  //  - Shelf: the centered one opens; a side one just recenters the carousel.
   const onDeviceTap = (i: number) => {
     const id = INSTRUMENTS[i].manifest.id;
     if (building) {
       entries[id]?.handlers.resume();
-      setBoardIds((b) => (b.includes(id) ? b.filter((x) => x !== id) : [...b, id]));
+      setPlacements((p) => {
+        if (id in p) {
+          const { [id]: _drop, ...rest } = p;
+          return rest;
+        }
+        return { ...p, [id]: scatterFor(p) };
+      });
+      return;
+    }
+    if (rig) {
+      // all-view -> focus this instrument (zoom in to play it)
+      entries[id]?.handlers.resume();
+      onFocus(id);
       return;
     }
     if (i === Math.round(carousel.current.pos)) {
@@ -305,15 +343,23 @@ function StageHost({
   };
 
   const startJam = () => {
-    if (boardIds.length < 1) return;
-    const uuid = createRig(boardIds);
+    const ids = Object.keys(placements);
+    if (ids.length < 1) return;
+    const uuid = createRig(ids, placements);
     setBuilding(false);
-    boardIds.forEach((id) => entries[id]?.handlers.resume());
+    ids.forEach((id) => entries[id]?.handlers.resume());
     onNavigate(`/rig/${uuid}`);
   };
 
   const onPointerMissed = () => {
     if (active) active.module.releaseOnMiss(active.handlers);
+  };
+
+  // Back: build -> shelf; a focused rig instrument -> the rig all-view; otherwise -> shelf.
+  const onBack = () => {
+    if (building) return setBuilding(false);
+    if (rig && focused) return onFocus(null);
+    onNavigate('/');
   };
 
   const ActiveManual = active?.module.Manual;
@@ -327,7 +373,8 @@ function StageHost({
         centeredIndex={carouselIndex}
         inspect={inspect}
         build={building}
-        board={boardIds}
+        rigPlay={!!rig}
+        placements={building ? placements : rig ? rig.placements : null}
         spinRef={spin}
         carouselRef={carousel}
         onDeviceTap={onDeviceTap}
@@ -346,8 +393,8 @@ function StageHost({
         />
       )}
 
-      {/* shelf chrome (hidden while building a rig) */}
-      <div className={'overlay shelf-chrome' + (activeId === null && !building ? ' is-on' : '')}>
+      {/* shelf chrome (plain shelf only - hidden while building or in a rig) */}
+      <div className={'overlay shelf-chrome' + (activeId === null && !building && !rig ? ' is-on' : '')}>
         <header className="shelf-title">jam<span>shelf</span></header>
         <div className="carousel-dots">
           {INSTRUMENTS.map((m, i) => (
@@ -355,7 +402,7 @@ function StageHost({
           ))}
         </div>
         <footer className="shelf-foot">swipe to browse, tap to play</footer>
-        <button className="new-rig-btn" onClick={() => { setBoardIds([]); setBuilding(true); }}>＋ new rig</button>
+        <button className="new-rig-btn" onClick={() => { setPlacements({}); setBuilding(true); }}>＋ new rig</button>
       </div>
 
       {/* rig-build chrome (in the 3D room): a hint + cancel + JAM */}
@@ -364,17 +411,25 @@ function StageHost({
           <button className="back-to-shelf" onClick={() => setBuilding(false)} aria-label="Cancel">‹</button>
           <header className="build-title">Build a rig</header>
           <footer className="build-hint">
-            {boardIds.length === 0 ? 'tap instruments to add them to the board' : 'tap an instrument to add or remove it'}
+            {Object.keys(placements).length === 0 ? 'tap an instrument to lay it on the desk' : 'tap to add or remove · jam when ready'}
           </footer>
-          <button className="jam-btn" disabled={boardIds.length < 1} onClick={startJam}>
+          <button className="jam-btn" disabled={Object.keys(placements).length < 1} onClick={startJam}>
             jam ›
           </button>
         </div>
       )}
 
-      {/* play chrome (single instrument OR the desk instrument of a rig) */}
-      <div className={'overlay play-chrome' + (activeId !== null ? ' is-on' : '')}>
-        <button className="back-to-shelf" onClick={() => onNavigate('/')} aria-label="Back to the shelf">
+      {/* rig all-view chrome (top-down, nothing focused): back + a hint */}
+      {rig && focused === null && (
+        <div className="overlay build-chrome is-on">
+          <button className="back-to-shelf" onClick={() => onNavigate('/')} aria-label="Back to the shelf">‹</button>
+          <footer className="build-hint">tap an instrument to play it</footer>
+        </div>
+      )}
+
+      {/* play chrome (a single instrument OR a focused rig instrument) */}
+      <div className={'overlay play-chrome' + (activeId !== null && !building ? ' is-on' : '')}>
+        <button className="back-to-shelf" onClick={onBack} aria-label={rig ? 'Back to the rig' : 'Back to the shelf'}>
           ‹
         </button>
         <div className="tools">
@@ -387,51 +442,31 @@ function StageHost({
           >
             ?
           </button>
-          <button
-            className={'tool-btn' + (inspect ? ' is-active' : '')}
-            onClick={toggleInspect}
-            aria-label="Inspect the device in 3D"
-            aria-pressed={inspect}
-          >
-            <EyeIcon />
-          </button>
+          {!rig && (
+            <button
+              className={'tool-btn' + (inspect ? ' is-active' : '')}
+              onClick={toggleInspect}
+              aria-label="Inspect the device in 3D"
+              aria-pressed={inspect}
+            >
+              <EyeIcon />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* rig chrome: the shared transport bar + the instrument dock */}
+      {/* rig transport bar (shared BPM + global play), shown throughout a rig */}
       {rig && (
-        <>
-          <div className="transport-bar">
-            <button className={'transport-play' + (anyPlaying ? ' is-playing' : '')} onClick={toggleTransport} aria-label={anyPlaying ? 'Stop' : 'Play'}>
-              {anyPlaying ? '■' : '▶'}
-            </button>
-            <div className="transport-bpm">
-              <button className="bpm-step" onClick={() => pushBpm(rigBpm - 1)} aria-label="Slower">–</button>
-              <span className="bpm-val">{rigBpm}<small>BPM</small></span>
-              <button className="bpm-step" onClick={() => pushBpm(rigBpm + 1)} aria-label="Faster">+</button>
-            </div>
+        <div className="transport-bar">
+          <button className={'transport-play' + (anyPlaying ? ' is-playing' : '')} onClick={toggleTransport} aria-label={anyPlaying ? 'Stop' : 'Play'}>
+            {anyPlaying ? '■' : '▶'}
+          </button>
+          <div className="transport-bpm">
+            <button className="bpm-step" onClick={() => pushBpm(rigBpm - 1)} aria-label="Slower">–</button>
+            <span className="bpm-val">{rigBpm}<small>BPM</small></span>
+            <button className="bpm-step" onClick={() => pushBpm(rigBpm + 1)} aria-label="Faster">+</button>
           </div>
-          <div className="rig-dock">
-            {rig.instruments.map((id) => {
-              const m = instrumentById(id);
-              if (!m) return null;
-              return (
-                <button
-                  key={id}
-                  className={'dock-tab' + (id === activeId ? ' is-active' : '')}
-                  style={{ ['--accent' as string]: m.manifest.accent }}
-                  onClick={() => {
-                    entries[id]?.handlers.resume();
-                    onSwitchDesk(id);
-                  }}
-                >
-                  <span className="dock-dot" />
-                  {m.manifest.name}
-                </button>
-              );
-            })}
-          </div>
-        </>
+        </div>
       )}
 
       {ActiveManual && <ActiveManual open={manualOpen} onClose={() => setManualOpen(false)} />}

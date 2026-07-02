@@ -1,8 +1,9 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { Group, Vector3, MathUtils, type Camera } from 'three';
+import { Group, Vector3, Quaternion, MathUtils, type Camera } from 'three';
 import { StudioLights } from '../shared/StudioLights';
 import { ShelfLabel } from './ShelfLabel';
+import { centroid, type Placement } from '../rig/rigStore';
 
 // The two ends of the one continuous move. progress 0 = resting on the shelf (a swipeable
 // CAROUSEL: the centered instrument large + head-on, its neighbours smaller + pushed to the
@@ -48,16 +49,15 @@ const FLOAT_BOW = 1.7;
 // BUILD mode: the camera pulls BACK to show the whole shelf (all instruments in a row up high)
 // AND a board/workbench below. Tapping a shelf instrument flies it down onto the board (into the
 // rig); tapping a board instrument flies it back up. Instruments are propped upright throughout.
-const BUILD_CAM = new Vector3(0, 1.05, 14.5);
-const BUILD_TGT = new Vector3(0, 1.05, 0);
+// BUILD (angled 3/4) frames the wall shelf up top AND the desk below (where picked instruments fly
+// down to lie flat). Placed instruments use the flat scatter pose (shared with play); un-placed
+// wait on the shelf.
+const BUILD_CAM = new Vector3(0, 3.0, 13);
+const BUILD_TGT = new Vector3(0, 0.35, 1.1);
 const BUILD_UP = new Vector3(0, 1, 0);
 const BUILD_DURATION = 0.9; // camera ease into/out of build
 const BUILD_SHELF_SCALE = 0.3; // instruments waiting on the shelf
-const BUILD_BOARD_SCALE = 0.4; // instruments placed on the board
-const BUILD_SPACING = 1.7; // x gap between shelf homes / board slots
-const BOARD_Y = -0.35; // the workbench surface height
-const BOARD_Z = 2.7; // and how far forward it sits (a desk in front)
-const BUILD_BOARD_DEVICE_Y = 0.05; // where a device rests on the board
+const BUILD_SPACING = 1.55; // x gap between shelf homes
 
 // A device's home slot on the wall shelf (build mode), by its registry index (fixed, so removing
 // one leaves its gap rather than reshuffling the others).
@@ -65,9 +65,25 @@ function buildHomePose(regIndex: number, total: number): ShelfPose {
   return { pos: new Vector3((regIndex - (total - 1) / 2) * BUILD_SPACING, SHELF_Y, SHELF_Z), tilt: SHELF_TILT, scale: BUILD_SHELF_SCALE, yaw: 0 };
 }
 
-// A device's slot on the board (packed left-to-right by the order it was added).
-function boardPose(slot: number, count: number): ShelfPose {
-  return { pos: new Vector3((slot - (count - 1) / 2) * BUILD_SPACING, BUILD_BOARD_DEVICE_Y, BOARD_Z), tilt: -0.22, scale: BUILD_BOARD_SCALE, yaw: 0 };
+// RIG play: instruments lie FLAT on the desk at scattered positions (like stickers). The camera
+// (not the instruments) moves: a top-down ALL-VIEW showing the whole pile, or ZOOMED to one.
+const RIG_DESK_Y = -2.12; // flat on the desk
+const RIG_SCALE = 0.62;
+const RIG_ALLVIEW_Y = 7.6; // camera height to see the whole scattered pile
+const RIG_FOCUS_Y = 2.55; // camera height zoomed to one instrument (it fills the screen)
+const RIG_CAM_EASE = 3.2; // how fast the camera glides between all-view / focus
+const AXIS_X = new Vector3(1, 0, 0);
+const AXIS_Y = new Vector3(0, 1, 0);
+const FLAT_Q = new Quaternion().setFromAxisAngle(AXIS_X, -Math.PI / 2); // lay the face up
+const _yawQ = new Quaternion();
+
+// Pose a device lying flat on the desk at a scattered placement (face up, spun by yaw about the
+// world vertical). Set directly - the pile is fixed; only the camera animates.
+function applyRigPose(device: Group, p: Placement): void {
+  device.position.set(p.x, RIG_DESK_Y, p.z);
+  _yawQ.setFromAxisAngle(AXIS_Y, p.yaw);
+  device.quaternion.copy(_yawQ).multiply(FLAT_Q); // flat first, then yaw about world Y
+  device.scale.setScalar(RIG_SCALE);
 }
 
 interface Spin {
@@ -211,19 +227,50 @@ function CarouselTick({ carouselRef }: { carouselRef: React.RefObject<Carousel> 
   return null;
 }
 
-function CameraRig({ floatTarget, inspectTarget, buildTarget }: { floatTarget: number; inspectTarget: number; buildTarget: number }) {
+function CameraRig({
+  floatTarget,
+  inspectTarget,
+  buildTarget,
+  rigActive,
+  rigCamRef,
+}: {
+  floatTarget: number;
+  inspectTarget: number;
+  buildTarget: number;
+  rigActive: boolean;
+  rigCamRef: React.RefObject<{ pos: Vector3; tgt: Vector3 }>;
+}) {
   const fRaw = useRef(floatTarget);
   const iRaw = useRef(inspectTarget);
   const bRaw = useRef(buildTarget);
   const t2 = useRef(new Vector3());
   const tUp = useRef(new Vector3());
   const tgt = useRef(new Vector3());
+  const rigTgt = useRef(new Vector3()); // the camera's currently-looked-at point (eased) in rig mode
+  const rigInit = useRef(false);
   const { camera } = useThree();
   useLayoutEffect(() => {
     applyCameraPose(camera, eased(fRaw.current), eased(iRaw.current), eased(bRaw.current), t2.current, tUp.current, tgt.current);
     camera.updateMatrixWorld();
   }, [camera]);
   useFrame((state, dt) => {
+    if (rigActive) {
+      const c = rigCamRef.current;
+      const k = Math.min(1, dt * RIG_CAM_EASE);
+      if (!rigInit.current) {
+        // snap on entry so we don't sweep in from the shelf pose
+        state.camera.position.copy(c.pos);
+        rigTgt.current.copy(c.tgt);
+        rigInit.current = true;
+      } else {
+        state.camera.position.lerp(c.pos, k);
+        rigTgt.current.lerp(c.tgt, k);
+      }
+      state.camera.up.copy(PLAY_UP);
+      state.camera.lookAt(rigTgt.current);
+      return;
+    }
+    rigInit.current = false;
     advance(fRaw, floatTarget, dt / DURATION);
     advance(iRaw, inspectTarget, dt / INSPECT_DURATION);
     advance(bRaw, buildTarget, dt / BUILD_DURATION);
@@ -245,6 +292,7 @@ function DeviceRig({
   carouselRef,
   interactiveShelf,
   buildPose,
+  rigPose,
   onTap,
 }: {
   index: number;
@@ -255,6 +303,7 @@ function DeviceRig({
   carouselRef: React.RefObject<Carousel>;
   interactiveShelf: boolean;
   buildPose: ShelfPose | null; // in build mode, the device lerps to this (shelf home or board slot)
+  rigPose: Placement | null; // in rig play, the device lies flat here (fixed; the camera moves)
   onTap: (index: number) => void;
 }) {
   const ref = useRef<Group>(null);
@@ -264,6 +313,8 @@ function DeviceRig({
   const down = useRef<{ x: number; y: number } | null>(null);
   const buildRef = useRef(buildPose);
   buildRef.current = buildPose;
+  const rigRef = useRef(rigPose);
+  rigRef.current = rigPose;
 
   // Build mode overrides the carousel pose (lerped, so a tapped device flies shelf <-> board).
   const cur = useRef<ShelfPose | null>(null);
@@ -284,15 +335,20 @@ function DeviceRig({
     return c;
   };
 
+  const applyPose = () => {
+    if (!ref.current) return;
+    if (rigRef.current) applyRigPose(ref.current, rigRef.current);
+    else applyDevicePose(ref.current, pose(), eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current);
+  };
   useLayoutEffect(() => {
-    if (ref.current) applyDevicePose(ref.current, pose(), eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current);
+    applyPose();
     ref.current?.updateMatrixWorld(true);
   });
   useFrame((_, dt) => {
     advance(fRaw, floatTarget, dt / DURATION);
     advance(iRaw, inspectTarget, dt / INSPECT_DURATION);
     stepSpin(spinRef.current, dt);
-    if (ref.current) applyDevicePose(ref.current, pose(), eased(fRaw.current), eased(iRaw.current), spinRef.current, t1.current);
+    applyPose();
   });
 
   const onDown = (e: ThreeEvent<PointerEvent>) => {
@@ -329,33 +385,16 @@ export interface StageInstrument {
 
 interface StageProps {
   instruments: StageInstrument[];
-  activeId: string | null; // null = shelf (carousel) mode
+  activeId: string | null; // null = shelf/all-view; in a rig, the FOCUSED (played) instrument
   centeredIndex: number; // which instrument the carousel label names
   inspect: boolean;
-  build: boolean; // rig-build mode: zoomed out, shelf + board, tap to add/remove
-  board: string[]; // in build mode, the ids currently placed on the board (in order)
+  build: boolean; // rig-BUILD (angled): shelf up top, placed instruments lying flat on the desk
+  rigPlay: boolean; // rig-PLAY (top-down): only the placed instruments, camera zooms to the focused
+  placements: Record<string, Placement> | null; // flat scatter for placed instruments (build + play)
   spinRef: React.RefObject<Spin>;
   carouselRef: React.RefObject<Carousel>;
   onDeviceTap: (index: number) => void;
   onPointerMissed: () => void;
-}
-
-// The workbench a rig is assembled on (build mode): a wooden board in front, slightly tilted
-// toward the camera with a raised front lip so it reads as a distinct surface.
-function Board() {
-  return (
-    <group position={[0, BOARD_Y, BOARD_Z]} rotation={[-Math.PI / 2 + 0.32, 0, 0]}>
-      <mesh>
-        <planeGeometry args={[8, 3.6]} />
-        <meshStandardMaterial color="#6a4529" roughness={0.8} metalness={0.06} />
-      </mesh>
-      {/* front lip */}
-      <mesh position={[0, -1.85, 0.12]} rotation={[Math.PI / 2, 0, 0]}>
-        <boxGeometry args={[8, 0.24, 0.18]} />
-        <meshStandardMaterial color="#54371f" roughness={0.82} metalness={0.05} />
-      </mesh>
-    </group>
-  );
 }
 
 // The ONE persistent canvas behind the whole app. On the shelf the instruments form a swipeable
@@ -367,16 +406,31 @@ export function Stage({
   centeredIndex,
   inspect,
   build,
-  board,
+  rigPlay,
+  placements,
   spinRef,
   carouselRef,
   onDeviceTap,
   onPointerMissed,
 }: StageProps) {
-  const camFloat = activeId ? 1 : 0;
+  const camFloat = activeId && !rigPlay ? 1 : 0; // in rig play the camera is driven separately
   const camInspect = inspect ? 1 : 0;
   const camBuild = build ? 1 : 0;
   const centered = instruments[centeredIndex];
+
+  // Rig-play camera: focus on the played instrument (top-down zoom) or the all-view over the pile.
+  const rigCam = useRef<{ pos: Vector3; tgt: Vector3 }>({ pos: new Vector3(), tgt: new Vector3() });
+  if (rigPlay && placements) {
+    const focus = activeId ? placements[activeId] : null;
+    if (focus) {
+      rigCam.current.pos.set(focus.x, RIG_FOCUS_Y, focus.z);
+      rigCam.current.tgt.set(focus.x, RIG_DESK_Y, focus.z);
+    } else {
+      const c = centroid(placements);
+      rigCam.current.pos.set(c.x, RIG_ALLVIEW_Y, c.z);
+      rigCam.current.tgt.set(c.x, RIG_DESK_Y, c.z);
+    }
+  }
 
   return (
     <Canvas
@@ -393,37 +447,37 @@ export function Stage({
       <WarmLights />
       <StudioLights />
       <Room />
-      {build && <Board />}
 
-      {/* the carousel label names the centered instrument (only while on the shelf, not building) */}
-      {activeId === null && !build && centered && <ShelfLabel text={centered.label} />}
+      {/* the carousel label names the centered instrument (only on the plain shelf) */}
+      {activeId === null && !build && !rigPlay && centered && <ShelfLabel text={centered.label} />}
 
       {instruments.map((inst, i) => {
         const isActive = inst.id === activeId;
-        const onBoard = board.indexOf(inst.id);
-        const buildPose = build
-          ? onBoard >= 0
-            ? boardPose(onBoard, board.length)
-            : buildHomePose(i, instruments.length)
-          : null;
+        const placed = !!placements && inst.id in placements;
+        // in rig PLAY only the placed instruments are on the desk (the rest are hidden)
+        if (rigPlay && !placed) return null;
+        // placed instruments lie flat on the desk (build AND play); un-placed sit on the shelf (build)
+        const rigPose = placed ? placements![inst.id] : null;
+        const buildPose = build && !placed ? buildHomePose(i, instruments.length) : null;
         return (
           <DeviceRig
             key={inst.id}
             index={i}
             node={inst.node}
             floatTarget={isActive ? 1 : 0}
-            inspectTarget={isActive && inspect ? 1 : 0}
+            inspectTarget={isActive && inspect && !rigPlay ? 1 : 0}
             spinRef={spinRef}
             carouselRef={carouselRef}
             interactiveShelf={activeId === null}
             buildPose={buildPose}
+            rigPose={rigPose}
             onTap={onDeviceTap}
           />
         );
       })}
 
       <CarouselTick carouselRef={carouselRef} />
-      <CameraRig floatTarget={camFloat} inspectTarget={camInspect} buildTarget={camBuild} />
+      <CameraRig floatTarget={camFloat} inspectTarget={camInspect} buildTarget={camBuild} rigActive={rigPlay} rigCamRef={rigCam} />
     </Canvas>
   );
 }

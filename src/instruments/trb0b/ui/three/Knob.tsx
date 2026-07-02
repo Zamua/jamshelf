@@ -52,7 +52,8 @@ export function Knob({ x, y, r, bpm, power, onTempo, resume }: KnobProps) {
   };
 
   const frac = (bpm - MIN_BPM) / (MAX_BPM - MIN_BPM); // 0..1
-  const angle = -SWEEP + frac * SWEEP * 2;
+  // min = lower-left, max = lower-right (indicator sweeps clockwise as tempo rises)
+  const angle = SWEEP - frac * SWEEP * 2;
   const body = power ? '#17181a' : dim('#17181a', 0.3);
   const ind = power ? PALETTE.orange : PALETTE.orangeDim;
 

@@ -51,7 +51,8 @@ export function LevelKnob({ voice, x, y, r, level, power, onLevel, resume }: Lev
     drag.current = { startY: e.nativeEvent.clientY, startLevel: lvlRef.current };
   };
 
-  const angle = -SWEEP + level * SWEEP * 2;
+  // min = lower-left, max = lower-right (indicator sweeps clockwise as level rises)
+  const angle = SWEEP - level * SWEEP * 2;
   const body = power ? '#161719' : dim('#161719', 0.3);
   const ind = power ? PALETTE.orange : PALETTE.orangeDim;
 

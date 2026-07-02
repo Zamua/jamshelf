@@ -62,5 +62,23 @@ export function useDrumMachine(enabled = true) {
     [controller],
   );
 
-  return { vm, handlers };
+  // Rig transport: the TR-B0B is the sequenced backbone - it follows the shared BPM and the
+  // global play/stop drives its 16-step sequencer.
+  const transport = useMemo(
+    () => ({
+      setBpm: (bpm: number) => controller.setBpm(bpm),
+      getBpm: () => controller.getState().bpm,
+      play: () => {
+        controller.resume();
+        if (!controller.getState().playing) controller.togglePlay();
+      },
+      stop: () => {
+        if (controller.getState().playing) controller.togglePlay();
+      },
+      isPlaying: () => controller.getState().playing,
+    }),
+    [controller],
+  );
+
+  return { vm, handlers, transport };
 }

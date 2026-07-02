@@ -368,6 +368,22 @@ export class SynthController {
     this.flash('VOL ' + Math.round(this.volume * 8));
   }
 
+  // Set an absolute tempo (used by a rig's shared transport so every instrument shares one BPM).
+  // Re-syncs the clock, looper and tempo-synced delay to the new tempo.
+  setBpm(bpm: number): void {
+    const next = Math.max(40, Math.min(300, Math.round(bpm)));
+    if (next === this.bpm) return;
+    this.bpm = next;
+    this.clock.setBpm(this.bpm);
+    this.looper.setBpm(this.bpm);
+    this.applyFx();
+    this.publish();
+  }
+
+  getBpm(): number {
+    return this.bpm;
+  }
+
   // Cycle the shell-color edition. Unbounded counter; the UI maps it modulo the
   // number of editions, so no presentation detail leaks into the app layer.
   swapColor(): void {

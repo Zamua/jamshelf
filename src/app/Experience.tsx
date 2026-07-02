@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Stage, type StageInstrument, type Carousel } from '../stage/Stage';
 import { EyeIcon } from './EyeIcon';
 import { INSTRUMENTS, instrumentById } from '../instruments/registry';
-import type { AnyInstrumentModule } from '../shared/instrument';
+import type { AnyInstrumentModule, InstrumentTransport } from '../shared/instrument';
+import { createRig, loadRig, saveDesk, type RigConfig } from '../rig/rigStore';
 import './experience.css';
 
 const FLOAT_MS = 1250; // matches the Stage's float DURATION; the device plays after it lands
@@ -25,6 +26,7 @@ interface Entry {
   vm: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlers: any;
+  transport?: InstrumentTransport;
 }
 
 // Accumulates every mounted instrument's { vm, handlers } so the StageHost (a single consumer
@@ -44,10 +46,10 @@ function InstrumentProvider({
   children: ReactNode;
 }) {
   const parent = useContext(InstrumentsCtx);
-  const { vm, handlers } = module.useInstrument(enabled);
+  const { vm, handlers, transport } = module.useInstrument(enabled);
   const value = useMemo(
-    () => ({ ...parent, [module.manifest.id]: { module, vm, handlers } }),
-    [parent, module, vm, handlers],
+    () => ({ ...parent, [module.manifest.id]: { module, vm, handlers, transport } }),
+    [parent, module, vm, handlers, transport],
   );
   return <InstrumentsCtx.Provider value={value}>{children}</InstrumentsCtx.Provider>;
 }
@@ -61,41 +63,111 @@ function noopLike(handlers: any): any {
   return out;
 }
 
-// The whole experience: ONE persistent 3D stage hosting every instrument (each on a shelf slot),
-// plus the HTML chrome cross-faded over it. The route (`/` vs `/<id>`) sets which instrument is
-// active; the active device floats continuously between the shelf and the desk - no remount.
+// Parse the route into a mode: the shelf ('/'), a single instrument ('/<id>'), or a rig
+// ('/rig/<uuid>'). Anything else is invalid (redirected to the shelf).
+function parsePath(pathname: string): { kind: 'shelf' | 'single' | 'rig' | 'bad'; id?: string; uuid?: string } {
+  if (pathname === '/' || pathname === '') return { kind: 'shelf' };
+  const rig = pathname.match(/^\/rig\/([A-Za-z0-9]+)\/?$/);
+  if (rig) return { kind: 'rig', uuid: rig[1] };
+  const id = pathname.replace(/^\//, '');
+  if (instrumentById(id)) return { kind: 'single', id };
+  return { kind: 'bad' };
+}
+
+// The whole experience: ONE persistent 3D stage hosting every instrument, plus the HTML chrome.
+// The route sets which instrument is on the desk: '/<id>' plays one; '/rig/<uuid>' plays a rig
+// (several instruments sharing a transport, switched via a dock). The active device floats
+// continuously to the desk - no remount.
 export function Experience() {
   const navigate = useNavigate();
   const location = useLocation();
+  const parsed = parsePath(location.pathname);
 
-  const id = location.pathname.replace(/^\//, '');
-  const known = !!instrumentById(id);
-  const activeId = id && known ? id : null;
-  const valid = !id || known; // '/' or a known instrument
+  // Resolve the rig config for a rig route (falling back to all instruments if none was stored).
+  const rig: RigConfig | null =
+    parsed.kind === 'rig' ? loadRig(parsed.uuid!) ?? { instruments: INSTRUMENTS.map((m) => m.manifest.id), desk: INSTRUMENTS[0].manifest.id } : null;
 
   useEffect(() => {
-    if (!valid) navigate('/', { replace: true });
-  }, [valid, navigate]);
+    if (parsed.kind === 'bad') navigate('/', { replace: true });
+  }, [parsed.kind, navigate]);
 
-  // Build the provider stack (one hook per instrument) around the StageHost. Only the ACTIVE
-  // instrument is `enabled` (responds to the desktop keyboard); the rest are mounted but idle.
+  // In a rig, which instrument is on the desk (switched by the dock); otherwise the single id.
+  const [desk, setDesk] = useState(rig ? rig.desk : '');
+  useEffect(() => {
+    if (rig && !rig.instruments.includes(desk)) setDesk(rig.desk);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsed.uuid]);
+
+  const activeId = parsed.kind === 'single' ? parsed.id! : parsed.kind === 'rig' ? desk : null;
+
+  // Build the provider stack (one hook per instrument) around the StageHost. Only the instrument
+  // on the desk is `enabled` (responds to the desktop keyboard); the rest are mounted + audio-live.
   const tree = INSTRUMENTS.reduceRight<ReactNode>(
     (children, module) => (
       <InstrumentProvider key={module.manifest.id} module={module} enabled={module.manifest.id === activeId}>
         {children}
       </InstrumentProvider>
     ),
-    <StageHost activeId={activeId} onNavigate={navigate} />,
+    <StageHost
+      activeId={activeId}
+      rig={rig}
+      rigUuid={parsed.kind === 'rig' ? parsed.uuid! : null}
+      onSwitchDesk={(id) => {
+        setDesk(id);
+        if (parsed.kind === 'rig') saveDesk(parsed.uuid!, id);
+      }}
+      onNavigate={navigate}
+    />,
   );
 
   return <div className="experience">{tree}</div>;
 }
 
-function StageHost({ activeId, onNavigate }: { activeId: string | null; onNavigate: (to: string) => void }) {
+function StageHost({
+  activeId,
+  rig,
+  rigUuid,
+  onSwitchDesk,
+  onNavigate,
+}: {
+  activeId: string | null;
+  rig: RigConfig | null;
+  rigUuid: string | null;
+  onSwitchDesk: (id: string) => void;
+  onNavigate: (to: string) => void;
+}) {
   const entries = useContext(InstrumentsCtx);
   const [manualOpen, setManualOpen] = useState(false);
   const [inspect, setInspect] = useState(false);
   const spin = useRef<Spin>({ x: 0, y: 0, vx: 0, vy: 0, dragging: false });
+
+  // Rig transport: a shared BPM pushed to every tempo instrument, plus a global play/stop.
+  const rigTransportIds = rig ? rig.instruments.filter((id) => entries[id]?.transport) : [];
+  const [rigBpm, setRigBpm] = useState(120);
+  useEffect(() => {
+    if (!rig) return;
+    const first = rig.instruments.find((id) => entries[id]?.transport);
+    if (first) setRigBpm(entries[first].transport!.getBpm());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rigUuid]);
+  const pushBpm = (next: number) => {
+    const bpm = Math.max(40, Math.min(240, Math.round(next)));
+    setRigBpm(bpm);
+    for (const id of rigTransportIds) entries[id].transport!.setBpm(bpm);
+  };
+  const anyPlaying = rigTransportIds.some((id) => entries[id].transport!.isPlaying());
+  const toggleTransport = () => {
+    const play = !anyPlaying;
+    for (const id of rigTransportIds) {
+      const t = entries[id].transport!;
+      if (play) t.play();
+      else t.stop();
+    }
+  };
+
+  // Rig-build overlay (on the shelf): pick instruments, then start the rig.
+  const [buildOpen, setBuildOpen] = useState(false);
+  const [pick, setPick] = useState<Set<string>>(() => new Set(INSTRUMENTS.map((m) => m.manifest.id)));
 
   // The carousel: `carouselIndex` is the settled centered instrument (React state, drives the
   // label + dots); `carousel` is the live fractional position the Stage animates (so a swipe
@@ -166,7 +238,7 @@ function StageHost({ activeId, onNavigate }: { activeId: string | null; onNaviga
   // a swipe never opens a device. On release we snap to the nearest instrument (clamped to range).
   const swipe = useRef<{ x: number; startPos: number } | null>(null);
   useEffect(() => {
-    if (activeId !== null) return; // only browse on the shelf
+    if (activeId !== null || buildOpen) return; // only browse on the shelf (not while building a rig)
     const n = INSTRUMENTS.length;
     const down = (e: PointerEvent) => {
       swipe.current = { x: e.clientX, startPos: carousel.current.pos };
@@ -196,7 +268,7 @@ function StageHost({ activeId, onNavigate }: { activeId: string | null; onNaviga
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', up);
     };
-  }, [activeId]);
+  }, [activeId, buildOpen]);
 
   const active = activeId ? entries[activeId] : null;
 
@@ -267,9 +339,61 @@ function StageHost({ activeId, onNavigate }: { activeId: string | null; onNaviga
           ))}
         </div>
         <footer className="shelf-foot">swipe to browse, tap to play</footer>
+        <button className="new-rig-btn" onClick={() => setBuildOpen(true)}>＋ new rig</button>
       </div>
 
-      {/* play chrome */}
+      {/* rig-build overlay: pick instruments, then start */}
+      {buildOpen && (
+        <div className="rig-build" role="dialog" aria-modal="true">
+          <div className="rig-build-card">
+            <h2 className="rig-build-title">Build a rig</h2>
+            <p className="rig-build-lede">Pick the instruments to jam together. They share a tempo; switch between them without stopping the sound.</p>
+            <ul className="rig-pick">
+              {INSTRUMENTS.map((m) => {
+                const on = pick.has(m.manifest.id);
+                return (
+                  <li key={m.manifest.id}>
+                    <button
+                      className={'rig-pick-item' + (on ? ' is-on' : '')}
+                      onClick={() =>
+                        setPick((s) => {
+                          const n = new Set(s);
+                          if (n.has(m.manifest.id)) n.delete(m.manifest.id);
+                          else n.add(m.manifest.id);
+                          return n;
+                        })
+                      }
+                      style={{ ['--accent' as string]: m.manifest.accent }}
+                    >
+                      <span className="rig-pick-check">{on ? '✓' : ''}</span>
+                      <span className="rig-pick-name">{m.manifest.name}</span>
+                      <span className="rig-pick-blurb">{m.manifest.blurb}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="rig-build-actions">
+              <button className="rig-cancel" onClick={() => setBuildOpen(false)}>Cancel</button>
+              <button
+                className="rig-start"
+                disabled={pick.size < 1}
+                onClick={() => {
+                  const ids = INSTRUMENTS.map((m) => m.manifest.id).filter((id) => pick.has(id));
+                  const uuid = createRig(ids);
+                  setBuildOpen(false);
+                  ids.forEach((id) => entries[id]?.handlers.resume());
+                  onNavigate(`/rig/${uuid}`);
+                }}
+              >
+                Start rig ›
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* play chrome (single instrument OR the desk instrument of a rig) */}
       <div className={'overlay play-chrome' + (activeId !== null ? ' is-on' : '')}>
         <button className="back-to-shelf" onClick={() => onNavigate('/')} aria-label="Back to the shelf">
           ‹
@@ -294,6 +418,42 @@ function StageHost({ activeId, onNavigate }: { activeId: string | null; onNaviga
           </button>
         </div>
       </div>
+
+      {/* rig chrome: the shared transport bar + the instrument dock */}
+      {rig && (
+        <>
+          <div className="transport-bar">
+            <button className={'transport-play' + (anyPlaying ? ' is-playing' : '')} onClick={toggleTransport} aria-label={anyPlaying ? 'Stop' : 'Play'}>
+              {anyPlaying ? '■' : '▶'}
+            </button>
+            <div className="transport-bpm">
+              <button className="bpm-step" onClick={() => pushBpm(rigBpm - 1)} aria-label="Slower">–</button>
+              <span className="bpm-val">{rigBpm}<small>BPM</small></span>
+              <button className="bpm-step" onClick={() => pushBpm(rigBpm + 1)} aria-label="Faster">+</button>
+            </div>
+          </div>
+          <div className="rig-dock">
+            {rig.instruments.map((id) => {
+              const m = instrumentById(id);
+              if (!m) return null;
+              return (
+                <button
+                  key={id}
+                  className={'dock-tab' + (id === activeId ? ' is-active' : '')}
+                  style={{ ['--accent' as string]: m.manifest.accent }}
+                  onClick={() => {
+                    entries[id]?.handlers.resume();
+                    onSwitchDesk(id);
+                  }}
+                >
+                  <span className="dock-dot" />
+                  {m.manifest.name}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {ActiveManual && <ActiveManual open={manualOpen} onClose={() => setManualOpen(false)} />}
     </>

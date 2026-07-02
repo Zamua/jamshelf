@@ -245,5 +245,18 @@ export function useSynth(enabled = true) {
     };
   }, [controller]);
 
-  return { vm, handlers };
+  // Rig transport: the HiClone follows the shared BPM (its arp/repeat/looper + tempo-synced delay
+  // re-sync). It has no global sequencer play, so play/stop are no-ops (chords are played live).
+  const transport = useMemo(
+    () => ({
+      setBpm: (bpm: number) => controller.setBpm(bpm),
+      getBpm: () => controller.getBpm(),
+      play: () => {},
+      stop: () => {},
+      isPlaying: () => false,
+    }),
+    [controller],
+  );
+
+  return { vm, handlers, transport };
 }

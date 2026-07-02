@@ -23,11 +23,23 @@ export interface InstrumentManifest {
 // wires the active one's play chrome. This is the seam that lets the shelf host N instruments
 // without the host importing any single instrument. Typed over the instrument's own VM /
 // Handlers (the registry stores them behind `AnyInstrumentModule`).
+// A tempo-aware instrument's hook exposes this so a rig's shared transport can drive it: one
+// BPM across the rig, and (for a sequenced instrument like the drum machine) a global play/stop.
+// Instruments with no tempo (the StyloClone) simply omit it.
+export interface InstrumentTransport {
+  setBpm(bpm: number): void;
+  getBpm(): number;
+  play(): void; // start this instrument's sequencer (no-op if it has none)
+  stop(): void;
+  isPlaying(): boolean; // is this instrument's sequencer running (false if it has none)
+}
+
 export interface InstrumentModule<VM = unknown, H = unknown> {
   readonly manifest: InstrumentManifest;
   // The instrument's React hook. `enabled` gates always-on side effects (desktop keyboard
-  // play) so only the ACTIVE instrument responds when several are mounted on the shelf.
-  useInstrument(enabled: boolean): { vm: VM; handlers: H };
+  // play) so only the ACTIVE instrument responds when several are mounted on the shelf. The
+  // optional `transport` in the return lets a rig sync this instrument's tempo + play state.
+  useInstrument(enabled: boolean): { vm: VM; handlers: H; transport?: InstrumentTransport };
   // The 3D device (purely presentational: renders the VM, fires raw input via the handlers).
   readonly Device: ComponentType<{ vm: VM; handlers: H }>;
   // Optional how-to-play overlay (HTML), shown in the play view.

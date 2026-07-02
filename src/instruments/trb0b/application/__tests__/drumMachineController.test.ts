@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { DrumMachineController } from '../drumMachineController';
-import type { Clock, DrumMachinePort, DrumSettings, SettingsStore } from '../ports';
+import type { DrumMachinePort, DrumSettings, SettingsStore } from '../ports';
 import type { DrumVoice } from '../../domain/sequencer';
+import { Transport } from '../../../../transport/transport';
 
 class SpySynth implements DrumMachinePort {
   hits: DrumVoice[] = [];
@@ -15,41 +16,29 @@ class SpySynth implements DrumMachinePort {
   setMuted(m: boolean) { this.muted = m; }
 }
 
-// A fake clock the test drives by hand: call tick() to fire one step.
-class FakeClock implements Clock {
-  bpm = 0;
-  beats = 0;
-  running = false;
-  private cb: (() => void) | null = null;
-  setBpm(b: number) { this.bpm = b; }
-  setBeatsPerTick(b: number) { this.beats = b; }
-  start() { this.running = true; }
-  stop() { this.running = false; }
-  onTick(cb: () => void) { this.cb = cb; return () => { this.cb = null; }; }
-  tick() { this.cb?.(); }
-}
-
 class MemoryStore implements SettingsStore {
   saved: DrumSettings | null = null;
   load() { return this.saved; }
   save(s: DrumSettings) { this.saved = s; }
 }
 
-describe('DrumMachineController', () => {
+// The controller slaves to a real Transport. One step = a 16th = 6 pulses, and the sub-clock fires
+// on the pulse-index grid (0,6,12,...), so advancing 6 pulses fires exactly one step (0,1,2,...).
+function step(t: Transport) {
+  for (let i = 0; i < 6; i++) t.advance();
+}
+
+describe('DrumMachineController (slaved to the shared Transport)', () => {
   let synth: SpySynth;
-  let clock: FakeClock;
+  let transport: Transport;
   let store: MemoryStore;
   let c: DrumMachineController;
 
   beforeEach(() => {
     synth = new SpySynth();
-    clock = new FakeClock();
+    transport = new Transport();
     store = new MemoryStore();
-    c = new DrumMachineController(synth, clock, store);
-  });
-
-  it('sets a 16th-note subdivision on construct', () => {
-    expect(clock.beats).toBe(0.25);
+    c = new DrumMachineController(synth, transport, store);
   });
 
   it('toggles a step of the selected voice', () => {
@@ -61,49 +50,55 @@ describe('DrumMachineController', () => {
     expect(c.getState().pattern.BD[4]).toBe(false);
   });
 
-  it('play advances the playhead and triggers active voices per step', () => {
+  it('START toggles the transport; each 16th advances the playhead and triggers active voices', () => {
     c.toggleStep(0); // BD on step 0
     c.selectVoice('CH');
     c.toggleStep(0); // CH on step 0 too
     c.toggleStep(2); // CH on step 2
     c.togglePlay();
     expect(c.getState().playing).toBe(true);
-    clock.tick(); // step 0 -> BD + CH
+    expect(transport.isRunning()).toBe(true);
+    step(transport); // step 0 -> BD + CH
     expect(c.getState().currentStep).toBe(0);
     expect(synth.hits.sort()).toEqual(['BD', 'CH']);
     synth.hits = [];
-    clock.tick(); // step 1 -> nothing
+    step(transport); // step 1 -> nothing
     expect(c.getState().currentStep).toBe(1);
     expect(synth.hits).toEqual([]);
-    clock.tick(); // step 2 -> CH
+    step(transport); // step 2 -> CH
     expect(synth.hits).toEqual(['CH']);
   });
 
-  it('wraps the playhead after 16 steps', () => {
+  it('wraps the playhead after 16 steps (phase-locked to shared position)', () => {
     c.togglePlay();
-    for (let i = 0; i < 16; i++) clock.tick();
+    for (let i = 0; i < 16; i++) step(transport);
     expect(c.getState().currentStep).toBe(15);
-    clock.tick();
+    step(transport);
     expect(c.getState().currentStep).toBe(0);
   });
 
-  it('stop halts the clock and resets the playhead readout', () => {
+  it('stop pauses the transport and hides the playhead readout', () => {
     c.togglePlay();
-    clock.tick();
+    step(transport);
     c.togglePlay(); // stop
     expect(c.getState().playing).toBe(false);
     expect(c.getState().currentStep).toBe(-1);
-    expect(clock.running).toBe(false);
+    expect(transport.isRunning()).toBe(false);
   });
 
-  it('power off stops playback, mutes, and blocks edits', () => {
+  it('power off mutes + hides the playhead but never stops the shared transport', () => {
     c.toggleStep(0);
     c.togglePlay();
     c.togglePower(); // off
     expect(c.getState().power).toBe(false);
-    expect(c.getState().playing).toBe(false);
+    expect(c.getState().currentStep).toBe(-1); // playhead hidden while off
+    expect(transport.isRunning()).toBe(true); // the rig keeps time
     expect(synth.muted).toBe(true);
-    c.toggleStep(4); // ignored while off
+    step(transport); // no triggers while off
+    synth.hits = [];
+    step(transport);
+    expect(synth.hits).toEqual([]);
+    c.toggleStep(4); // edits blocked while off
     expect(c.getState().pattern.BD[4]).toBe(false);
   });
 
@@ -113,31 +108,30 @@ describe('DrumMachineController', () => {
     expect(synth.levels.SD).toBe(0.4);
     c.setLevel('BD', 5); // clamps
     expect(c.getState().levels.BD).toBe(1);
-    // restore into a fresh controller + synth
     const synth2 = new SpySynth();
-    const c2 = new DrumMachineController(synth2, new FakeClock(), store);
+    const c2 = new DrumMachineController(synth2, new Transport(), store);
     expect(c2.getState().levels.SD).toBe(0.4);
     expect(synth2.levels.SD).toBe(0.4); // applied on construct
   });
 
-  it('clamps bpm and volume', () => {
+  it('clamps bpm and volume (tempo goes to the shared transport)', () => {
     c.setBpm(9999);
-    expect(c.getState().bpm).toBe(240);
+    expect(c.getState().bpm).toBe(240); // clamped to the drum machine range
+    expect(transport.getBpm()).toBe(240);
     c.setBpm(1);
     expect(c.getState().bpm).toBe(40);
-    expect(clock.bpm).toBe(40);
     c.setVolume(2);
     expect(c.getState().volume).toBe(1);
   });
 
-  it('persists the pattern/bpm/volume/voice and restores them', () => {
+  it('persists the pattern/bpm/volume/voice and restores them (seeding the transport tempo)', () => {
     c.toggleStep(3);
     c.setBpm(140);
     c.setVolume(0.5);
     c.selectVoice('SD');
     expect(store.saved?.bpm).toBe(140);
     expect(store.saved?.pattern.BD[3]).toBe(true);
-    const c2 = new DrumMachineController(new SpySynth(), new FakeClock(), store);
+    const c2 = new DrumMachineController(new SpySynth(), new Transport(), store);
     expect(c2.getState()).toMatchObject({ bpm: 140, volume: 0.5, selected: 'SD' });
     expect(c2.getState().pattern.BD[3]).toBe(true);
   });
@@ -146,8 +140,8 @@ describe('DrumMachineController', () => {
     c.toggleStep(0);
     store.saved = null; // clear
     c.togglePlay();
-    clock.tick();
-    clock.tick();
+    step(transport);
+    step(transport);
     expect(store.saved).toBeNull(); // ticks moved the playhead but saved nothing
   });
 });

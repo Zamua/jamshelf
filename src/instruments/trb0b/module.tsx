@@ -9,7 +9,7 @@ import type { DeviceHandlers } from './ui/deviceProps';
 // The TR-B0B bundled as a jamshelf InstrumentModule. No color-swap chrome (single faithful shell).
 export const trb0bModule: InstrumentModule<ViewModel, DeviceHandlers> = {
   manifest: trb0bManifest,
-  useInstrument: (enabled) => useDrumMachine(enabled),
+  useInstrument: (enabled, transport) => useDrumMachine(enabled, transport),
   Device,
   Manual,
   releaseOnMiss: () => {}, // a tap on empty space does nothing (steps latch)

@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Stage, type StageInstrument, type Carousel } from '../stage/Stage';
 import { EyeIcon } from './EyeIcon';
 import { INSTRUMENTS, instrumentById } from '../instruments/registry';
-import type { AnyInstrumentModule, InstrumentTransport } from '../shared/instrument';
+import type { AnyInstrumentModule } from '../shared/instrument';
+import { Transport } from '../transport/transport';
+import { IntervalTicker } from '../transport/intervalTicker';
 import { createRig, loadRig, scatterFor, type Placement, type RigConfig } from '../rig/rigStore';
 import './experience.css';
 
@@ -26,7 +28,6 @@ interface Entry {
   vm: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handlers: any;
-  transport?: InstrumentTransport;
 }
 
 // Accumulates every mounted instrument's { vm, handlers } so the StageHost (a single consumer
@@ -39,17 +40,19 @@ const InstrumentsCtx = createContext<Record<string, Entry>>({});
 function InstrumentProvider({
   module,
   enabled,
+  transport,
   children,
 }: {
   module: AnyInstrumentModule;
   enabled: boolean;
+  transport: Transport;
   children: ReactNode;
 }) {
   const parent = useContext(InstrumentsCtx);
-  const { vm, handlers, transport } = module.useInstrument(enabled);
+  const { vm, handlers } = module.useInstrument(enabled, transport);
   const value = useMemo(
-    () => ({ ...parent, [module.manifest.id]: { module, vm, handlers, transport } }),
-    [parent, module, vm, handlers, transport],
+    () => ({ ...parent, [module.manifest.id]: { module, vm, handlers } }),
+    [parent, module, vm, handlers],
   );
   return <InstrumentsCtx.Provider value={value}>{children}</InstrumentsCtx.Provider>;
 }
@@ -83,6 +86,12 @@ export function Experience() {
   const location = useLocation();
   const parsed = parsePath(location.pathname);
 
+  // ONE shared master clock for the whole app: every synced instrument slaves its timing to it, so
+  // "solo is a rig of one" (a single instrument plays against the same Transport a rig shares). The
+  // IntervalTicker drives it in real time. Created once, lives for the app's life.
+  const transport = useMemo(() => new Transport(), []);
+  useMemo(() => new IntervalTicker(transport), [transport]);
+
   const rig: RigConfig | null = parsed.kind === 'rig' ? loadRig(parsed.uuid!) : null;
 
   useEffect(() => {
@@ -104,11 +113,16 @@ export function Experience() {
   // instrument is `enabled` (desktop keyboard); the rest are mounted + audio-live.
   const tree = INSTRUMENTS.reduceRight<ReactNode>(
     (children, module) => (
-      <InstrumentProvider key={module.manifest.id} module={module} enabled={module.manifest.id === activeId}>
+      <InstrumentProvider
+        key={module.manifest.id}
+        module={module}
+        enabled={module.manifest.id === activeId}
+        transport={transport}
+      >
         {children}
       </InstrumentProvider>
     ),
-    <StageHost activeId={activeId} rig={rig} focused={focused} onFocus={setFocused} onNavigate={navigate} />,
+    <StageHost activeId={activeId} rig={rig} focused={focused} onFocus={setFocused} onNavigate={navigate} transport={transport} />,
   );
 
   return <div className="experience">{tree}</div>;
@@ -120,42 +134,50 @@ function StageHost({
   focused,
   onFocus,
   onNavigate,
+  transport,
 }: {
   activeId: string | null;
   rig: RigConfig | null;
   focused: string | null;
   onFocus: (id: string | null) => void;
   onNavigate: (to: string) => void;
+  transport: Transport;
 }) {
   const entries = useContext(InstrumentsCtx);
   const [manualOpen, setManualOpen] = useState(false);
   const [inspect, setInspect] = useState(false);
   const spin = useRef<Spin>({ x: 0, y: 0, vx: 0, vy: 0, dragging: false });
 
-  // Rig transport: a shared BPM pushed to every tempo instrument, plus a global play/stop.
-  const rigTransportIds = rig ? rig.instruments.filter((id) => entries[id]?.transport) : [];
-  const rigKey = rig ? rig.instruments.join(',') : '';
-  const [rigBpm, setRigBpm] = useState(120);
+  // A minimal view of the shared Transport for the transport bar: running + tempo + the bar.beat
+  // position. Re-renders only when a displayed value actually changes (onPosition fires every pulse,
+  // but the beat only ticks a few times a second, so React bails between beats).
+  const [tview, setTview] = useState(() => ({ running: transport.isRunning(), bpm: transport.getBpm(), bar: 1, beat: 1 }));
   useEffect(() => {
-    if (!rig) return;
-    const first = rig.instruments.find((id) => entries[id]?.transport);
-    if (first) setRigBpm(entries[first].transport!.getBpm());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rigKey]);
-  const pushBpm = (next: number) => {
-    const bpm = Math.max(40, Math.min(240, Math.round(next)));
-    setRigBpm(bpm);
-    for (const id of rigTransportIds) entries[id].transport!.setBpm(bpm);
-  };
-  const anyPlaying = rigTransportIds.some((id) => entries[id].transport!.isPlaying());
+    const update = () => {
+      const p = transport.position();
+      setTview((prev) => {
+        const running = transport.isRunning();
+        const bpm = transport.getBpm();
+        if (prev.running === running && prev.bpm === bpm && prev.bar === p.bar && prev.beat === p.beat) return prev;
+        return { running, bpm, bar: p.bar, beat: p.beat };
+      });
+    };
+    const offChange = transport.onChange(update);
+    const offPos = transport.onPosition(update);
+    update();
+    return () => {
+      offChange();
+      offPos();
+    };
+  }, [transport]);
+
+  // Play/stop the whole rig (unlock every rig instrument's audio on the first gesture) + set the
+  // one shared tempo.
   const toggleTransport = () => {
-    const play = !anyPlaying;
-    for (const id of rigTransportIds) {
-      const t = entries[id].transport!;
-      if (play) t.play();
-      else t.stop();
-    }
+    if (rig) for (const id of rig.instruments) entries[id]?.handlers?.resume?.();
+    transport.toggle();
   };
+  const setBpm = (next: number) => transport.setBpm(Math.max(40, Math.min(240, Math.round(next))));
 
   // Rig-BUILD mode (in the 3D room): the camera frames the shelf + desk; tapping a shelf instrument
   // flies it down to lie flat on the desk (a scattered placement); tapping it there flies it back.
@@ -455,16 +477,18 @@ function StageHost({
         </div>
       </div>
 
-      {/* rig transport bar (shared BPM + global play), shown throughout a rig */}
+      {/* rig transport bar: the shared master clock - one play/stop, one tempo, and the bar.beat
+          position so the lock is visible. Shown throughout a rig. */}
       {rig && (
         <div className="transport-bar">
-          <button className={'transport-play' + (anyPlaying ? ' is-playing' : '')} onClick={toggleTransport} aria-label={anyPlaying ? 'Stop' : 'Play'}>
-            {anyPlaying ? '■' : '▶'}
+          <button className={'transport-play' + (tview.running ? ' is-playing' : '')} onClick={toggleTransport} aria-label={tview.running ? 'Stop' : 'Play'}>
+            {tview.running ? '■' : '▶'}
           </button>
+          <span className="transport-pos" aria-label="Position">{tview.bar}<small>.</small>{tview.beat}</span>
           <div className="transport-bpm">
-            <button className="bpm-step" onClick={() => pushBpm(rigBpm - 1)} aria-label="Slower">–</button>
-            <span className="bpm-val">{rigBpm}<small>BPM</small></span>
-            <button className="bpm-step" onClick={() => pushBpm(rigBpm + 1)} aria-label="Faster">+</button>
+            <button className="bpm-step" onClick={() => setBpm(tview.bpm - 1)} aria-label="Slower">–</button>
+            <span className="bpm-val">{tview.bpm}<small>BPM</small></span>
+            <button className="bpm-step" onClick={() => setBpm(tview.bpm + 1)} aria-label="Faster">+</button>
           </div>
         </div>
       )}

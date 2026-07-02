@@ -241,6 +241,13 @@
   -webkit-tap-highlight-color: transparent;
 }
 .transport-play.is-playing { background: #e0453a; border-color: #e0453a; color: #fff; }
+/* bar.beat position readout - monospace so it doesn't jitter as the digits tick */
+.transport-pos {
+  min-width: 40px; text-align: center;
+  color: #f4ecdf; font: 700 18px/1 ui-monospace, "SF Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.transport-pos small { color: #9c8a70; margin: 0 1px; }
 .transport-bpm { display: flex; align-items: center; gap: 2px; }
 .bpm-step {
   width: 30px; height: 40px; border: none; background: transparent; color: #cbb89c;

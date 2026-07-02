@@ -8,6 +8,7 @@ import { LocalStorageSettingsStore, migrateSettingsNamespace } from '../../infra
 import { IndexedDbLooperStore } from '../../infrastructure/persistence/indexedDbLooper';
 import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
+import type { Transport } from '../../../../transport/transport';
 
 // The joystick only registers a direction when pushed almost FULLY to it, and only
 // disengages once it springs most of the way back. Two thresholds (engage high,
@@ -81,7 +82,7 @@ function keyToDegree(key: string): Degree | null {
 // instance, mirrors its ViewModel into React state, exposes DeviceHandlers, and
 // adds desktop keyboard play. The glissando itself is delivered by the 3D pad
 // meshes calling onPadMove -> controller.movePad; nothing here needs to know.
-export function useSynth(enabled = true) {
+export function useSynth(enabled = true, transport?: Transport) {
   const controller = useMemo(() => {
     // The real synth plays audio; the audio looper taps its rendered output and
     // loops it back through a separate (untapped) bus, so each recorded layer is
@@ -101,6 +102,22 @@ export function useSynth(enabled = true) {
   const lastQuality = useRef<Quality>('TRIAD'); // for joystick direction hysteresis
 
   useEffect(() => controller.subscribe(setVm), [controller]);
+
+  // Bridge tempo to the shared Transport (one tempo owner across the rig). Two-way, guarded so a
+  // change never echoes: the HiClone's own tempo edits push to the transport (so the bar + the drum
+  // machine follow), and transport changes flow back to the HiClone. It PUSHES on mount rather than
+  // adopting, so the instrument keeps its own saved bpm and seeds the shared clock from it. (The
+  // HiClone's arp/repeat/looper still tick off its own clock for now; a later step slaves those to
+  // the Transport's clock too, so they phase-lock to the drum grid.)
+  useEffect(() => {
+    if (!transport) return;
+    return transport.onChange(() => {
+      if (transport.getBpm() !== controller.getBpm()) controller.setBpm(transport.getBpm());
+    });
+  }, [controller, transport]);
+  useEffect(() => {
+    if (transport && vm.bpm !== transport.getBpm()) transport.setBpm(vm.bpm);
+  }, [transport, vm.bpm]);
 
   // Stuck-note guard: a pad's pointer-up is delivered by raycast, so a finger that
   // lifts off the EDGE of a pad or in a gap (easy when swiping fast) leaves the note
@@ -245,18 +262,5 @@ export function useSynth(enabled = true) {
     };
   }, [controller]);
 
-  // Rig transport: the HiClone follows the shared BPM (its arp/repeat/looper + tempo-synced delay
-  // re-sync). It has no global sequencer play, so play/stop are no-ops (chords are played live).
-  const transport = useMemo(
-    () => ({
-      setBpm: (bpm: number) => controller.setBpm(bpm),
-      getBpm: () => controller.getBpm(),
-      play: () => {},
-      stop: () => {},
-      isPlaying: () => false,
-    }),
-    [controller],
-  );
-
-  return { vm, handlers, transport };
+  return { vm, handlers };
 }

@@ -4,12 +4,12 @@ import {
   emptyPattern,
   toggleStep,
   clearVoice,
-  nextStep,
   voicesAtStep,
   type DrumVoice,
   type Pattern,
 } from '../domain/sequencer';
-import type { Clock, DrumMachinePort, DrumSettings, SettingsStore } from './ports';
+import type { DrumMachinePort, DrumSettings, SettingsStore } from './ports';
+import type { Clock, Transport } from '../../../transport/transport';
 import { MAX_BPM, MIN_BPM, defaultLevels, type Listener, type ViewModel } from './state';
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -41,14 +41,14 @@ export function coerceSettings(raw: unknown, fallback: DrumSettings): DrumSettin
   return { pattern, bpm, volume, selected, levels };
 }
 
-// Framework-agnostic controller for the TR-B0B. Owns the pattern + transport, drives the
-// DrumMachinePort, and publishes a ViewModel. A 16th-note Clock tick advances the playhead and
-// triggers whichever voices are active on that step.
+// Framework-agnostic controller for the TR-B0B, the sequenced backbone of a rig. It owns the
+// pattern + sound but slaves its timing to the shared Transport (play/stop, tempo and position all
+// live there - the drum machine never owns a second clock). A 16th-note sub-clock of the Transport
+// advances the playhead; the step index is derived from the Transport's absolute tick, so it stays
+// phase-locked and resumes correctly. START toggles the Transport (one play across the rig).
 export class DrumMachineController {
   private power = true;
-  private playing = false;
-  private bpm = 120;
-  private step = -1; // playhead; -1 when stopped, so the first tick lands on step 0
+  private lastStep = 0; // playhead, derived from the Transport tick (index % STEPS)
   private selected: DrumVoice = 'BD';
   private pattern: Pattern = emptyPattern();
   private volume = 0.85;
@@ -57,30 +57,37 @@ export class DrumMachineController {
 
   private listeners = new Set<Listener>();
   private readonly synth: DrumMachinePort;
+  private readonly transport: Transport;
   private readonly clock: Clock;
   private readonly settings: SettingsStore | null;
   private lastSavedJson = '';
 
-  constructor(synth: DrumMachinePort, clock: Clock, settings?: SettingsStore) {
+  constructor(synth: DrumMachinePort, transport: Transport, settings?: SettingsStore) {
     this.synth = synth;
-    this.clock = clock;
+    this.transport = transport;
     this.settings = settings ?? null;
 
     const saved = this.settings?.load();
     if (saved) {
       const s = coerceSettings(saved, this.snapshotSettings());
       this.pattern = s.pattern;
-      this.bpm = s.bpm;
       this.volume = s.volume;
       this.selected = s.selected;
       this.levels = s.levels;
+      this.transport.setBpm(s.bpm); // seed the shared tempo from this instrument's saved bpm
     }
     this.synth.setVolume(this.volume);
     for (const v of VOICES) this.synth.setLevel(v, this.levels[v]);
     this.synth.setMuted(!this.power);
+
+    // A 16th-note sub-clock of the shared Transport advances the sequencer. It is always "started"
+    // (the sequencer always wants ticks); whether pulses actually arrive is the Transport's play/stop.
+    this.clock = this.transport.clock();
     this.clock.setBeatsPerTick(0.25); // one step = a 16th note
-    this.clock.setBpm(this.bpm);
-    this.clock.onTick(() => this.tick());
+    this.clock.onTick((tick) => this.onTick(tick));
+    this.clock.start();
+    // Redraw when the shared transport's play/stop or tempo changes (a rig peer can move them too).
+    this.transport.onChange(() => this.publish());
     this.lastSavedJson = JSON.stringify(this.snapshotSettings());
   }
 
@@ -92,11 +99,12 @@ export class DrumMachineController {
   }
 
   getState(): ViewModel {
+    const running = this.transport.isRunning();
     return {
       power: this.power,
-      playing: this.playing,
-      bpm: this.bpm,
-      currentStep: this.playing ? this.step : -1,
+      playing: running,
+      bpm: this.transport.getBpm(),
+      currentStep: running && this.power ? this.lastStep : -1,
       selected: this.selected,
       pattern: this.pattern,
       volume: this.volume,
@@ -106,7 +114,7 @@ export class DrumMachineController {
   }
 
   private snapshotSettings(): DrumSettings {
-    return { pattern: this.pattern, bpm: this.bpm, volume: this.volume, selected: this.selected, levels: { ...this.levels } };
+    return { pattern: this.pattern, bpm: this.transport.getBpm(), volume: this.volume, selected: this.selected, levels: { ...this.levels } };
   }
 
   private maybeSave(): void {
@@ -124,10 +132,12 @@ export class DrumMachineController {
   }
 
   // --- the transport tick ---
-  private tick(): void {
-    this.step = nextStep(this.step);
+  // `tick` is the Transport's absolute 16th index; the step is that modulo the pattern length, so
+  // the playhead is a pure function of shared position (phase-locked, resumes correctly).
+  private onTick(tick: number): void {
+    this.lastStep = ((tick % STEPS) + STEPS) % STEPS;
     if (this.power) {
-      for (const v of voicesAtStep(this.pattern, this.step)) this.synth.trigger(v);
+      for (const v of voicesAtStep(this.pattern, this.lastStep)) this.synth.trigger(v);
     }
     this.publish(); // move the playhead (does not hit storage - the pattern is unchanged)
   }
@@ -137,17 +147,10 @@ export class DrumMachineController {
     this.synth.resume();
   }
 
+  // START toggles the shared Transport - one play across the rig (the onChange subscription redraws).
   togglePlay(): void {
     if (!this.power) return;
-    this.playing = !this.playing;
-    if (this.playing) {
-      this.step = -1; // first tick lands on step 0
-      this.clock.setBpm(this.bpm);
-      this.clock.start();
-    } else {
-      this.clock.stop();
-    }
-    this.publish();
+    this.transport.toggle();
   }
 
   // Toggle a step of the SELECTED voice.
@@ -173,13 +176,11 @@ export class DrumMachineController {
   }
 
   setBpm(bpm: number): void {
-    this.bpm = clamp(Math.round(bpm), MIN_BPM, MAX_BPM);
-    this.clock.setBpm(this.bpm);
-    this.publish();
+    this.transport.setBpm(clamp(Math.round(bpm), MIN_BPM, MAX_BPM)); // one tempo owner; onChange redraws
   }
 
   nudgeBpm(delta: number): void {
-    this.setBpm(this.bpm + delta);
+    this.setBpm(this.transport.getBpm() + delta);
   }
 
   setVolume(v: number): void {
@@ -197,10 +198,8 @@ export class DrumMachineController {
 
   togglePower(): void {
     this.power = !this.power;
-    if (!this.power) {
-      this.playing = false;
-      this.clock.stop();
-    }
+    // Power only mutes THIS instrument; it never stops the shared Transport (a rig peer keeps time).
+    // While off, the playhead hides (getState gates on power) and no voices trigger.
     this.synth.setMuted(!this.power);
     this.publish();
   }

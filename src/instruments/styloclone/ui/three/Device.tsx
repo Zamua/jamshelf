@@ -43,6 +43,15 @@ export function Device({ vm, handlers }: DeviceProps) {
   const ky = (ny: number) => KEYBOARD.y + (ny - 0.5) * KEYBOARD.h;
   const plateZ = FRONT_Z + 0.04;
 
+  // the world position of the currently-played key (for the stylus to track), or null
+  const litPos = useMemo<[number, number] | null>(() => {
+    if (vm.litKey == null) return null;
+    const c = cells.find((cell) => cell.midi === vm.litKey);
+    if (!c) return null;
+    return [kx(c.hit.x + c.hit.w / 2), ky(c.hit.y + c.hit.h * 0.62)];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vm.litKey, cells]);
+
   const badgeText = vm.power ? PALETTE.badgeText : dim(PALETTE.badgeText, 0.4);
 
   return (
@@ -73,10 +82,11 @@ export function Device({ vm, handlers }: DeviceProps) {
         </Text>
       </group>
 
-      {/* the stylus + its channel */}
-      <Stylus />
+      {/* the stylus + its channel (animated: tracks the played key, hovers, drops, returns) */}
+      <Stylus litPos={litPos} plateZ={plateZ} />
 
-      {/* the flat etched keyboard plate (canvas texture) */}
+      {/* the flat etched keyboard plate (canvas texture). The recessed/inset look (the key bed
+          sunk into the white panel) is baked into the texture as a bevel + inner shadow. */}
       <mesh position={[KEYBOARD.x, KEYBOARD.y, FRONT_Z + 0.036]}>
         <planeGeometry args={[KEYBOARD.w, KEYBOARD.h]} />
         <meshStandardMaterial map={keyboardTex} metalness={0.12} roughness={0.6} />

@@ -22,12 +22,38 @@ export function makeKeyboardTexture(): CanvasTexture {
   ctx.fillStyle = PALETTE.strip;
   ctx.fillRect(0, 0, W, H);
 
-  // black key-bed inset (the etch background the keys sit in)
+  // black key-bed, INSET into the white panel: a beveled rim (dark top / light bottom) + a soft
+  // inner shadow at the top so the bed reads as recessed below the surface (matches the real device).
+  const bedX = px(0.012);
   const bedTop = py(0.86);
   const bedBot = py(0.1);
+  const bedW = px(0.976);
+  const bedH = bedBot - bedTop;
+
   ctx.fillStyle = PALETTE.plate;
-  roundRect(ctx, px(0.012), bedTop, px(0.976), bedBot - bedTop, 10);
+  roundRect(ctx, bedX, bedTop, bedW, bedH, 10);
   ctx.fill();
+
+  // inner top shadow (recess catches shadow at the top lip)
+  ctx.save();
+  roundRect(ctx, bedX, bedTop, bedW, bedH, 10);
+  ctx.clip();
+  const inner = ctx.createLinearGradient(0, bedTop, 0, bedTop + bedH * 0.4);
+  inner.addColorStop(0, 'rgba(0,0,0,0.55)');
+  inner.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = inner;
+  ctx.fillRect(bedX, bedTop, bedW, bedH * 0.4);
+  ctx.restore();
+
+  // beveled rim: dark at the top edge (shadow), light at the bottom edge (the lip catches light)
+  const rim = ctx.createLinearGradient(0, bedTop, 0, bedBot);
+  rim.addColorStop(0, 'rgba(0,0,0,0.4)');
+  rim.addColorStop(0.5, 'rgba(0,0,0,0.12)');
+  rim.addColorStop(1, 'rgba(255,255,255,0.7)');
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = rim;
+  roundRect(ctx, bedX, bedTop, bedW, bedH, 10);
+  ctx.stroke();
 
   const cells = keyCells();
 

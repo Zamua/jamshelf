@@ -18,9 +18,10 @@ export interface Position {
 }
 
 // The contract an instrument's sequencer/arp consumes. `start`/`stop` say whether THIS instrument
-// wants ticks right now (e.g. an arp starts when a pad is held); whether pulses actually advance
-// is the Transport's `running`. onTick passes the absolute sub-tick index (0,1,2,... since pulse
-// 0) so a consumer can derive its exact position (a 16-step sequencer: index % 16).
+// wants ticks right now (e.g. an arp starts when a pad is held). onTick passes the absolute sub-tick
+// index (0,1,2,... since pulse 0) so a consumer can derive its exact position (a 16-step sequencer:
+// index % 16). A GATED clock (a sequencer) only fires while the transport is explicitly playing; a
+// FREE clock (a live arp) fires on every pulse, so it also runs in free-run (see setFreeRun).
 export interface Clock {
   setBpm(bpm: number): void;
   setBeatsPerTick(beats: number): void; // 0.25 = a 16th note
@@ -37,7 +38,10 @@ function clampBpm(bpm: number): number {
 
 export class Transport {
   private bpm = 120;
-  private running = false;
+  private running = false; // explicit play/stop; drives position + gates sequencer clocks
+  private freeRun = false; // keep the pulse advancing even when stopped, for FREE clocks (a live
+  //                          arp with no play button). Set by the composition root for a solo
+  //                          free-running instrument; off in a rig (there the bar owns play/stop).
   private pulse = -1; // zero-based index of the CURRENT pulse; -1 = none fired yet (first is pulse 0)
   private readonly pulseSubs = new Set<(pulse: number) => void>(); // sub-clocks
   private readonly changeSubs = new Set<Listener>(); // structural: tempo / running (re-arms the ticker)
@@ -49,6 +53,17 @@ export class Transport {
   }
   isRunning(): boolean {
     return this.running;
+  }
+  // Should the pulse counter advance right now? True when explicitly playing OR in free-run.
+  isAdvancing(): boolean {
+    return this.running || this.freeRun;
+  }
+  // Free-run keeps the clock ticking for FREE sub-clocks (a live arp) without "playing" - so a solo
+  // instrument with no transport bar still arps on pad-hold, while sequencers (gated) stay silent.
+  setFreeRun(on: boolean): void {
+    if (on === this.freeRun) return;
+    this.freeRun = on;
+    this.emitChange(); // the ticker re-arms on advancing changes
   }
   intervalMs(): number {
     return 60000 / this.bpm / PPQN; // ms per pulse (what the Ticker schedules)
@@ -75,11 +90,12 @@ export class Transport {
     this.running ? this.stop() : this.play();
   }
 
-  // Called by the Ticker once per pulse-interval. Advances the counter only while running, then
-  // fires the sub-clocks + the position listeners. Does NOT fire onChange - a per-pulse structural
+  // Called by the Ticker once per pulse-interval. Advances the counter while advancing (playing or
+  // free-run), then fires the sub-clocks + the position listeners. Each sub-clock decides for itself
+  // whether to fire (a gated one only while playing). Does NOT fire onChange - a per-pulse structural
   // change would make the ticker re-arm every pulse.
   advance(): void {
-    if (!this.running) return;
+    if (!this.isAdvancing()) return;
     this.pulse += 1;
     for (const cb of this.pulseSubs) cb(this.pulse);
     for (const cb of this.positionSubs) cb();
@@ -114,13 +130,17 @@ export class Transport {
   }
 
   // A Clock at a chosen subdivision, phase-locked to the shared pulse counter. Multiple instruments
-  // each get their own; they all fire on the same grid.
-  clock(): Clock {
+  // each get their own; they all fire on the same grid. `gated` (default true) = a sequencer clock
+  // that only fires while the transport is explicitly playing; `gated=false` = a FREE clock (a live
+  // arp) that fires on every advancing pulse, so it also runs in free-run.
+  clock(gated = true): Clock {
     let subPulses = Math.round(0.25 * PPQN); // default a 16th note
     let started = false;
     const subs = new Set<(tick: number) => void>();
     const onPulse = (pulse: number) => {
-      if (started && pulse % subPulses === 0) {
+      if (!started) return;
+      if (gated && !this.running) return; // a sequencer stays silent unless explicitly playing
+      if (pulse % subPulses === 0) {
         const tick = pulse / subPulses;
         for (const cb of subs) cb(tick);
       }

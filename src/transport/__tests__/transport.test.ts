@@ -89,6 +89,29 @@ describe('Transport (the master clock)', () => {
     expect(t.getBpm()).toBe(140);
   });
 
+  it('free-run advances the pulse while stopped; FREE clocks fire, GATED (sequencer) clocks do not', () => {
+    const gated = t.clock(true); // a sequencer
+    const free = t.clock(false); // a live arp
+    gated.setBeatsPerTick(0.25);
+    free.setBeatsPerTick(0.25);
+    const g: number[] = [];
+    const f: number[] = [];
+    gated.onTick((n) => g.push(n));
+    free.onTick((n) => f.push(n));
+    gated.start();
+    free.start();
+    t.setFreeRun(true); // stopped, but advancing
+    expect(t.isRunning()).toBe(false);
+    expect(t.isAdvancing()).toBe(true);
+    run(t, 13); // indices 0..12; aligned 0,6,12
+    expect(f).toEqual([0, 1, 2]); // the arp runs in free-run
+    expect(g).toEqual([]); // the sequencer stays silent (not playing)
+    t.play(); // now explicitly playing -> the gated clock joins
+    run(t, 6); // indices 13..18; aligned 18 -> tick 3
+    expect(g).toEqual([3]);
+    expect(f).toEqual([0, 1, 2, 3]); // both fire once playing
+  });
+
   it('onChange fires on structural changes only; onPosition fires per pulse', () => {
     let changes = 0;
     let positions = 0;

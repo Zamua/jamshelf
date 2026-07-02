@@ -15,15 +15,11 @@ export class IntervalTicker {
     this.sync();
   }
 
-  // Match the timer to the transport's current running + tempo.
+  // Match the timer to the transport: run while it is advancing (playing OR free-run), at the
+  // current pulse interval.
   private sync(): void {
-    const shouldRun = this.transport.isRunning();
-    if (!shouldRun) {
-      this.clear();
-      return;
-    }
-    // running: (re)arm at the current pulse interval
     this.clear();
+    if (!this.transport.isAdvancing()) return;
     this.timer = setInterval(() => this.transport.advance(), this.transport.intervalMs());
   }
 

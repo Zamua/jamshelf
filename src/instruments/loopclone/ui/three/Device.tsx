@@ -28,10 +28,13 @@ import { PALETTE, dim } from './palette';
 import { BRAND_FONT, LABEL_FONT } from './fonts';
 import { TrackChannel } from './TrackChannel';
 
-// A panel knob: a dark disc + an indicator line. Non-interactive in the first drafts.
-function Knob({ x, y, r, power }: { x: number; y: number; r: number; power: boolean }) {
+// A panel knob: a small label above, a dark disc, an indicator line. Non-interactive in the drafts.
+function Knob({ x, y, r, power, label }: { x: number; y: number; r: number; power: boolean; label: string }) {
   return (
     <group position={[x, y, FRONT_Z]}>
+      <Text font={LABEL_FONT} position={[0, r + 0.075, 0.02]} fontSize={0.046} color={power ? PALETTE.inkDim : '#55575c'} anchorX="center" anchorY="middle" letterSpacing={0.04}>
+        {label}
+      </Text>
       <mesh position={[0, 0, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[r, r * 1.05, 0.12, 32]} />
         <meshStandardMaterial color={power ? PALETTE.knobBody : dim(PALETTE.knobBody, 0.3)} metalness={0.45} roughness={0.42} />
@@ -121,12 +124,12 @@ export function Device({ vm, handlers }: DeviceProps) {
         {loops} LOOP{loops === 1 ? '' : 'S'} · {vm.bpm}
       </Text>
 
-      {/* knob cluster */}
-      <Knob x={KNOB_MIC.x} y={KNOB_MIC.y} r={KNOB_MIC.r} power={on} />
-      <Knob x={KNOB_IN.x} y={KNOB_IN.y} r={KNOB_IN.r} power={on} />
-      <Knob x={KNOB_OUT.x} y={KNOB_OUT.y} r={KNOB_OUT.r} power={on} />
-      <Knob x={KNOB_MEM.x} y={KNOB_MEM.y} r={KNOB_MEM.r} power={on} />
-      <Knob x={KNOB_OUTPUT.x} y={KNOB_OUTPUT.y} r={KNOB_OUTPUT.r} power={on} />
+      {/* knob cluster (labeled) */}
+      <Knob x={KNOB_MIC.x} y={KNOB_MIC.y} r={KNOB_MIC.r} label={KNOB_MIC.label} power={on} />
+      <Knob x={KNOB_IN.x} y={KNOB_IN.y} r={KNOB_IN.r} label={KNOB_IN.label} power={on} />
+      <Knob x={KNOB_OUT.x} y={KNOB_OUT.y} r={KNOB_OUT.r} label={KNOB_OUT.label} power={on} />
+      <Knob x={KNOB_MEM.x} y={KNOB_MEM.y} r={KNOB_MEM.r} label={KNOB_MEM.label} power={on} />
+      <Knob x={KNOB_OUTPUT.x} y={KNOB_OUTPUT.y} r={KNOB_OUTPUT.r} label={KNOB_OUTPUT.label} power={on} />
 
       {/* transport row (colored buttons: a dark recess + a raised colored cap + a label below) */}
       {TRANSPORT.map((b) => {

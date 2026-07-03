@@ -23,11 +23,11 @@ export const TRACK_SECTION = { y: (BOUNDARY_Y + BOTTOM_EDGE) / 2, h: BOUNDARY_Y 
 export const BRAND = { x: -2.9, y: 1.28, size: 0.21, text: 'LoopClone' } as const;
 export const SUBTITLE = { x: -1.32, y: 1.26, size: 0.082, text: 'LOOP STATION' } as const;
 export const OLED = { x: 0.28, y: 1.0, w: 1.36, h: 0.42 } as const;
-export const KNOB_MIC = { x: -2.76, y: 0.9, r: 0.16 } as const;
-export const KNOB_IN = { x: -2.2, y: 0.92, r: 0.093 } as const;
-export const KNOB_OUT = { x: -1.85, y: 0.92, r: 0.093 } as const;
-export const KNOB_MEM = { x: 1.32, y: 0.98, r: 0.105 } as const;
-export const KNOB_OUTPUT = { x: 2.76, y: 0.9, r: 0.16 } as const;
+export const KNOB_MIC = { x: -2.76, y: 0.88, r: 0.16, label: 'MIC' } as const;
+export const KNOB_IN = { x: -2.2, y: 0.9, r: 0.093, label: 'IN' } as const;
+export const KNOB_OUT = { x: -1.85, y: 0.9, r: 0.093, label: 'OUT' } as const;
+export const KNOB_MEM = { x: 1.32, y: 0.96, r: 0.105, label: 'MEM' } as const;
+export const KNOB_OUTPUT = { x: 2.76, y: 0.88, r: 0.16, label: 'VOL' } as const;
 
 export const TRANSPORT_R = 0.094;
 export const TRANSPORT = [

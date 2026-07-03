@@ -91,6 +91,12 @@ person reads it instantly as "the thing everything follows."
 Mental model: *the transport bar is my DIN-sync master; each device is slaved to it or played
 free; I press play once and the rig is in time.*
 
+## Known gaps / follow-ups
+
+- **Tempo-lock after recording a loop.** A recorded loop is baked audio at the record tempo; changing
+  the transport BPM re-times the drums (they follow the clock) but NOT the loop, so they drift out of
+  sync. Fix: lock/disable the tempo control once any loop exists (or warn, or time-stretch). Deferred.
+
 ## Timing precision (future: an audio-clock scheduler)
 
 Today the `IntervalTicker` drives the transport off the WALL clock (`performance.now`,

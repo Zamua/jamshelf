@@ -4,6 +4,7 @@ import type { ViewModel } from '../../application/state';
 import { WebAudioStylophone } from '../../infrastructure/audio/webAudioStylophone';
 import { LocalStorageStylophoneSettings } from '../../infrastructure/persistence/localStorageStylophoneSettings';
 import { KEYS, keyRow, type Midi } from '../../domain/keyboard';
+import type { SharedAudio } from '../../../../rig/rigAudio';
 import type { DeviceHandlers } from '../deviceProps';
 
 // Desktop keyboard -> the 20 keys. Naturals map to the QWERTY letter row, accidentals to the
@@ -28,10 +29,10 @@ const KEY_FOR_CHAR: Record<string, Midi> = (() => {
 // mirrors its ViewModel into React state, exposes DeviceHandlers, and adds desktop keyboard
 // play with mono last-note priority. The device (3D keyboard plate) delivers touch/mouse play
 // by calling onKeyDown/onKeyUp; nothing here needs to know how.
-export function useStylophone(enabled = true) {
+export function useStylophone(enabled = true, audio?: SharedAudio) {
   const controller = useMemo(() => {
-    const synth = new WebAudioStylophone();
     const ns = 'styloclone';
+    const synth = new WebAudioStylophone(audio, ns);
     return new StylophoneController(synth, new LocalStorageStylophoneSettings(ns));
   }, []);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());

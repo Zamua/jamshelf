@@ -26,7 +26,7 @@ function PlayTools({ vm, handlers }: { vm: ViewModel; handlers: DeviceHandlers }
 // instrument's internals.
 export const hicloneModule: InstrumentModule<ViewModel, DeviceHandlers> = {
   manifest: hicloneManifest,
-  useInstrument: (enabled, transport) => useSynth(enabled, transport),
+  useInstrument: (enabled, transport, audio) => useSynth(enabled, transport, audio),
   Device,
   Manual,
   releaseOnMiss: (handlers) => handlers.onJoyEnd(),

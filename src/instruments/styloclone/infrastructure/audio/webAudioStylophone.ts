@@ -1,5 +1,6 @@
 import { midiToFreq, type Midi } from '../../domain/keyboard';
 import type { StylophonePort, VoiceName } from '../../application/ports';
+import type { SharedAudio } from '../../../../rig/rigAudio';
 
 // The StyloClone's audio engine: a strictly MONOPHONIC relaxation-oscillator voice, faithful
 // to the 1968 Stylophone's dirty, reedy buzz. ONE oscillator runs continuously; the stylus
@@ -57,6 +58,13 @@ export class WebAudioStylophone implements StylophonePort {
   private volume = 0.8;
   private muted = false;
   private sounding = false;
+  private readonly shared: SharedAudio | undefined; // the rig's shared audio (undefined = own ctx, e.g. tests)
+  private readonly deviceId: string;
+
+  constructor(shared?: SharedAudio, deviceId = 'styloclone') {
+    this.shared = shared;
+    this.deviceId = deviceId;
+  }
 
   resume(): void {
     if (!this.ctx) this.build();
@@ -140,9 +148,9 @@ export class WebAudioStylophone implements StylophonePort {
 
   // --- internals ---
   private build(): void {
-    const Ctor =
-      window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new Ctor();
+    const ctx =
+      this.shared?.ctx ??
+      new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     this.ctx = ctx;
 
     const spec = VOICES[this.voice];
@@ -179,7 +187,7 @@ export class WebAudioStylophone implements StylophonePort {
     lowpass.connect(vca);
     vca.connect(master);
     master.connect(limiter);
-    limiter.connect(ctx.destination);
+    limiter.connect(this.shared ? this.shared.output(this.deviceId) : ctx.destination); // the device's rig jack
     osc.start();
 
     // pitch modulation: tune (static cents) + vibrato LFO (cents), summed into osc.detune

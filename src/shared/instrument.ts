@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { Transport } from '../transport/transport';
+import type { SharedAudio } from '../rig/rigAudio';
 
 // The metadata the shelf shows for an instrument. The stage hosts the instrument's
 // LIVE device directly (the shelf and the play view are one continuous scene), so the
@@ -30,7 +31,10 @@ export interface InstrumentModule<VM = unknown, H = unknown> {
   // so only the ACTIVE instrument responds when several are mounted on the shelf. `transport` is
   // the shared master clock: every synced instrument slaves its timing to it (one tempo, one
   // play/stop, one position across the rig). A free instrument (StyloClone) simply ignores it.
-  useInstrument(enabled: boolean, transport: Transport): { vm: VM; handlers: H };
+  // `audio` is the rig's shared audio graph (so a device's output can be routed into the looper). The
+  // composition root always provides it; a device rendered purely for a thumbnail may omit it (its
+  // audio adapter then lazily makes its own context, which never spins up since it's never resumed).
+  useInstrument(enabled: boolean, transport: Transport, audio?: SharedAudio): { vm: VM; handlers: H };
   // The 3D device (purely presentational: renders the VM, fires raw input via the handlers).
   readonly Device: ComponentType<{ vm: VM; handlers: H }>;
   // Optional how-to-play overlay (HTML), shown in the play view.

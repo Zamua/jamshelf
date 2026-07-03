@@ -1,6 +1,7 @@
 import type { DrumName, DrumKit } from '../../domain/music';
 import { SAMPLE_KIT_PADS } from '../../domain/music';
 import type { PatchName, SynthPort } from '../../application/ports';
+import type { SharedAudio } from '../../../../rig/rigAudio';
 
 // Per-kit tuning factors applied to the base drum recipes (kick pitch + decay,
 // snare noise/tone balance, hat brightness). TIGHT = neutral; 808 = boomy + softer;
@@ -184,6 +185,13 @@ export class WebAudioSynth implements SynthPort {
   private fxDelayOn = false;
   private fxChorusOn = false;
   private fxDelayMs = 250;
+  private readonly shared: SharedAudio | undefined; // the rig's shared audio (undefined = own ctx, e.g. tests)
+  private readonly deviceId: string;
+
+  constructor(shared?: SharedAudio, deviceId = 'hiclone') {
+    this.shared = shared;
+    this.deviceId = deviceId;
+  }
 
   resume(): void {
     if (!this.ctx) this.build();
@@ -320,10 +328,10 @@ export class WebAudioSynth implements SynthPort {
   // --- internals -----------------------------------------------------------
 
   private build(): void {
-    const Ctor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new Ctor();
+    const ctx =
+      this.shared?.ctx ??
+      new (window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     this.ctx = ctx;
 
     // Global pitch-bend source: a constant signal (in cents) fanned out to every
@@ -353,7 +361,7 @@ export class WebAudioSynth implements SynthPort {
     limiter.attack.value = 0.0005;
     limiter.release.value = 0.06;
     comp.connect(limiter);
-    limiter.connect(ctx.destination);
+    limiter.connect(this.shared ? this.shared.output(this.deviceId) : ctx.destination); // the device's rig jack
     this.master = master;
 
     // Two summing buses sit between the live graph and the compressor so the looper

@@ -3,12 +3,13 @@ import { LoopStationController } from '../../application/loopStationController';
 import type { ViewModel } from '../../application/state';
 import { Transport } from '../../../../transport/transport';
 import { IntervalTicker } from '../../../../transport/intervalTicker';
+import type { SharedAudio } from '../../../../rig/rigAudio';
 import type { DeviceHandlers } from '../deviceProps';
 
 // React adapter for the LoopStationController: owns the controller, mirrors its ViewModel to React
 // state, exposes DeviceHandlers. In a rig it slaves to the shared Transport; solo it spins its own
-// ("solo is a rig of one"). Audio is not wired yet (first draft).
-export function useLoopStation(_enabled = true, transport?: Transport) {
+// ("solo is a rig of one"). `audio` (the shared graph) is threaded for Phase 2 (the record engine).
+export function useLoopStation(_enabled = true, transport?: Transport, _audio?: SharedAudio) {
   const controller = useMemo(() => {
     const t = transport ?? new Transport();
     if (!transport) new IntervalTicker(t);

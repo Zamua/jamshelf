@@ -9,7 +9,7 @@ import type { DeviceHandlers } from './ui/deviceProps';
 // machine; the audio (record/route/play) is a later iteration.
 export const loopcloneModule: InstrumentModule<ViewModel, DeviceHandlers> = {
   manifest: loopcloneManifest,
-  useInstrument: (enabled, transport) => useLoopStation(enabled, transport),
+  useInstrument: (enabled, transport, audio) => useLoopStation(enabled, transport, audio),
   Device,
   releaseOnMiss: () => {}, // a tap on empty space does nothing (track states latch)
   withHelpToggle: (handlers, toggle) => ({ ...handlers, onHelpToggle: toggle }),

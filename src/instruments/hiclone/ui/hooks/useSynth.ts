@@ -10,6 +10,7 @@ import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
 import { Transport } from '../../../../transport/transport';
 import { IntervalTicker } from '../../../../transport/intervalTicker';
+import type { SharedAudio } from '../../../../rig/rigAudio';
 
 // The joystick only registers a direction when pushed almost FULLY to it, and only
 // disengages once it springs most of the way back. Two thresholds (engage high,
@@ -83,12 +84,12 @@ function keyToDegree(key: string): Degree | null {
 // instance, mirrors its ViewModel into React state, exposes DeviceHandlers, and
 // adds desktop keyboard play. The glissando itself is delivered by the 3D pad
 // meshes calling onPadMove -> controller.movePad; nothing here needs to know.
-export function useSynth(enabled = true, transport?: Transport) {
+export function useSynth(enabled = true, transport?: Transport, audio?: SharedAudio) {
   const controller = useMemo(() => {
     // The real synth plays audio; the audio looper taps its rendered output and
     // loops it back through a separate (untapped) bus, so each recorded layer is
     // frozen and unaffected by later sound / play-mode changes.
-    const realSynth = new WebAudioSynth();
+    const realSynth = new WebAudioSynth(audio, 'hiclone');
     // Persistence is namespaced to this instrument ('hiclone') so each instrument on
     // the shelf keeps its own state: loops in IndexedDB (audio is too big for
     // localStorage), durable settings in localStorage. Both restore on reload / PWA reopen.

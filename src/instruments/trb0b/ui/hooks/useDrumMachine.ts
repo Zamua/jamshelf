@@ -5,6 +5,7 @@ import { WebAudioDrums } from '../../infrastructure/audio/webAudioDrums';
 import { LocalStorageDrumSettings } from '../../infrastructure/persistence/localStorageDrumSettings';
 import { Transport } from '../../../../transport/transport';
 import { IntervalTicker } from '../../../../transport/intervalTicker';
+import type { SharedAudio } from '../../../../rig/rigAudio';
 import { VOICES, STEPS } from '../../domain/sequencer';
 import type { DeviceHandlers } from '../deviceProps';
 
@@ -14,10 +15,10 @@ import type { DeviceHandlers } from '../deviceProps';
 //
 // `transport` is the shared master clock when in a rig; solo, the instrument spins up its own
 // (with a ticker) - "solo is a rig of one". START toggles whichever Transport it was handed.
-export function useDrumMachine(enabled = true, transport?: Transport) {
+export function useDrumMachine(enabled = true, transport?: Transport, audio?: SharedAudio) {
   const controller = useMemo(() => {
-    const synth = new WebAudioDrums();
     const ns = 'trb0b';
+    const synth = new WebAudioDrums(audio, ns);
     const t = transport ?? new Transport();
     if (!transport) new IntervalTicker(t); // solo: drive our own transport in real time
     return new DrumMachineController(synth, t, new LocalStorageDrumSettings(ns));

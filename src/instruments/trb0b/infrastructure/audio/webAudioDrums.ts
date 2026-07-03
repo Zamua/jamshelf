@@ -1,9 +1,10 @@
 import type { DrumVoice } from '../../domain/sequencer';
 import type { DrumMachinePort } from '../../application/ports';
+import type { SharedAudio } from '../../../../rig/rigAudio';
 
 // The TR-B0B drum engine: each voice is a one-shot SYNTHESIZED hit (no samples), modelled on the
-// 808's analog voices. Everything routes master -> limiter -> destination so stacked hits never
-// hard-clip. The AudioContext is built lazily on the first gesture.
+// 808's analog voices. Everything routes master -> limiter -> its rig output jack so stacked hits
+// never hard-clip and the whole device is routable. The AudioContext is built lazily on first gesture.
 
 export class WebAudioDrums implements DrumMachinePort {
   private ctx: AudioContext | null = null;
@@ -12,6 +13,13 @@ export class WebAudioDrums implements DrumMachinePort {
   private volume = 0.85;
   private muted = false;
   private levels: Partial<Record<DrumVoice, number>> = {}; // per-voice level (1 if unset)
+  private readonly shared: SharedAudio | undefined; // the rig's shared audio (undefined = own ctx, e.g. tests)
+  private readonly deviceId: string;
+
+  constructor(shared?: SharedAudio, deviceId = 'trb0b') {
+    this.shared = shared;
+    this.deviceId = deviceId;
+  }
 
   resume(): void {
     if (!this.ctx) this.build();
@@ -61,8 +69,9 @@ export class WebAudioDrums implements DrumMachinePort {
 
   // --- internals ---
   private build(): void {
-    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    const ctx = new Ctor();
+    const ctx =
+      this.shared?.ctx ??
+      new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
     this.ctx = ctx;
 
     const master = ctx.createGain();
@@ -74,7 +83,7 @@ export class WebAudioDrums implements DrumMachinePort {
     limiter.attack.value = 0.003;
     limiter.release.value = 0.08;
     master.connect(limiter);
-    limiter.connect(ctx.destination);
+    limiter.connect(this.shared ? this.shared.output(this.deviceId) : ctx.destination); // the device's rig jack
     this.master = master;
 
     // one reusable white-noise buffer

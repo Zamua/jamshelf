@@ -10,7 +10,7 @@ import type { DeviceHandlers } from './ui/deviceProps';
 // faithful cream shell), so no PlayTools.
 export const stylocloneModule: InstrumentModule<ViewModel, DeviceHandlers> = {
   manifest: stylocloneManifest,
-  useInstrument: (enabled) => useStylophone(enabled),
+  useInstrument: (enabled, _transport, audio) => useStylophone(enabled, audio),
   Device,
   Manual,
   releaseOnMiss: (handlers) => handlers.onKeyUp(),

@@ -6,6 +6,7 @@ import { INSTRUMENTS, instrumentById } from '../instruments/registry';
 import type { AnyInstrumentModule } from '../shared/instrument';
 import { Transport } from '../transport/transport';
 import { IntervalTicker } from '../transport/intervalTicker';
+import { RigAudio, type SharedAudio } from '../rig/rigAudio';
 import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
 import { RigsDrawer } from './RigsDrawer';
 import { DeviceThumbForge } from './deviceThumbs';
@@ -43,15 +44,17 @@ function InstrumentProvider({
   module,
   enabled,
   transport,
+  audio,
   children,
 }: {
   module: AnyInstrumentModule;
   enabled: boolean;
   transport: Transport;
+  audio: SharedAudio;
   children: ReactNode;
 }) {
   const parent = useContext(InstrumentsCtx);
-  const { vm, handlers } = module.useInstrument(enabled, transport);
+  const { vm, handlers } = module.useInstrument(enabled, transport, audio);
   const value = useMemo(
     () => ({ ...parent, [module.manifest.id]: { module, vm, handlers } }),
     [parent, module, vm, handlers],
@@ -93,6 +96,9 @@ export function Experience() {
   // IntervalTicker drives it in real time. Created once, lives for the app's life.
   const transport = useMemo(() => new Transport(), []);
   useMemo(() => new IntervalTicker(transport), [transport]);
+  // ONE shared audio graph for the whole app (like the Transport): every device runs on this one
+  // AudioContext, so its output can be routed into the looper (Web Audio can't cross contexts).
+  const rigAudio = useMemo(() => new RigAudio(), []);
 
   const rig: RigConfig | null = parsed.kind === 'rig' ? loadRig(parsed.uuid!) : null;
 
@@ -120,6 +126,7 @@ export function Experience() {
         module={module}
         enabled={module.manifest.id === activeId}
         transport={transport}
+        audio={rigAudio}
       >
         {children}
       </InstrumentProvider>

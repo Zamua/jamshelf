@@ -91,6 +91,19 @@ person reads it instantly as "the thing everything follows."
 Mental model: *the transport bar is my DIN-sync master; each device is slaved to it or played
 free; I press play once and the rig is in time.*
 
+## Timing precision (future: an audio-clock scheduler)
+
+Today the `IntervalTicker` drives the transport off the WALL clock (`performance.now`,
+self-correcting so the tempo stays exact under render-load throttling), while the looper's
+metronome + loops run off the AUDIO clock (`AudioContext.currentTime`, sample-accurate). Same rate,
+but two different clocks + two different anchors, so the drum hits (fired "now" on the wall-clock
+ticks) can phase-jitter against the sample-accurate loops. The correct fix is the classic "two
+clocks" pattern (A Tale of Two Clocks): drive the transport off the audio clock and SCHEDULE each
+upcoming event (drum hit, arp note) at its precise `ctx.currentTime` via a small look-ahead window,
+instead of triggering "now". For cross-instrument sample-lock the instruments should also share ONE
+AudioContext (they each create their own today). This makes the drums, arp, loops, and the position
+readouts all read the same clock - eliminating drift + the per-hit looseness.
+
 ## Multiplayer (future)
 
 `/rig/<uuid>` is designed to become the Ableton Link model: a shared beat timeline broadcast over

@@ -78,6 +78,14 @@ between a top-down all-view and a focused instrument (tap to zoom in, swipe the 
 next/prev, back to the all-view). `activeId` = the focused instrument. Because EVERY instrument stays
 mounted + audio-live (the mount-all architecture), the drum beat keeps rolling while you focus another.
 
+**Design direction (set 2026-07-03, applies to ALL future features).** New capabilities are added as
+NEW VIRTUAL DEVICES on the shelf, not as abstract "features": recording = a **Recorder** device you add
+to a rig, mixing = a **Mixer** device, fx = an fx unit, etc. You add gear to your rig the way you would
+physical hardware; there are no feature toggles. Bonus: each capability then stays its own bounded DDD
+context (its own `InstrumentModule` + domain), exactly like the instruments. AND: the whole app is
+**local-only, no backend, ever** - localStorage for settings/rigs, IndexedDB for loop audio. Anything
+that would need a server is out of scope (multiplayer, if built, is peer-to-peer / client-synced).
+
 **Sync is a real shared clock now** (`src/transport/`, spec in `docs/RIG.md`). ONE `Transport` (a
 software DIN-sync master: tempo + running/play-stop + a pulse-index position -> bar/beat/tick/phase)
 is created at the composition root (`Experience`) and threaded to every instrument via

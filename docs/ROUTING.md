@@ -42,11 +42,22 @@ track's buffer states, so an overdub or a record can be undone).
 set-once connections (not a full modular patchbay), so the mobile drag stays sane. The patch is rig
 state (`rigStore`), shared in multiplayer. `RigAudio.wire/unwire` applies the audio side.
 
-## Phases
+## Phases (all shipped 2026-07-03)
 
-1. **Shared audio bus** - `RigAudio` + the `SharedAudio` port; refactor each instrument to accept it
-   and output to its jack. (Foundation - nothing routes without it.) ← current
-2. **LoopClone engine** - tap the input bus, per-track record/play/overdub, mute/solo/fader/clear,
-   undo-redo, quantized. Wire the device's big buttons + ALL + faders to it.
-3. **Virtual wires** - the drag-cable UI + persistence + the `RigAudio.wire` hookup.
-4. **Polish** - solo/undo affordances, multiplayer sync of the patch, the transport-button repurpose.
+1. **Shared audio bus** ✓ - `RigAudio` + the `SharedAudio` port; every instrument runs on the one
+   shared context and outputs to its jack. (Foundation - nothing routes without it.)
+2. **LoopClone engine** ✓ - `loopEngine.ts` taps the input bus, per-track record/play/overdub,
+   mute/solo/fader/clear, undo, quantized to the beat. Big button = record/play/overdub (hold = solo);
+   stop = mute (hold = clear); faders drag to level; top-panel ALL = start/stop all, UNDO = last take.
+3. **Virtual wires** ✓ - `PatchLayer.tsx`: a "wire" mode in the rig all-view. Tapping it turns off the
+   device tap-to-focus catchers, so tapping a device's output jack patches it into the looper (a cable
+   arcs to the looper's input socket; tap again to unplug). Persisted as `RigConfig.wires`, mirrored
+   into `RigAudio.wire/unwire`.
+
+Interaction note: patching is **tap-to-connect** (in wire mode), NOT drag. The desk is top-down and
+each device carries a large invisible tap-to-focus catcher sphere; a drag-from-jack fought that
+catcher and the perspective parallax made a lifted hit-target drift off the visible jack. Wire mode
+(catchers off) + tap is the robust version. A true drag-cable is a possible later refinement.
+
+Later polish (not yet): multiplayer sync of the patch + the loop buffers, sample-tight loop/beat
+alignment (currently within one audio buffer), the transport-button (TAP/RUN) repurpose, redo affordance.

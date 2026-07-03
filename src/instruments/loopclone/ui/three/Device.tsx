@@ -9,7 +9,6 @@ import {
   CAM_FOV,
   ACCENT_Y,
   PANEL_TOP,
-  DIVIDER_Y,
   BRAND,
   SUBTITLE,
   OLED,
@@ -47,6 +46,32 @@ function Knob({ x, y, r, power }: { x: number; y: number; r: number; power: bool
 
 const TRANS_COLOR: Record<string, string> = { gray: PALETTE.transGray, red: PALETTE.transRed, green: PALETTE.transGreen };
 
+// An FX section: a red label + three small recessed A/B/C buttons (one lit).
+function FxCluster({ label, labelX, labelY, dotY, dotX, litIdx, on }: { label: string; labelX: number; labelY: number; dotY: number; dotX: readonly number[]; litIdx: number; on: boolean }) {
+  return (
+    <>
+      <Text font={LABEL_FONT} position={[labelX, labelY, FRONT_Z + 0.01]} fontSize={0.055} color={on ? PALETTE.red : PALETTE.redDim} anchorX="center" anchorY="middle" letterSpacing={0.05}>
+        {label}
+      </Text>
+      {dotX.map((dx, i) => {
+        const lit = i === litIdx && on;
+        return (
+          <group key={i} position={[dx, dotY, FRONT_Z + 0.018]}>
+            <mesh>
+              <circleGeometry args={[0.064, 20]} />
+              <meshStandardMaterial color="#0a0b0d" roughness={0.9} />
+            </mesh>
+            <mesh position={[0, 0, 0.006]}>
+              <circleGeometry args={[0.048, 20]} />
+              <meshStandardMaterial color={on ? (lit ? PALETTE.fxRed : PALETTE.fxOff) : dim(PALETTE.fxOff, 0.4)} emissive={lit ? PALETTE.fxRed : '#000000'} emissiveIntensity={lit ? 0.9 : 0} toneMapped={false} />
+            </mesh>
+          </group>
+        );
+      })}
+    </>
+  );
+}
+
 // The modeled LoopClone (v2): a wide near-black RC-505-style loop station. A dense, organized top
 // panel - branding + a separated OLED + a knob cluster + colored/labeled transport + INPUT/TRACK FX
 // - over five track channels with the signature big round LED-ring record/play buttons.
@@ -74,10 +99,6 @@ export function Device({ vm, handlers }: DeviceProps) {
       <mesh position={[0, ACCENT_Y, FRONT_Z + 0.006]}>
         <planeGeometry args={[BODY.w - 0.3, 0.028]} />
         <meshBasicMaterial color={on ? PALETTE.red : PALETTE.redDim} toneMapped={false} />
-      </mesh>
-      <mesh position={[0, DIVIDER_Y, FRONT_Z + 0.005]}>
-        <planeGeometry args={[BODY.w - 0.3, 0.012]} />
-        <meshBasicMaterial color="#050506" toneMapped={false} />
       </mesh>
 
       {/* branding (top-left, clear of the OLED) */}
@@ -107,42 +128,30 @@ export function Device({ vm, handlers }: DeviceProps) {
       <Knob x={KNOB_MEM.x} y={KNOB_MEM.y} r={KNOB_MEM.r} power={on} />
       <Knob x={KNOB_OUTPUT.x} y={KNOB_OUTPUT.y} r={KNOB_OUTPUT.r} power={on} />
 
-      {/* transport row (colored + labeled) */}
+      {/* transport row (colored buttons: a dark recess + a raised colored cap + a label below) */}
       {TRANSPORT.map((b) => {
         const lit = b.label === 'RUN' && vm.playing && on;
         const base = TRANS_COLOR[b.kind];
         return (
-          <group key={b.label} position={[b.x, b.y, FRONT_Z + 0.02]}>
-            <mesh>
-              <circleGeometry args={[TRANSPORT_R, 28]} />
-              <meshStandardMaterial color={on ? base : dim(base, 0.4)} emissive={lit ? base : '#000000'} emissiveIntensity={lit ? 1.0 : 0} toneMapped={false} metalness={0.2} roughness={0.5} />
+          <group key={b.label} position={[b.x, b.y, FRONT_Z]}>
+            <mesh position={[0, 0, 0.014]}>
+              <circleGeometry args={[TRANSPORT_R + 0.022, 28]} />
+              <meshStandardMaterial color="#0a0b0d" roughness={0.9} />
             </mesh>
-            <Text font={LABEL_FONT} position={[0, -TRANSPORT_R - 0.055, 0.01]} fontSize={0.05} color={on ? PALETTE.inkDim : '#55575c'} anchorX="center" anchorY="middle" letterSpacing={0.02}>
+            <mesh position={[0, 0, 0.03]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[TRANSPORT_R, TRANSPORT_R * 1.04, 0.06, 28]} />
+              <meshStandardMaterial color={on ? base : dim(base, 0.4)} emissive={lit ? base : '#000000'} emissiveIntensity={lit ? 1.1 : 0} toneMapped={false} metalness={0.15} roughness={0.42} />
+            </mesh>
+            <Text font={LABEL_FONT} position={[0, -TRANSPORT_R - 0.078, 0.02]} fontSize={0.05} color={on ? PALETTE.inkDim : '#55575c'} anchorX="center" anchorY="middle" letterSpacing={0.02}>
               {b.label}
             </Text>
           </group>
         );
       })}
 
-      {/* INPUT FX + TRACK FX (label + three dots, A / B lit) */}
-      <Text font={LABEL_FONT} position={[INPUT_FX.labelX, INPUT_FX.labelY, FRONT_Z + 0.01]} fontSize={0.055} color={on ? PALETTE.red : PALETTE.redDim} anchorX="center" anchorY="middle" letterSpacing={0.05}>
-        INPUT FX
-      </Text>
-      {INPUT_FX.dotX.map((dx, i) => (
-        <mesh key={'ifx' + i} position={[dx, INPUT_FX.dotY, FRONT_Z + 0.02]}>
-          <circleGeometry args={[0.052, 20]} />
-          <meshStandardMaterial color={on ? (i === 0 ? PALETTE.fxRed : PALETTE.fxOff) : dim(PALETTE.fxOff, 0.4)} emissive={i === 0 && on ? PALETTE.fxRed : '#000000'} emissiveIntensity={i === 0 && on ? 0.8 : 0} toneMapped={false} />
-        </mesh>
-      ))}
-      <Text font={LABEL_FONT} position={[TRACK_FX.labelX, TRACK_FX.labelY, FRONT_Z + 0.01]} fontSize={0.055} color={on ? PALETTE.red : PALETTE.redDim} anchorX="center" anchorY="middle" letterSpacing={0.05}>
-        TRACK FX
-      </Text>
-      {TRACK_FX.dotX.map((dx, i) => (
-        <mesh key={'tfx' + i} position={[dx, TRACK_FX.dotY, FRONT_Z + 0.02]}>
-          <circleGeometry args={[0.052, 20]} />
-          <meshStandardMaterial color={on ? (i === 1 ? PALETTE.fxRed : PALETTE.fxOff) : dim(PALETTE.fxOff, 0.4)} emissive={i === 1 && on ? PALETTE.fxRed : '#000000'} emissiveIntensity={i === 1 && on ? 0.8 : 0} toneMapped={false} />
-        </mesh>
-      ))}
+      {/* INPUT FX + TRACK FX clusters (label + three recessed A/B/C buttons) */}
+      <FxCluster label="INPUT FX" labelX={INPUT_FX.labelX} labelY={INPUT_FX.labelY} dotY={INPUT_FX.dotY} dotX={INPUT_FX.dotX} litIdx={0} on={on} />
+      <FxCluster label="TRACK FX" labelX={TRACK_FX.labelX} labelY={TRACK_FX.labelY} dotY={TRACK_FX.dotY} dotX={TRACK_FX.dotX} litIdx={1} on={on} />
 
       {/* track section plate */}
       <mesh position={[0, TRACK_SECTION.y, FRONT_Z + 0.002]}>

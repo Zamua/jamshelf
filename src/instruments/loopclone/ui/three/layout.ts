@@ -13,7 +13,6 @@ export const CAM_FOV = 42;
 // --- top panel plate + the divider that separates it from the track section ---
 export const PANEL_TOP = { y: 0.92, h: 1.4 } as const;
 export const ACCENT_Y = 1.44;
-export const DIVIDER_Y = 0.44;
 
 // branding (top strip): wordmark + "LOOP STATION" on the SAME line (right of it), so the knob row
 // below is clear. Nothing overlaps.

@@ -19,8 +19,18 @@ export const PALETTE = {
   ledRed: '#ff4a3a', // recording
   ledAmber: '#f0a83a', // overdub
   ledOff: '#2a2c30', // empty / stopped ring base
-  faderTrack: '#0e0f11',
+  faderTrack: '#0a0b0d',
   faderCap: '#c9ccd1',
+  // top-panel controls
+  knobBody: '#2a2c30',
+  transGray: '#3c3f45', // ALL start/stop
+  transRed: '#d13a30', // UNDO/REDO
+  transGreen: '#2fa858', // TAP TEMPO / START-STOP
+  fxRed: '#c23a2f', // the lit FX button (A)
+  fxOff: '#34373d',
+  // a calm EDIT button (dark with a green glyph, not a loud solid block)
+  editBg: '#1c2620',
+  editInk: '#46c274',
 } as const;
 
 // The LED-ring colour + how brightly it glows for a track state.

@@ -7,42 +7,49 @@ import {
   FRONT_Z,
   CAM_DIST,
   CAM_FOV,
+  ACCENT_Y,
+  PANEL_TOP,
+  DIVIDER_Y,
   BRAND,
   SUBTITLE,
   OLED,
-  KNOB_L,
-  KNOB_R,
-  ACCENT_Y,
-  PANEL_TOP,
+  KNOB_MIC,
+  KNOB_IN,
+  KNOB_OUT,
+  KNOB_MEM,
+  KNOB_OUTPUT,
+  TRANSPORT,
+  TRANSPORT_R,
+  INPUT_FX,
+  TRACK_FX,
   TRACKS,
   TRACK_SECTION,
-  TRANSPORT,
-  TRANSPORT_BTNS,
-  transportX,
 } from './layout';
 import { PALETTE, dim } from './palette';
 import { BRAND_FONT, LABEL_FONT } from './fonts';
 import { TrackChannel } from './TrackChannel';
 
-// A simple visual knob (a dark disc + an indicator line). Non-interactive in the first draft.
-function VisualKnob({ x, y, r, power }: { x: number; y: number; r: number; power: boolean }) {
+// A panel knob: a dark disc + an indicator line. Non-interactive in the first drafts.
+function Knob({ x, y, r, power }: { x: number; y: number; r: number; power: boolean }) {
   return (
     <group position={[x, y, FRONT_Z]}>
       <mesh position={[0, 0, 0.02]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[r, r * 1.03, 0.14, 40]} />
-        <meshStandardMaterial color={power ? '#282a2e' : '#1c1e21'} metalness={0.45} roughness={0.4} />
+        <cylinderGeometry args={[r, r * 1.05, 0.12, 32]} />
+        <meshStandardMaterial color={power ? PALETTE.knobBody : dim(PALETTE.knobBody, 0.3)} metalness={0.45} roughness={0.42} />
       </mesh>
-      <mesh position={[0, r * 0.5, 0.1]}>
-        <planeGeometry args={[0.03, r * 0.55]} />
+      <mesh position={[0, r * 0.48, 0.09]}>
+        <planeGeometry args={[Math.max(0.018, r * 0.12), r * 0.6]} />
         <meshBasicMaterial color={power ? PALETTE.ink : PALETTE.inkDim} toneMapped={false} />
       </mesh>
     </group>
   );
 }
 
-// The modeled LoopClone: a wide near-black RC-505-style loop station. Top control panel (branding,
-// OLED, two big knobs, a transport row) over five track channels with the signature big round
-// LED-ring record/play buttons. Purely presentational - renders the ViewModel, fires raw input.
+const TRANS_COLOR: Record<string, string> = { gray: PALETTE.transGray, red: PALETTE.transRed, green: PALETTE.transGreen };
+
+// The modeled LoopClone (v2): a wide near-black RC-505-style loop station. A dense, organized top
+// panel - branding + a separated OLED + a knob cluster + colored/labeled transport + INPUT/TRACK FX
+// - over five track channels with the signature big round LED-ring record/play buttons.
 export function Device({ vm, handlers }: DeviceProps) {
   const size = useThree((s) => s.size);
   const aspect = size.width / Math.max(1, size.height);
@@ -50,6 +57,7 @@ export function Device({ vm, handlers }: DeviceProps) {
   const visW = visH * aspect;
   const scale = Math.min(1, (visW * 0.94) / BODY.w, (visH * 0.94) / BODY.h);
   const on = vm.power;
+  const loops = vm.tracks.filter((t) => t.state !== 'empty').length;
 
   return (
     <group scale={scale}>
@@ -58,56 +66,88 @@ export function Device({ vm, handlers }: DeviceProps) {
         <meshStandardMaterial color={on ? PALETTE.body : dim(PALETTE.body, 0.3)} metalness={0.3} roughness={0.45} />
       </RoundedBox>
 
-      {/* top panel plate (recessed) */}
+      {/* top panel plate + red accent + divider */}
       <mesh position={[0, PANEL_TOP.y, FRONT_Z + 0.003]}>
         <planeGeometry args={[BODY.w - 0.3, PANEL_TOP.h]} />
         <meshStandardMaterial color={PALETTE.panel} metalness={0.2} roughness={0.7} />
       </mesh>
-      {/* red accent stripe near the top */}
       <mesh position={[0, ACCENT_Y, FRONT_Z + 0.006]}>
-        <planeGeometry args={[BODY.w - 0.3, 0.03]} />
+        <planeGeometry args={[BODY.w - 0.3, 0.028]} />
         <meshBasicMaterial color={on ? PALETTE.red : PALETTE.redDim} toneMapped={false} />
       </mesh>
+      <mesh position={[0, DIVIDER_Y, FRONT_Z + 0.005]}>
+        <planeGeometry args={[BODY.w - 0.3, 0.012]} />
+        <meshBasicMaterial color="#050506" toneMapped={false} />
+      </mesh>
 
-      {/* branding */}
-      <Text font={BRAND_FONT} position={[BRAND.x, BRAND.y, FRONT_Z + 0.01]} fontSize={0.34} color={on ? PALETTE.red : PALETTE.redDim} anchorX="left" anchorY="middle" letterSpacing={0.01}>
+      {/* branding (top-left, clear of the OLED) */}
+      <Text font={BRAND_FONT} position={[BRAND.x, BRAND.y, FRONT_Z + 0.01]} fontSize={BRAND.size} color={on ? PALETTE.red : PALETTE.redDim} anchorX="left" anchorY="middle" letterSpacing={0.01}>
         {BRAND.text}
       </Text>
-      <Text font={LABEL_FONT} position={[SUBTITLE.x, SUBTITLE.y, FRONT_Z + 0.01]} fontSize={0.13} color={on ? PALETTE.ink : PALETTE.inkDim} anchorX="left" anchorY="middle" letterSpacing={0.16}>
+      <Text font={LABEL_FONT} position={[SUBTITLE.x, SUBTITLE.y, FRONT_Z + 0.01]} fontSize={SUBTITLE.size} color={on ? PALETTE.ink : PALETTE.inkDim} anchorX="left" anchorY="middle" letterSpacing={0.14}>
         {SUBTITLE.text}
       </Text>
 
-      {/* OLED */}
+      {/* OLED (center) - a useful readout, NOT the name */}
       <mesh position={[OLED.x, OLED.y, FRONT_Z + 0.008]}>
         <planeGeometry args={[OLED.w, OLED.h]} />
         <meshBasicMaterial color={PALETTE.oledBg} toneMapped={false} />
       </mesh>
-      <Text font={LABEL_FONT} position={[OLED.x, OLED.y + 0.075, FRONT_Z + 0.012]} fontSize={0.11} color={on ? PALETTE.oledInk : dim(PALETTE.oledInk, 0.5)} anchorX="center" anchorY="middle" letterSpacing={0.05}>
-        LoopClone
+      <Text font={LABEL_FONT} position={[OLED.x, OLED.y + 0.085, FRONT_Z + 0.012]} fontSize={0.095} color={on ? PALETTE.oledInk : dim(PALETTE.oledInk, 0.5)} anchorX="center" anchorY="middle" letterSpacing={0.1}>
+        {vm.playing ? 'PLAYING' : 'STOPPED'}
       </Text>
-      <Text font={LABEL_FONT} position={[OLED.x, OLED.y - 0.08, FRONT_Z + 0.012]} fontSize={0.088} color={on ? dim(PALETTE.oledInk, 0.2) : dim(PALETTE.oledInk, 0.55)} anchorX="center" anchorY="middle" letterSpacing={0.06}>
-        {vm.playing ? `${vm.bpm} BPM` : 'READY'}
+      <Text font={LABEL_FONT} position={[OLED.x, OLED.y - 0.08, FRONT_Z + 0.012]} fontSize={0.125} color={on ? dim(PALETTE.oledInk, 0.1) : dim(PALETTE.oledInk, 0.5)} anchorX="center" anchorY="middle" letterSpacing={0.05}>
+        {loops} LOOP{loops === 1 ? '' : 'S'} · {vm.bpm}
       </Text>
 
-      {/* two big knobs */}
-      <VisualKnob x={KNOB_L.x} y={KNOB_L.y} r={KNOB_L.r} power={on} />
-      <VisualKnob x={KNOB_R.x} y={KNOB_R.y} r={KNOB_R.r} power={on} />
+      {/* knob cluster */}
+      <Knob x={KNOB_MIC.x} y={KNOB_MIC.y} r={KNOB_MIC.r} power={on} />
+      <Knob x={KNOB_IN.x} y={KNOB_IN.y} r={KNOB_IN.r} power={on} />
+      <Knob x={KNOB_OUT.x} y={KNOB_OUT.y} r={KNOB_OUT.r} power={on} />
+      <Knob x={KNOB_MEM.x} y={KNOB_MEM.y} r={KNOB_MEM.r} power={on} />
+      <Knob x={KNOB_OUTPUT.x} y={KNOB_OUTPUT.y} r={KNOB_OUTPUT.r} power={on} />
 
-      {/* transport row (visual round buttons; RUN lights green while the transport is playing) */}
-      {TRANSPORT_BTNS.map((label, i) => {
-        const lit = i === TRANSPORT_BTNS.length - 1 && vm.playing && on;
+      {/* transport row (colored + labeled) */}
+      {TRANSPORT.map((b) => {
+        const lit = b.label === 'RUN' && vm.playing && on;
+        const base = TRANS_COLOR[b.kind];
         return (
-          <mesh key={label} position={[transportX(i, TRANSPORT_BTNS.length), TRANSPORT.y, FRONT_Z + 0.02]}>
-            <circleGeometry args={[TRANSPORT.r, 28]} />
-            <meshStandardMaterial color={lit ? PALETTE.ledGreen : '#31343a'} emissive={lit ? PALETTE.ledGreen : '#000000'} emissiveIntensity={lit ? 0.9 : 0} toneMapped={false} metalness={0.2} roughness={0.5} />
-          </mesh>
+          <group key={b.label} position={[b.x, b.y, FRONT_Z + 0.02]}>
+            <mesh>
+              <circleGeometry args={[TRANSPORT_R, 28]} />
+              <meshStandardMaterial color={on ? base : dim(base, 0.4)} emissive={lit ? base : '#000000'} emissiveIntensity={lit ? 1.0 : 0} toneMapped={false} metalness={0.2} roughness={0.5} />
+            </mesh>
+            <Text font={LABEL_FONT} position={[0, -TRANSPORT_R - 0.055, 0.01]} fontSize={0.05} color={on ? PALETTE.inkDim : '#55575c'} anchorX="center" anchorY="middle" letterSpacing={0.02}>
+              {b.label}
+            </Text>
+          </group>
         );
       })}
 
-      {/* track section plate (recessed, darker) */}
+      {/* INPUT FX + TRACK FX (label + three dots, A / B lit) */}
+      <Text font={LABEL_FONT} position={[INPUT_FX.labelX, INPUT_FX.labelY, FRONT_Z + 0.01]} fontSize={0.055} color={on ? PALETTE.red : PALETTE.redDim} anchorX="center" anchorY="middle" letterSpacing={0.05}>
+        INPUT FX
+      </Text>
+      {INPUT_FX.dotX.map((dx, i) => (
+        <mesh key={'ifx' + i} position={[dx, INPUT_FX.dotY, FRONT_Z + 0.02]}>
+          <circleGeometry args={[0.052, 20]} />
+          <meshStandardMaterial color={on ? (i === 0 ? PALETTE.fxRed : PALETTE.fxOff) : dim(PALETTE.fxOff, 0.4)} emissive={i === 0 && on ? PALETTE.fxRed : '#000000'} emissiveIntensity={i === 0 && on ? 0.8 : 0} toneMapped={false} />
+        </mesh>
+      ))}
+      <Text font={LABEL_FONT} position={[TRACK_FX.labelX, TRACK_FX.labelY, FRONT_Z + 0.01]} fontSize={0.055} color={on ? PALETTE.red : PALETTE.redDim} anchorX="center" anchorY="middle" letterSpacing={0.05}>
+        TRACK FX
+      </Text>
+      {TRACK_FX.dotX.map((dx, i) => (
+        <mesh key={'tfx' + i} position={[dx, TRACK_FX.dotY, FRONT_Z + 0.02]}>
+          <circleGeometry args={[0.052, 20]} />
+          <meshStandardMaterial color={on ? (i === 1 ? PALETTE.fxRed : PALETTE.fxOff) : dim(PALETTE.fxOff, 0.4)} emissive={i === 1 && on ? PALETTE.fxRed : '#000000'} emissiveIntensity={i === 1 && on ? 0.8 : 0} toneMapped={false} />
+        </mesh>
+      ))}
+
+      {/* track section plate */}
       <mesh position={[0, TRACK_SECTION.y, FRONT_Z + 0.002]}>
         <planeGeometry args={[BODY.w - 0.2, TRACK_SECTION.h]} />
-        <meshStandardMaterial color="#0f1013" metalness={0.15} roughness={0.8} />
+        <meshStandardMaterial color="#0d0e11" metalness={0.15} roughness={0.8} />
       </mesh>
 
       {/* the 5 track channels */}

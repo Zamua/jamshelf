@@ -10,10 +10,12 @@ import type { Placement } from '../rig/rigStore';
 
 const LOOPER_ID = 'loopclone';
 const UP = new Vector3(0, 1, 0);
-const JACK_Y_OFF = 0.12; // sit at the device's side-face height, not on top
-const EDGE_DEV = 0.62; // device center -> its side jack
-const EDGE_LOOP = 0.86; // looper center -> its side jack (it is wider)
-const PLUG_OUT = 0.16; // how far past the edge the cable attaches (the boot)
+// A device lies flat with its pivot at deskY and is ~0.28 thick, so its side face is centred on deskY;
+// sit the jacks just above centre so they read as inserted into the SIDE (not the top face).
+const JACK_Y_OFF = 0.04;
+const EDGE_DEV = 0.58; // device center -> its side jack (~the flat footprint edge)
+const EDGE_LOOP = 0.82; // looper center -> its side jack (it is wider)
+const PLUG_OUT = 0.08; // how far past the edge the cable attaches (the boot)
 type XYZ = [number, number, number];
 
 // A stable pseudo-random in [0,1) from a seed, so each cable's slack/bow is varied but doesn't jitter.
@@ -33,12 +35,12 @@ function Cable({ a, b, dir, seed, onTap }: { a: XYZ; b: XYZ; dir: XYZ; seed: num
     const perp = new Vector3(-d.z, 0, d.x); // sideways in the desk plane
     const len = A.distanceTo(B);
     const r = hash01(seed);
-    const bow = (0.16 + r * 0.22) * len * (r > 0.5 ? 1 : -1);
-    const p1 = A.clone().addScaledVector(d, len * 0.22); // exit the plug straight
+    const bow = (0.1 + r * 0.16) * len * (r > 0.5 ? 1 : -1);
+    const p1 = A.clone().addScaledVector(d, len * 0.24); // exit the plug straight
     const mid = A.clone().add(B).multiplyScalar(0.5).addScaledVector(perp, bow);
-    mid.y += 0.14 + 0.05 * len; // slight lift for body
-    const p3 = B.clone().addScaledVector(d, -len * 0.22); // enter the far plug straight
-    return new TubeGeometry(new CatmullRomCurve3([A, p1, mid, p3, B]), 56, 0.033, 8, false);
+    mid.y += 0.06 + 0.03 * len; // slight lift so it lies just above the desk
+    const p3 = B.clone().addScaledVector(d, -len * 0.24); // enter the far plug straight
+    return new TubeGeometry(new CatmullRomCurve3([A, p1, mid, p3, B]), 56, 0.016, 7, false);
   }, [a, b, dir, seed]);
   return (
     <mesh
@@ -66,18 +68,18 @@ function Plug({ base, axis, on }: { base: XYZ; axis: XYZ; on: boolean }) {
   return (
     <group position={base} quaternion={q}>
       {/* metal barrel, inserted into the host (local -Y) */}
-      <mesh position={[0, -0.11, 0]}>
-        <cylinderGeometry args={[0.055, 0.055, 0.22, 14]} />
+      <mesh position={[0, -0.06, 0]}>
+        <cylinderGeometry args={[0.028, 0.028, 0.13, 12]} />
         <meshStandardMaterial color="#c6c8cc" metalness={0.75} roughness={0.28} />
       </mesh>
       {/* colored collar at the edge */}
-      <mesh position={[0, 0.02, 0]}>
-        <cylinderGeometry args={[0.1, 0.1, 0.13, 18]} />
+      <mesh position={[0, 0.015, 0]}>
+        <cylinderGeometry args={[0.05, 0.05, 0.07, 16]} />
         <meshStandardMaterial color={on ? '#e0453a' : '#3a3d42'} emissive={on ? '#e0453a' : '#000000'} emissiveIntensity={on ? 0.55 : 0} metalness={0.3} roughness={0.5} />
       </mesh>
       {/* rubber strain-relief boot (the cable leaves here, local +Y) */}
-      <mesh position={[0, 0.13, 0]}>
-        <cylinderGeometry args={[0.045, 0.075, 0.11, 12]} />
+      <mesh position={[0, 0.075, 0]}>
+        <cylinderGeometry args={[0.022, 0.04, 0.06, 10]} />
         <meshStandardMaterial color="#17181b" roughness={0.75} />
       </mesh>
     </group>

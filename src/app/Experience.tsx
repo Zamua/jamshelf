@@ -6,7 +6,8 @@ import { INSTRUMENTS, instrumentById } from '../instruments/registry';
 import type { AnyInstrumentModule } from '../shared/instrument';
 import { Transport } from '../transport/transport';
 import { IntervalTicker } from '../transport/intervalTicker';
-import { createRig, loadRig, scatterFor, type Placement, type RigConfig } from '../rig/rigStore';
+import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
+import { RigsDrawer } from './RigsDrawer';
 import './experience.css';
 
 const FLOAT_MS = 1250; // matches the Stage's float DURATION; the device plays after it lands
@@ -196,6 +197,10 @@ function StageHost({
   // flies it down to lie flat on the desk (a scattered placement); tapping it there flies it back.
   const [building, setBuilding] = useState(false);
   const [placements, setPlacements] = useState<Record<string, Placement>>({});
+  // Rig library: the "your rigs" drawer + which rig (if any) the build overlay is editing.
+  const [rigsOpen, setRigsOpen] = useState(false);
+  const [editingUuid, setEditingUuid] = useState<string | null>(null);
+  const [rigList, setRigList] = useState<RigSummary[]>([]);
 
   // The carousel: `carouselIndex` is the settled centered instrument (React state, drives the
   // label + dots); `carousel` is the live fractional position the Stage animates (so a swipe
@@ -380,11 +385,59 @@ function StageHost({
   const startJam = () => {
     const ids = Object.keys(placements);
     if (ids.length < 1) return;
-    const uuid = createRig(ids, placements);
+    let uuid: string;
+    if (editingUuid) {
+      updateRig(editingUuid, ids, placements); // an edit: keep the same uuid (+ its URL / room)
+      uuid = editingUuid;
+    } else {
+      uuid = createRig(ids, placements);
+    }
     setBuilding(false);
+    setEditingUuid(null);
     ids.forEach((id) => entries[id]?.handlers.resume());
     onNavigate(`/rig/${uuid}`);
   };
+  const cancelBuild = () => {
+    setBuilding(false);
+    setEditingUuid(null);
+  };
+
+  // --- rig library (the "your rigs" drawer) ---
+  const openRigs = () => {
+    setRigList(listRigs());
+    setRigsOpen(true);
+  };
+  const newRig = () => {
+    setRigsOpen(false);
+    setEditingUuid(null);
+    setPlacements({});
+    setBuilding(true);
+  };
+  const editRig = (uuid: string) => {
+    const c = loadRig(uuid);
+    if (!c) return;
+    setRigsOpen(false);
+    setEditingUuid(uuid);
+    setPlacements(c.placements);
+    setBuilding(true);
+  };
+  const openSavedRig = (uuid: string) => {
+    const c = loadRig(uuid);
+    setRigsOpen(false);
+    if (c) c.instruments.forEach((id) => entries[id]?.handlers.resume());
+    onNavigate(`/rig/${uuid}`);
+  };
+  const removeRig = (uuid: string) => {
+    if (!window.confirm('Delete this rig? This cannot be undone.')) return;
+    deleteRig(uuid);
+    setRigList(listRigs());
+  };
+  // Keep the "your rigs" count/list fresh whenever we're on the plain shelf (e.g. back from a rig).
+  const onShelf = activeId === null && !building && !rig;
+  useEffect(() => {
+    if (onShelf) setRigList(listRigs());
+    else setRigsOpen(false); // the drawer belongs to the shelf; close it if we navigate away
+  }, [onShelf]);
 
   const onPointerMissed = () => {
     if (active) active.module.releaseOnMiss(active.handlers);
@@ -392,7 +445,7 @@ function StageHost({
 
   // Back: build -> shelf; a focused rig instrument -> the rig all-view; otherwise -> shelf.
   const onBack = () => {
-    if (building) return setBuilding(false);
+    if (building) return cancelBuild();
     if (rig && focused) return onFocus(null);
     onNavigate('/');
   };
@@ -437,19 +490,21 @@ function StageHost({
           ))}
         </div>
         <footer className="shelf-foot">swipe to browse, tap to play</footer>
-        <button className="new-rig-btn" onClick={() => { setPlacements({}); setBuilding(true); }}>＋ new rig</button>
+        <button className="your-rigs-btn" onClick={openRigs}>
+          ▦ your rigs{rigList.length > 0 && <b> {rigList.length}</b>}
+        </button>
       </div>
 
-      {/* rig-build chrome (in the 3D room): a hint + cancel + JAM */}
+      {/* rig-build chrome (in the 3D room): a hint + cancel + JAM/SAVE */}
       {building && (
         <div className="overlay build-chrome is-on">
-          <button className="back-to-shelf" onClick={() => setBuilding(false)} aria-label="Cancel">‹</button>
-          <header className="build-title">Build a rig</header>
+          <button className="back-to-shelf" onClick={cancelBuild} aria-label="Cancel">‹</button>
+          <header className="build-title">{editingUuid ? 'Edit rig' : 'Build a rig'}</header>
           <footer className="build-hint">
-            {Object.keys(placements).length === 0 ? 'tap an instrument to lay it on the desk' : 'tap to add or remove · jam when ready'}
+            {Object.keys(placements).length === 0 ? 'tap an instrument to lay it on the desk' : 'tap to add or remove · ' + (editingUuid ? 'save when ready' : 'jam when ready')}
           </footer>
           <button className="jam-btn" disabled={Object.keys(placements).length < 1} onClick={startJam}>
-            jam ›
+            {editingUuid ? 'save ›' : 'jam ›'}
           </button>
         </div>
       )}
@@ -508,6 +563,16 @@ function StageHost({
       )}
 
       {ActiveManual && <ActiveManual open={manualOpen} onClose={() => setManualOpen(false)} />}
+
+      <RigsDrawer
+        open={rigsOpen && onShelf}
+        rigs={rigList}
+        onClose={() => setRigsOpen(false)}
+        onNew={newRig}
+        onOpen={openSavedRig}
+        onEdit={editRig}
+        onDelete={removeRig}
+      />
     </>
   );
 }

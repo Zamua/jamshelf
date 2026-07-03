@@ -13,9 +13,19 @@ export interface Placement {
 export interface RigConfig {
   readonly instruments: string[]; // instrument ids in the rig
   readonly placements: Record<string, Placement>; // where each lies on the desk
+  readonly createdAt?: number; // epoch ms (optional: rigs saved before this existed have none)
+  readonly updatedAt?: number; // epoch ms, bumped on any edit - the "recent" sort key
 }
 
-const key = (uuid: string) => `jamshelf/rigs/${uuid}`;
+// A lightweight rig listing (for the "your rigs" list): no placements, just what identifies it.
+export interface RigSummary {
+  readonly uuid: string;
+  readonly instruments: string[];
+  readonly updatedAt: number;
+}
+
+const PREFIX = 'jamshelf/rigs/';
+const key = (uuid: string) => `${PREFIX}${uuid}`;
 
 // The desk cluster center (x, z) the instruments scatter around.
 const CLUSTER = { x: 0, z: 1.2 } as const;
@@ -63,13 +73,52 @@ function shortId(): string {
 // Create + persist a rig, returning its uuid.
 export function createRig(instruments: string[], placements: Record<string, Placement>): string {
   const uuid = shortId();
-  const config: RigConfig = { instruments, placements };
+  const now = Date.now();
+  const config: RigConfig = { instruments, placements, createdAt: now, updatedAt: now };
   try {
     globalThis.localStorage?.setItem(key(uuid), JSON.stringify(config));
   } catch {
     /* storage disabled - the rig still works this session via the returned config */
   }
   return uuid;
+}
+
+// Every saved rig, most-recently-touched first (the "your rigs" list).
+export function listRigs(): RigSummary[] {
+  const ls = globalThis.localStorage;
+  if (!ls) return [];
+  const out: RigSummary[] = [];
+  try {
+    for (let i = 0; i < ls.length; i++) {
+      const k = ls.key(i);
+      if (!k || !k.startsWith(PREFIX)) continue;
+      const c = loadRig(k.slice(PREFIX.length));
+      if (c) out.push({ uuid: k.slice(PREFIX.length), instruments: c.instruments, updatedAt: c.updatedAt ?? c.createdAt ?? 0 });
+    }
+  } catch {
+    return [];
+  }
+  return out.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+// Delete a rig. Idempotent (a missing key is a no-op).
+export function deleteRig(uuid: string): void {
+  try {
+    globalThis.localStorage?.removeItem(key(uuid));
+  } catch {
+    /* ignore */
+  }
+}
+
+// Replace a rig's instrument set + placements (an edit), preserving createdAt and bumping updatedAt.
+export function updateRig(uuid: string, instruments: string[], placements: Record<string, Placement>): void {
+  const prev = loadRig(uuid);
+  try {
+    const config: RigConfig = { instruments, placements, createdAt: prev?.createdAt, updatedAt: Date.now() };
+    globalThis.localStorage?.setItem(key(uuid), JSON.stringify(config));
+  } catch {
+    /* ignore */
+  }
 }
 
 export function loadRig(uuid: string): RigConfig | null {
@@ -90,7 +139,7 @@ export function savePlacement(uuid: string, id: string, p: Placement): void {
   const c = loadRig(uuid);
   if (!c) return;
   try {
-    globalThis.localStorage?.setItem(key(uuid), JSON.stringify({ ...c, placements: { ...c.placements, [id]: p } }));
+    globalThis.localStorage?.setItem(key(uuid), JSON.stringify({ ...c, placements: { ...c.placements, [id]: p }, updatedAt: Date.now() }));
   } catch {
     /* ignore */
   }

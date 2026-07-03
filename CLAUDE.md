@@ -64,9 +64,15 @@ keeps its own memory. Deploy is still ONE static SPA (the host's SPA fallback se
 links; a cold deep-link snaps straight to the play pose, no float).
 
 **Rigs (`/rig/<uuid>`, added 2026-07-02).** A rig hosts several instruments in ONE session sharing
-a tempo. The shelf has a "＋ new rig" button -> a build overlay (multi-select instruments) ->
-`createRig()` stores the config (`src/rig/rigStore.ts`, localStorage keyed by uuid, `{instruments,
-desk}`) -> navigates to `/rig/<uuid>`. `Experience.parsePath` routes shelf / single (`/<id>`) / rig.
+a tempo. The shelf's "▦ your rigs" pill opens the **rig library** (`RigsDrawer.tsx`, a bottom-sheet):
+a "＋ new rig" row + a card per saved rig (instrument accent-chips + names + relative time), each
+tap-to-open with edit (pencil) / delete (trash). New rig -> a build overlay (multi-select instruments)
+-> `createRig()` stores the config (`src/rig/rigStore.ts`, localStorage keyed by uuid, `{instruments,
+placements, createdAt, updatedAt}`) -> navigates to `/rig/<uuid>`. Edit reopens the SAME build overlay
+pre-loaded with the rig's placements; save -> `updateRig()` keeps the same uuid (+ URL/room). The store
+CRUD is `createRig` / `loadRig` / `listRigs` (recent-first) / `updateRig` / `deleteRig` / `savePlacement`,
+all localStorage, all guarded (tested in `rig/__tests__/rigStore.test.ts`). Rigs have no NAME yet -
+identified by their instruments + time. `Experience.parsePath` routes shelf / single (`/<id>`) / rig.
 In rig mode the instruments lie scattered FLAT on the desk (`rigStore` placements); the camera flies
 between a top-down all-view and a focused instrument (tap to zoom in, swipe the empty margins to cycle
 next/prev, back to the all-view). `activeId` = the focused instrument. Because EVERY instrument stays

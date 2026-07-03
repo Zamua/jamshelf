@@ -1,26 +1,45 @@
 import { useMemo } from 'react';
-import { CatmullRomCurve3, Vector3, TubeGeometry } from 'three';
+import { CatmullRomCurve3, Vector3, Quaternion, TubeGeometry } from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { Placement } from '../rig/rigStore';
 
-// The virtual patch bay for a rig: an output jack on every non-looper device on the desk, an input
-// jack on the looper, and a cable for each active wire. Tapping a device's jack toggles whether it
-// is patched into the looper's input (the RC-505 model: everything wired in sums to one input bus,
-// and recording captures whatever's playing). Shown only in the rig all-view. (Drag-to-patch is a
-// later refinement; tap-to-connect keeps it robust on a phone.)
+// The virtual patch bay for a rig: a PLUG inserted into each wired device's side edge, a matching plug
+// on the looper's side, and a slack cable running between them - a device's output summed into the
+// looper's input bus (the RC-505 model; recording captures whatever's playing on the wired sources).
+// Shown only in the rig all-view. Tap-to-connect in wire mode (drag fought the tap-to-focus catchers).
 
 const LOOPER_ID = 'loopclone';
+const UP = new Vector3(0, 1, 0);
+const JACK_Y_OFF = 0.12; // sit at the device's side-face height, not on top
+const EDGE_DEV = 0.62; // device center -> its side jack
+const EDGE_LOOP = 0.86; // looper center -> its side jack (it is wider)
+const PLUG_OUT = 0.16; // how far past the edge the cable attaches (the boot)
 type XYZ = [number, number, number];
 
-// A cable: a tube along a gently up-bowed curve between two desk points. In patch mode, tapping it unplugs.
-function Cable({ from, to, onTap }: { from: XYZ; to: XYZ; onTap?: () => void }) {
+// A stable pseudo-random in [0,1) from a seed, so each cable's slack/bow is varied but doesn't jitter.
+function hash01(n: number): number {
+  const s = Math.sin(n * 12.9898) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+// A slack patch cable: it leaves its plug straight (in the plug's axis), bows to one side and lifts a
+// little in the middle (natural slack, a stable per-cable amount + side), then enters the far plug
+// straight - not a taut line.
+function Cable({ a, b, dir, seed, onTap }: { a: XYZ; b: XYZ; dir: XYZ; seed: number; onTap?: () => void }) {
   const geo = useMemo(() => {
-    const a = new Vector3(...from);
-    const b = new Vector3(...to);
-    const mid = a.clone().add(b).multiplyScalar(0.5);
-    mid.y += 0.55; // bow up off the desk so it reads as a slack cable
-    return new TubeGeometry(new CatmullRomCurve3([a, mid, b]), 24, 0.03, 8, false);
-  }, [from, to]);
+    const A = new Vector3(...a);
+    const B = new Vector3(...b);
+    const d = new Vector3(...dir).normalize();
+    const perp = new Vector3(-d.z, 0, d.x); // sideways in the desk plane
+    const len = A.distanceTo(B);
+    const r = hash01(seed);
+    const bow = (0.16 + r * 0.22) * len * (r > 0.5 ? 1 : -1);
+    const p1 = A.clone().addScaledVector(d, len * 0.22); // exit the plug straight
+    const mid = A.clone().add(B).multiplyScalar(0.5).addScaledVector(perp, bow);
+    mid.y += 0.14 + 0.05 * len; // slight lift for body
+    const p3 = B.clone().addScaledVector(d, -len * 0.22); // enter the far plug straight
+    return new TubeGeometry(new CatmullRomCurve3([A, p1, mid, p3, B]), 56, 0.033, 8, false);
+  }, [a, b, dir, seed]);
   return (
     <mesh
       geometry={geo}
@@ -34,78 +53,87 @@ function Cable({ from, to, onTap }: { from: XYZ; to: XYZ; onTap?: () => void }) 
           : undefined
       }
     >
-      <meshStandardMaterial color="#d0483c" roughness={0.55} metalness={0.1} />
+      <meshStandardMaterial color="#c9463b" roughness={0.5} metalness={0.05} />
     </mesh>
   );
 }
 
-// A jack: a socket with an accent ring (always visible so it's findable), lit brighter when patched,
-// plus a dark hole. A big invisible disc makes it an easy tap target. Tapping toggles the wire.
-function Jack({ pos, on, onTap }: { pos: XYZ; on: boolean; onTap: () => void }) {
-  const handleUp = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    onTap();
-  };
-  const stop = (e: ThreeEvent<PointerEvent>) => e.stopPropagation();
+// A plug inserted into a SIDE edge. `axis` points AWAY from the host (the direction the cable leaves);
+// the metal barrel runs the other way, into the host. A colored collar (lit when patched) + a rubber
+// strain-relief boot the cable exits from.
+function Plug({ base, axis, on }: { base: XYZ; axis: XYZ; on: boolean }) {
+  const q = useMemo(() => new Quaternion().setFromUnitVectors(UP, new Vector3(...axis).normalize()), [axis]);
   return (
-    <group position={pos}>
-      {/* Easy tap target (a flat disc just above the device surface). The device tap-to-focus catcher
-          spheres are turned OFF in patch mode, so this receives the tap without competing with them. */}
-      <mesh position={[0, 0.06, 0]} onPointerDown={stop} onPointerUp={handleUp}>
-        <cylinderGeometry args={[0.34, 0.34, 0.04, 20]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    <group position={base} quaternion={q}>
+      {/* metal barrel, inserted into the host (local -Y) */}
+      <mesh position={[0, -0.11, 0]}>
+        <cylinderGeometry args={[0.055, 0.055, 0.22, 14]} />
+        <meshStandardMaterial color="#c6c8cc" metalness={0.75} roughness={0.28} />
       </mesh>
-      {/* accent ring (red) - dim when unpatched, glowing when patched */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.06, 0]}>
-        <torusGeometry args={[0.2, 0.05, 10, 24]} />
-        <meshStandardMaterial color="#e0453a" emissive="#e0453a" emissiveIntensity={on ? 0.9 : 0.25} toneMapped={false} metalness={0.3} roughness={0.5} />
+      {/* colored collar at the edge */}
+      <mesh position={[0, 0.02, 0]}>
+        <cylinderGeometry args={[0.1, 0.1, 0.13, 18]} />
+        <meshStandardMaterial color={on ? '#e0453a' : '#3a3d42'} emissive={on ? '#e0453a' : '#000000'} emissiveIntensity={on ? 0.55 : 0} metalness={0.3} roughness={0.5} />
       </mesh>
-      {/* socket body + hole (flat coins, round face up) */}
-      <mesh>
-        <cylinderGeometry args={[0.19, 0.21, 0.09, 22]} />
-        <meshStandardMaterial color={on ? '#8a2820' : '#2a2d31'} metalness={0.45} roughness={0.5} />
-      </mesh>
-      <mesh position={[0, 0.055, 0]}>
-        <cylinderGeometry args={[0.09, 0.09, 0.05, 16]} />
-        <meshStandardMaterial color="#0a0b0d" roughness={0.9} />
+      {/* rubber strain-relief boot (the cable leaves here, local +Y) */}
+      <mesh position={[0, 0.13, 0]}>
+        <cylinderGeometry args={[0.045, 0.075, 0.11, 12]} />
+        <meshStandardMaterial color="#17181b" roughness={0.75} />
       </mesh>
     </group>
+  );
+}
+
+// A flat tap target (round face up, so the top-down ray hits it) shown in wire mode over a plug.
+function TapDisc({ pos, onTap }: { pos: XYZ; onTap: () => void }) {
+  return (
+    <mesh
+      position={pos}
+      onPointerDown={(e: ThreeEvent<PointerEvent>) => e.stopPropagation()}
+      onPointerUp={(e: ThreeEvent<PointerEvent>) => {
+        e.stopPropagation();
+        onTap();
+      }}
+    >
+      <cylinderGeometry args={[0.34, 0.34, 0.04, 18]} />
+      <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    </mesh>
   );
 }
 
 export function PatchLayer({ placements, wires, deskY, editable, onToggleWire }: { placements: Record<string, Placement>; wires: string[]; deskY: number; editable: boolean; onToggleWire: (id: string) => void }) {
   const looper = placements[LOOPER_ID];
   if (!looper) return null;
-  const y = deskY + 0.16;
-  const looperPos: XYZ = [looper.x, y, looper.z];
+  const y = deskY + JACK_Y_OFF;
   const devices = Object.keys(placements).filter((id) => id !== LOOPER_ID);
 
   return (
     <group>
-      {/* the looper's input jack (a larger dark socket) */}
-      <group position={looperPos}>
-        <mesh>
-          <cylinderGeometry args={[0.24, 0.26, 0.08, 26]} />
-          <meshStandardMaterial color="#141518" metalness={0.4} roughness={0.5} />
-        </mesh>
-        <mesh position={[0, 0.05, 0]}>
-          <cylinderGeometry args={[0.11, 0.11, 0.05, 18]} />
-          <meshStandardMaterial color="#0a0b0d" roughness={0.9} />
-        </mesh>
-      </group>
-
-      {/* an output jack per device, offset toward the looper so it reads as the output side */}
       {devices.map((id) => {
         const p = placements[id];
         const dx = looper.x - p.x;
         const dz = looper.z - p.z;
         const len = Math.hypot(dx, dz) || 1;
-        const jp: XYZ = [p.x + (dx / len) * 0.5, y, p.z + (dz / len) * 0.5];
+        const dir: XYZ = [dx / len, 0, dz / len]; // device -> looper (in the desk plane)
+        const back: XYZ = [-dir[0], 0, -dir[2]];
+        // the device plug sits at its side edge (barrel points INTO the device = -dir; cable leaves +dir)
+        const devBase: XYZ = [p.x + dir[0] * EDGE_DEV, y, p.z + dir[2] * EDGE_DEV];
+        const devAttach: XYZ = [devBase[0] + dir[0] * PLUG_OUT, y, devBase[2] + dir[2] * PLUG_OUT];
+        // the looper plug sits on the looper's side facing this device (barrel INTO looper; cable leaves -dir)
+        const loopBase: XYZ = [looper.x - dir[0] * EDGE_LOOP, y, looper.z - dir[2] * EDGE_LOOP];
+        const loopAttach: XYZ = [loopBase[0] - dir[0] * PLUG_OUT, y, loopBase[2] - dir[2] * PLUG_OUT];
         const on = wires.includes(id);
+        const seed = p.x * 3.1 + p.z * 7.7 + 1;
         return (
           <group key={id}>
-            {editable && <Jack pos={jp} on={on} onTap={() => onToggleWire(id)} />}
-            {on && <Cable from={jp} to={looperPos} onTap={editable ? () => onToggleWire(id) : undefined} />}
+            {editable && <TapDisc pos={[devBase[0], y, devBase[2]]} onTap={() => onToggleWire(id)} />}
+            {(on || editable) && <Plug base={devBase} axis={dir} on={on} />}
+            {on && (
+              <>
+                <Plug base={loopBase} axis={back} on={on} />
+                <Cable a={devAttach} b={loopAttach} dir={dir} seed={seed} onTap={editable ? () => onToggleWire(id) : undefined} />
+              </>
+            )}
           </group>
         );
       })}

@@ -9,6 +9,8 @@
 export interface SharedAudio {
   readonly ctx: AudioContext;
   output(deviceId: string): AudioNode;
+  readonly looperInput: AudioNode; // the bus the LoopClone taps to record the wired devices
+  readonly loopOut: AudioNode; // where the LoopClone plays its loops back (→ master → speakers)
 }
 
 type Ctor = { new (): AudioContext };

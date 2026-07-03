@@ -4,9 +4,12 @@ import type { ViewModel } from '../application/state';
 // free events here; all looping logic lives in the controller.
 export interface DeviceHandlers {
   resume(): void;
-  onTrackButton(track: number): void; // the big round record/play button
-  onTrackStop(track: number): void; // the stop button
+  onTrackButton(track: number): void; // the big round record/play/overdub button
+  onTrackStop(track: number): void; // the stop button: mute (loop keeps running)
   onTrackClear(track: number): void; // hold-stop: empty the track
+  onTrackSolo(track: number): void; // long-press the big button: solo (mute the others)
+  onTrackUndo(track: number): void; // undo the track's last take
+  onAllStop(): void; // ALL: start/stop every loop at once
   onLevel(track: number, level: number): void; // the track fader (absolute 0..1)
   onPower(): void;
   onInspectToggle(): void;

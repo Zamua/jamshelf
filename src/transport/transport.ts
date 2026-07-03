@@ -84,17 +84,26 @@ export class Transport {
     this.running = true;
     this.emitChange();
   }
-  stop(): void {
+  // PAUSE: halt but HOLD the position - the next play resumes from here.
+  pause(): void {
     if (!this.running) return;
-    this.running = false; // pause: hold the position, resume from here on the next play
+    this.running = false;
     this.emitChange();
   }
-  toggle(): void {
-    this.running ? this.stop() : this.play();
+  // STOP: halt AND return to bar 1 - the next play starts from the top. Works whether playing or
+  // already paused. Rewinds BEFORE emitting so observers (the loops) see the reset position.
+  stop(): void {
+    this.pulse = -1;
+    this.running = false;
+    this.emitChange();
+    for (const cb of this.positionSubs) cb();
   }
-  // Reset the position to the downbeat (bar 1). Used when a context resets - e.g. entering a rig
-  // after solo free-run noodling left the counter far along. Refuses while running (never yanks a
-  // playing clock).
+  toggle(): void {
+    this.running ? this.pause() : this.play(); // play/pause
+  }
+  // Reset the position to the downbeat (bar 1) WITHOUT changing the running state. Used when a
+  // context resets - e.g. entering a rig after solo free-run left the counter far along. Refuses
+  // while running (never yanks a playing clock).
   rewind(): void {
     if (this.running) return;
     this.pulse = -1;

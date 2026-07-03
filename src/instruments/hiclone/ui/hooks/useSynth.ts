@@ -102,10 +102,9 @@ export function useSynth(enabled = true, transport?: Transport) {
     // a solo HiClone (free-run, for its arp) resumes free-running from bar 1 without waking the
     // (silent, bystander) drum machine, while a rig replays the drums from the top.
     const transportControl: TransportControl = {
-      suspend: () => t.stop(),
+      suspend: () => t.pause(), // count-in halt: HOLD (the rewind to bar 1 happens at the downbeat)
       resumeFromTop: () => {
-        t.stop(); // force not-running so rewind takes effect even if the bar was tapped mid-count-in
-        t.rewind();
+        t.stop(); // halt + rewind to bar 1
         if (!t.isFreeRun()) t.play();
       },
     };

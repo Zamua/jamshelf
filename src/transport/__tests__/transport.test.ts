@@ -18,18 +18,30 @@ describe('Transport (the master clock)', () => {
     expect(t.position().pulse).toBe(0);
   });
 
-  it('advances one pulse per advance() while running; play/stop/toggle gate it, resume continues', () => {
+  it('play/pause/toggle gate advancing; PAUSE holds position and resumes from there', () => {
     t.play();
     t.advance(); // first pulse -> index 0 (the downbeat)
     expect(t.position().pulse).toBe(0);
     run(t, 23); // 23 more -> index 23
     expect(t.position().pulse).toBe(23);
-    t.stop();
-    run(t, 5); // ignored while stopped
-    expect(t.position().pulse).toBe(23);
+    t.pause();
+    run(t, 5); // ignored while paused
+    expect(t.position().pulse).toBe(23); // held
     t.toggle(); // -> play, RESUMES from where it paused (does not reset)
     t.advance(); // -> index 24
     expect(t.position()).toMatchObject({ pulse: 24, beat: 2 });
+  });
+
+  it('STOP halts AND returns to bar 1 (next play starts from the top)', () => {
+    t.play();
+    run(t, 40); // somewhere mid-bar-2
+    expect(t.position().pulse).toBe(39);
+    t.stop();
+    expect(t.isRunning()).toBe(false);
+    expect(t.position()).toMatchObject({ pulse: 0, bar: 1, beat: 1 }); // back to the top
+    t.play();
+    t.advance();
+    expect(t.position().pulse).toBe(0); // resumes from bar 1, not from where it stopped
   });
 
   it('derives bar / beat / tick / phase from the pulse index', () => {

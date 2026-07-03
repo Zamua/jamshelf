@@ -54,9 +54,9 @@ describe('IntervalTicker (self-correcting to the wall clock)', () => {
     clock = 1050;
     vi.advanceTimersByTime(12);
     const atStop = t.position().pulse;
-    t.stop();
-    clock = 2000; // lots more time passes while stopped
+    t.pause();
+    clock = 2000; // lots more time passes while paused
     vi.advanceTimersByTime(60);
-    expect(t.position().pulse).toBe(atStop); // frozen
+    expect(t.position().pulse).toBe(atStop); // frozen (the ticker doesn't advance a stopped clock)
   });
 });

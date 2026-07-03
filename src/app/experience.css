@@ -232,6 +232,8 @@
 }
 .rig-chip:first-child { margin-left: 0; }
 .rig-chip-more { background: rgba(255, 240, 220, 0.16); color: #efe1cd; font-size: 12px; }
+/* a mini rendered device sits in the chip slot (transparent PNG on a subtle recessed background) */
+.rig-chip-img { object-fit: contain; padding: 1px; background: linear-gradient(155deg, #3d2c1d, #221610); }
 .rig-meta { flex: 1; min-width: 0; }
 .rig-names { font: 600 15px/1.2 system-ui, sans-serif; color: #f4ecdf; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rig-when { font: 500 12px/1.3 system-ui, sans-serif; color: #9c8464; margin-top: 3px; }

@@ -8,6 +8,7 @@ import { Transport } from '../transport/transport';
 import { IntervalTicker } from '../transport/intervalTicker';
 import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
 import { RigsDrawer } from './RigsDrawer';
+import { DeviceThumbForge } from './deviceThumbs';
 import './experience.css';
 
 const FLOAT_MS = 1250; // matches the Stage's float DURATION; the device plays after it lands
@@ -201,6 +202,18 @@ function StageHost({
   const [rigsOpen, setRigsOpen] = useState(false);
   const [editingUuid, setEditingUuid] = useState<string | null>(null);
   const [rigList, setRigList] = useState<RigSummary[]>([]);
+  // Device-thumbnail generation: kick it off on IDLE (after the shelf settles, before the drawer is
+  // ever opened) so the chip thumbnails are ready with no flash. thumbTick re-renders the chips as
+  // each device is captured.
+  const [forgeReady, setForgeReady] = useState(false);
+  const [thumbTick, setThumbTick] = useState(0);
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ric = (window as any).requestIdleCallback as ((cb: () => void) => number) | undefined;
+    const id = ric ? ric(() => setForgeReady(true)) : window.setTimeout(() => setForgeReady(true), 1200);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return () => (ric ? (window as any).cancelIdleCallback?.(id) : clearTimeout(id));
+  }, []);
 
   // The carousel: `carouselIndex` is the settled centered instrument (React state, drives the
   // label + dots); `carousel` is the live fractional position the Stage animates (so a swipe
@@ -567,12 +580,14 @@ function StageHost({
       <RigsDrawer
         open={rigsOpen && onShelf}
         rigs={rigList}
+        thumbTick={thumbTick}
         onClose={() => setRigsOpen(false)}
         onNew={newRig}
         onOpen={openSavedRig}
         onEdit={editRig}
         onDelete={removeRig}
       />
+      {forgeReady && <DeviceThumbForge onProgress={() => setThumbTick((t) => t + 1)} />}
     </>
   );
 }

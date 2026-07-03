@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { RigSummary } from '../rig/rigStore';
 import { instrumentById } from '../instruments/registry';
+import { getDeviceThumb } from './deviceThumbs';
 
 // The sheet is SHEET_VH tall; its two open detents show DEFAULT_VH (the resting height) or the
 // whole thing (full). translateY slides it: 0 = full, (SHEET-DEFAULT) = default, SHEET = dismissed.
@@ -44,6 +45,7 @@ function TrashIcon() {
 interface Props {
   open: boolean;
   rigs: RigSummary[];
+  thumbTick: number; // bumps as device thumbnails are captured, so the chips re-render
   onClose: () => void;
   onNew: () => void;
   onOpen: (uuid: string) => void;
@@ -147,7 +149,10 @@ export function RigsDrawer({ open, rigs, onClose, onNew, onOpen, onEdit, onDelet
                 <div className="rig-chips">
                   {shownIds.map((id) => {
                     const m = instrumentById(id)?.manifest;
-                    return (
+                    const thumb = getDeviceThumb(id); // a live-rendered mini device, or the letter until ready
+                    return thumb ? (
+                      <img key={id} className="rig-chip rig-chip-img" src={thumb} alt="" draggable={false} />
+                    ) : (
                       <span key={id} className="rig-chip" style={{ background: m?.accent ?? '#8a7256' }}>
                         {(m?.name ?? id).charAt(0).toUpperCase()}
                       </span>

@@ -306,9 +306,9 @@ export class WebAudioLooper implements AudioLooper {
       this.lastActivity = this.ctx.currentTime;
   }
 
-  // Joystick down: STOP all layers (resume restarts them from the top / bar 1). Pulled
-  // DOWN during an overdub count-in instead CANCELS the pending recording and leaves the
-  // existing layers stopped (the re-press path resumes them; down stops everything).
+  // Joystick down: STOP the whole rig (this instrument's loops AND the shared transport / drums),
+  // resume restarts everything from the top / bar 1. Pulled DOWN during a count-in instead CANCELS
+  // the pending recording (which also stops the rig via cancelTake).
   toggleStop(): void {
     if (this.countdown > 0) {
       this.cancelTake(false); // pulled down during a count-in: abandon the take, leave stopped
@@ -320,12 +320,14 @@ export class WebAudioLooper implements AudioLooper {
       this.stopAllSources();
       this.stopped = true;
       this.stopDisplayTimer();
+      this.transport?.suspend(); // "stop" halts the whole rig, not just this instrument's loops
     } else {
       const at = this.ctx!.currentTime + 0.05;
       this.anchorTime = at;
       this.restartTracks(at);
       this.stopped = false;
       this.startDisplayTimer();
+      this.transport?.resumeFromTop(); // and restarting resumes the rig from bar 1, in step
     }
     this.emit();
   }

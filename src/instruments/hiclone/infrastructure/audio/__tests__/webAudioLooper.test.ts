@@ -507,6 +507,21 @@ describe('WebAudioLooper', () => {
     expect(looper.view().mode).toBe('play');
   });
 
+  it('a joystick-down stop halts the whole rig (loops + transport), and a restart resumes it', () => {
+    const transport = new FakeTransport();
+    const { looper, ctx } = makeLooper(transport);
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 });
+    const s0 = transport.suspends;
+    const r0 = transport.resumes;
+    looper.toggleStop(); // down -> stop this instrument's loops AND the shared transport (drums)
+    expect(looper.view().stopped).toBe(true);
+    expect(transport.suspends).toBe(s0 + 1);
+    looper.toggleStop(); // down again -> restart the whole rig from bar 1
+    expect(looper.view().stopped).toBe(false);
+    expect(transport.resumes).toBe(r0 + 1);
+  });
+
   it('aborting an overdub count-in stops the layers scheduled for the cancelled downbeat (no zombie)', () => {
     const { looper, ctx } = makeLooper();
     looper.setBpm(120);

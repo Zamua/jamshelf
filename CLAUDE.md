@@ -185,6 +185,7 @@ mobile-first. (Paths below are relative to `src/instruments/hichord/`.)
 
 - **`erasableSyntaxOnly` is ON** (Vite TS template default). NO TypeScript constructor parameter-properties, NO `enum`, NO `namespace`. Use explicit fields + union types + `as const` arrays. (Bit us once on the controller constructor.)
 - **No em dashes** anywhere (code, comments, UI text, commits). Colons/parens/hyphens instead.
+- **No content-driven reflow (UI principle, 2026-07-03).** Nothing grows/shrinks/shifts because of its contents or their count. Containers are FIXED size and their contents SCROLL on overflow (never resize the container); columns that precede text (icon/chip columns) are FIXED width so the text never shifts x with the item count (cap + a "+N" overflow indicator rather than widen). Applied to the rig drawer (fixed-height sheet + scroll, fixed chip column); hold all future UI to it.
 - DDD/TDD: domain stays pure and tested; cross-cutting concerns (audio, input) live in adapters; the core depends on ports, never on a vendor SDK.
 - React 19 + R3F v9 + three 0.185. vitest 4 needs `@rolldown/binding-darwin-arm64` (installed; reinstall it if `npm ci` drops the optional native dep).
 - Node 20.18 is a hair under Vite's preferred 20.19+ (warning only; builds + previews fine). Bump node if it ever bites.

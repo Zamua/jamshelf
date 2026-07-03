@@ -127,7 +127,38 @@ readouts all read the same clock - eliminating drift + the per-hit looseness.
 
 ## Multiplayer (future)
 
-`/rig/<uuid>` is designed to become the Ableton Link model: a shared beat timeline broadcast over
-WebSocket, every client locked to the room's tempo + phase, no master. The room id in the URL is
-the "same WiFi." Nothing in the domain model changes - only the `Ticker` / Transport gains a
-network-synced source.
+`/rig/<uuid>` is designed to host ONE shared rig operated by SEVERAL people (not several separate
+rigs) - "a band in a room." The uuid in the URL is the room = "same WiFi": open the link, you're in.
+The design (settled 2026-07-03):
+
+- **One shared rig; each player occupies one instrument at a time - a HARD lock.** You take an
+  instrument by focusing it (the existing solo focus gesture) and release it with the back button (the
+  SAME gesture as solo) - so occupancy is just solo's focus/back navigation + a lock + presence, almost
+  no new interaction. Backstops that also relinquish: disconnect, and ~1 min idle.
+- **The device owns its memory, not the player.** An instrument's state (the TR-B0B pattern, the
+  HiClone settings, recorded loops) lives IN the device and is shared with the rig: sequence something
+  on the B0B, wander off, and whoever grabs it next sees + continues your sequence. Combined with the
+  hard lock this makes the whole thing CONFLICT-FREE by construction - only the current holder can edit
+  a device, and the device's memory is the one shared truth, i.e. a single writer per device, so there
+  is no concurrent-edit problem (no CRDT/OT needed).
+- **One transport, identical solo and multiplayer** (the "solo is a rig of one" axiom). Kept as the
+  ambient shared transport bar: anyone in the room can play/stop/tempo (a friends-jam over a shared
+  link, not anonymous public, so a shared Stop is fine - like a band, anyone can call a stop). NOT
+  occupancy-gated. (Drum-machine-as-master was considered; the ambient bar wins on simplicity + it
+  avoids the "nobody is holding the clock device, so who starts the beat?" edge.)
+- **Presence carries the coordination, not menus:** colored avatars/cursors on the desk, the held
+  instrument glows the holder's color, a hit pad flashes their color, names + colors on join (cf.
+  boardtogether's YOU/HOST badges). You coordinate by watching, like real musicians.
+
+Sync mechanism (Ableton-Link-shaped): a WebSocket room broadcasts the shared beat timeline (tempo + a
+phase anchor); every client's `Transport` locks to it - only the `Ticker` changes (the pulse comes
+from the room instead of a local interval), the domain model does not move. Player actions (pad hits,
+knob turns, pattern edits) broadcast as small events; every client renders the audio LOCALLY. Anything
+on the grid (drum steps, loops, arps) schedules to the shared beat, so it lands tight for everyone
+regardless of jitter. The two-layer split (timing shared, notes owned) is already exactly this model,
+and mount-all already makes the rig a live room - multiplayer just adds other people's inputs to it.
+
+Honest limit: networked audio has a latency floor. You hear your OWN instrument instantly; grid
+material (drums/loops/arps) is tight for everyone (quantized to the shared beat); live, non-quantized
+solos reach others a beat-fraction late. Design around it - the tight rhythmic stuff is the backbone,
+live melody is the loose top layer.

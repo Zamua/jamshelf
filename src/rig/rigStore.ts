@@ -13,6 +13,7 @@ export interface Placement {
 export interface RigConfig {
   readonly instruments: string[]; // instrument ids in the rig
   readonly placements: Record<string, Placement>; // where each lies on the desk
+  readonly wires?: string[]; // device ids patched into the looper's input (absent = none)
   readonly createdAt?: number; // epoch ms (optional: rigs saved before this existed have none)
   readonly updatedAt?: number; // epoch ms, bumped on any edit - the "recent" sort key
 }
@@ -140,6 +141,17 @@ export function savePlacement(uuid: string, id: string, p: Placement): void {
   if (!c) return;
   try {
     globalThis.localStorage?.setItem(key(uuid), JSON.stringify({ ...c, placements: { ...c.placements, [id]: p }, updatedAt: Date.now() }));
+  } catch {
+    /* ignore */
+  }
+}
+
+// Persist the set of devices patched into the looper's input.
+export function saveWires(uuid: string, wires: string[]): void {
+  const c = loadRig(uuid);
+  if (!c) return;
+  try {
+    globalThis.localStorage?.setItem(key(uuid), JSON.stringify({ ...c, wires, updatedAt: Date.now() }));
   } catch {
     /* ignore */
   }

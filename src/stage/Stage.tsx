@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { Group, Vector3, Quaternion, MathUtils, type Camera } from 'three';
 import { StudioLights } from '../shared/StudioLights';
 import { ShelfLabel } from './ShelfLabel';
+import { PatchLayer } from './PatchLayer';
 import { centroid, type Placement } from '../rig/rigStore';
 
 // The two ends of the one continuous move. progress 0 = resting on the shelf (a swipeable
@@ -400,6 +401,9 @@ interface StageProps {
   build: boolean; // rig-BUILD (angled): shelf up top, placed instruments lying flat on the desk
   rigPlay: boolean; // rig-PLAY (top-down): only the placed instruments, camera zooms to the focused
   placements: Record<string, Placement> | null; // flat scatter for placed instruments (build + play)
+  wires: string[] | null; // devices patched into the looper (rig-play all-view only); null = no patch layer
+  patchMode: boolean; // rig-play: editing cables. Turns off the device tap-to-focus catchers so the jacks receive taps.
+  onToggleWire: (id: string) => void;
   spinRef: React.RefObject<Spin>;
   carouselRef: React.RefObject<Carousel>;
   onDeviceTap: (index: number) => void;
@@ -417,6 +421,9 @@ export function Stage({
   build,
   rigPlay,
   placements,
+  wires,
+  patchMode,
+  onToggleWire,
   spinRef,
   carouselRef,
   onDeviceTap,
@@ -482,13 +489,19 @@ export function Stage({
             inspectTarget={isActive && inspect && !rigPlay ? 1 : 0}
             spinRef={spinRef}
             carouselRef={carouselRef}
-            interactiveShelf={activeId === null}
+            interactiveShelf={activeId === null && !patchMode}
             buildPose={buildPose}
             rigPose={rigPose}
             onTap={onDeviceTap}
           />
         );
       })}
+
+      {/* virtual patch cables: only in the rig all-view (not while zoomed on one device). The cables
+          always show the current routing; the tappable jacks appear only in patch mode. */}
+      {rigPlay && activeId === null && wires && placements && (
+        <PatchLayer placements={placements} wires={wires} deskY={RIG_DESK_Y} editable={patchMode} onToggleWire={onToggleWire} />
+      )}
 
       <CarouselTick carouselRef={carouselRef} />
       <CameraRig floatTarget={camFloat} inspectTarget={camInspect} buildTarget={camBuild} rigActive={rigPlay} rigCamRef={rigCam} />

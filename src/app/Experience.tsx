@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Stage, type StageInstrument, type Carousel } from '../stage/Stage';
 import { EyeIcon } from './EyeIcon';
@@ -7,7 +7,7 @@ import type { AnyInstrumentModule } from '../shared/instrument';
 import { Transport } from '../transport/transport';
 import { IntervalTicker } from '../transport/intervalTicker';
 import { RigAudio, type SharedAudio } from '../rig/rigAudio';
-import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
+import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, saveWires, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
 import { RigsDrawer } from './RigsDrawer';
 import { DeviceThumbForge } from './deviceThumbs';
 import './experience.css';
@@ -131,7 +131,7 @@ export function Experience() {
         {children}
       </InstrumentProvider>
     ),
-    <StageHost activeId={activeId} rig={rig} focused={focused} onFocus={setFocused} onNavigate={navigate} transport={transport} />,
+    <StageHost activeId={activeId} rig={rig} rigUuid={parsed.kind === 'rig' ? parsed.uuid! : null} audio={rigAudio} focused={focused} onFocus={setFocused} onNavigate={navigate} transport={transport} />,
   );
 
   return <div className="experience">{tree}</div>;
@@ -140,6 +140,8 @@ export function Experience() {
 function StageHost({
   activeId,
   rig,
+  rigUuid,
+  audio,
   focused,
   onFocus,
   onNavigate,
@@ -147,6 +149,8 @@ function StageHost({
 }: {
   activeId: string | null;
   rig: RigConfig | null;
+  rigUuid: string | null;
+  audio: RigAudio;
   focused: string | null;
   onFocus: (id: string | null) => void;
   onNavigate: (to: string) => void;
@@ -156,6 +160,33 @@ function StageHost({
   const [manualOpen, setManualOpen] = useState(false);
   const [inspect, setInspect] = useState(false);
   const spin = useRef<Spin>({ x: 0, y: 0, vx: 0, vy: 0, dragging: false });
+
+  // Virtual patch cables: which devices are wired into the looper's input. Kept in React state
+  // (so the desk cables re-render), persisted to the rig, and mirrored into the shared audio graph.
+  const [wires, setWires] = useState<string[]>(() => rig?.wires ?? []);
+  const [patchMode, setPatchMode] = useState(false);
+  useEffect(() => {
+    setWires(rig?.wires ?? []);
+    setPatchMode(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rigUuid]);
+  useEffect(() => {
+    const on = new Set(wires);
+    for (const id of rig?.instruments ?? []) {
+      if (on.has(id)) audio.wire(id);
+      else audio.unwire(id);
+    }
+  }, [wires, rig, audio]);
+  const onToggleWire = useCallback(
+    (id: string) => {
+      setWires((prev) => {
+        const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+        if (rigUuid) saveWires(rigUuid, next);
+        return next;
+      });
+    },
+    [rigUuid],
+  );
 
   // A minimal view of the shared Transport for the transport bar: running + tempo + the bar.beat
   // position. Re-renders only when a displayed value actually changes (onPosition fires every pulse,
@@ -483,6 +514,9 @@ function StageHost({
         build={building}
         rigPlay={!!rig}
         placements={building ? placements : rig ? rig.placements : null}
+        wires={rig && !building ? wires : null}
+        patchMode={patchMode}
+        onToggleWire={onToggleWire}
         spinRef={spin}
         carouselRef={carousel}
         onDeviceTap={onDeviceTap}
@@ -533,7 +567,12 @@ function StageHost({
       {rig && focused === null && (
         <div className="overlay build-chrome is-on">
           <button className="back-to-shelf" onClick={() => onNavigate('/')} aria-label="Back to the shelf">‹</button>
-          <footer className="build-hint">tap an instrument to play it</footer>
+          <button className={'patch-toggle' + (patchMode ? ' is-active' : '')} onClick={() => setPatchMode((v) => !v)}>
+            {patchMode ? 'done' : 'wire'}
+          </button>
+          <footer className="build-hint">
+            {patchMode ? 'tap a device jack to patch it into the looper' : 'tap an instrument to play it'}
+          </footer>
         </div>
       )}
 

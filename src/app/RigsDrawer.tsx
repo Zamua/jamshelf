@@ -60,10 +60,15 @@ export function RigsDrawer({ open, rigs, onClose, onNew, onOpen, onEdit, onDelet
           {rigs.length === 0 && <p className="rigs-empty">No rigs yet. Build one to jam several instruments in sync.</p>}
           {rigs.map((r) => {
             const names = r.instruments.map((id) => instrumentById(id)?.manifest.name ?? id);
+            // Cap the chips so the column stays a FIXED width (names never shift): show up to CHIP_MAX,
+            // and if a rig has more instruments, the last slot becomes a "+N" count.
+            const CHIP_MAX = 3;
+            const shownIds = r.instruments.length > CHIP_MAX ? r.instruments.slice(0, CHIP_MAX - 1) : r.instruments;
+            const more = r.instruments.length - shownIds.length;
             return (
               <div key={r.uuid} className="rig-card" onClick={() => onOpen(r.uuid)}>
                 <div className="rig-chips">
-                  {r.instruments.map((id) => {
+                  {shownIds.map((id) => {
                     const m = instrumentById(id)?.manifest;
                     return (
                       <span key={id} className="rig-chip" style={{ background: m?.accent ?? '#8a7256' }}>
@@ -71,6 +76,7 @@ export function RigsDrawer({ open, rigs, onClose, onNew, onOpen, onEdit, onDelet
                       </span>
                     );
                   })}
+                  {more > 0 && <span className="rig-chip rig-chip-more">+{more}</span>}
                 </div>
                 <div className="rig-meta">
                   <div className="rig-names">{names.join(' · ')}</div>

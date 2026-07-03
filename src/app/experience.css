@@ -187,19 +187,24 @@
 .rigs-scrim.is-open { opacity: 1; pointer-events: auto; }
 .rigs-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
-  max-height: 80vh; overflow-y: auto;
+  height: 72vh; /* FIXED - never grows/shrinks with the rig count; the list scrolls inside */
+  display: flex; flex-direction: column;
   background: #241811;
   border-radius: 26px 26px 0 0;
   border-top: 1px solid rgba(255, 220, 180, 0.14);
   box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.55);
-  padding: 14px 16px calc(22px + env(safe-area-inset-bottom, 0));
+  padding: 14px 16px 0;
   transform: translateY(101%);
   transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
 }
 .rigs-sheet.is-open { transform: translateY(0); }
-.rigs-grab { width: 40px; height: 5px; border-radius: 3px; background: rgba(255, 220, 180, 0.24); margin: 2px auto 16px; }
-.rigs-h { font: 700 20px/1 system-ui, sans-serif; margin: 0 4px 14px; color: #f4ecdf; }
-.rigs-list { display: flex; flex-direction: column; gap: 10px; }
+.rigs-grab { flex-shrink: 0; width: 40px; height: 5px; border-radius: 3px; background: rgba(255, 220, 180, 0.24); margin: 2px auto 16px; }
+.rigs-h { flex-shrink: 0; font: 700 20px/1 system-ui, sans-serif; margin: 0 4px 14px; color: #f4ecdf; }
+.rigs-list {
+  flex: 1; min-height: 0; overflow-y: auto; /* the ONLY scroller - contents scroll, the sheet doesn't move */
+  display: flex; flex-direction: column; gap: 10px;
+  padding-bottom: calc(22px + env(safe-area-inset-bottom, 0));
+}
 .rigs-empty { color: #9c8464; font: 500 13px/1.5 system-ui, sans-serif; padding: 4px 6px; }
 .rig-add {
   display: flex; align-items: center; gap: 12px; padding: 13px 14px;
@@ -214,13 +219,16 @@
   border-radius: 16px; cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
 .rig-card:active { background: rgba(50, 35, 22, 0.7); }
-.rig-chips { display: flex; flex-shrink: 0; }
+/* FIXED-width chip column so the names always start at the same x, whatever the instrument count */
+.rig-chips { display: flex; flex-shrink: 0; width: 84px; }
 .rig-chip {
+  box-sizing: border-box; /* 34px is the OUTER size, so 3 chips span exactly 84px */
   width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
   font: 800 15px/1 system-ui, sans-serif; color: #20120c; margin-left: -9px;
   border: 2px solid #24160d; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 .rig-chip:first-child { margin-left: 0; }
+.rig-chip-more { background: rgba(255, 240, 220, 0.16); color: #efe1cd; font-size: 12px; }
 .rig-meta { flex: 1; min-width: 0; }
 .rig-names { font: 600 15px/1.2 system-ui, sans-serif; color: #f4ecdf; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rig-when { font: 500 12px/1.3 system-ui, sans-serif; color: #9c8464; margin-top: 3px; }

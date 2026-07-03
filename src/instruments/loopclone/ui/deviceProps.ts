@@ -8,7 +8,7 @@ export interface DeviceHandlers {
   onTrackStop(track: number): void; // the stop button: mute (loop keeps running)
   onTrackClear(track: number): void; // hold-stop: empty the track
   onTrackSolo(track: number): void; // long-press the big button: solo (mute the others)
-  onTrackUndo(track: number): void; // undo the track's last take
+  onUndo(): void; // UNDO (top panel): revert the last take on the last-touched track
   onAllStop(): void; // ALL: start/stop every loop at once
   onLevel(track: number, level: number): void; // the track fader (absolute 0..1)
   onPower(): void;

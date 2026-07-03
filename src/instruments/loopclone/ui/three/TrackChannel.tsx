@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Shape } from 'three';
 import { RoundedBox, Text } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -5,6 +6,8 @@ import type { TrackVM } from '../../application/state';
 import { FRONT_Z, TRACK, trackX } from './layout';
 import { PALETTE, ringColor, ringGlow, dim } from './palette';
 import { LABEL_FONT } from './fonts';
+
+const HOLD_MS = 450; // press longer than this = the secondary action (solo / clear)
 
 // A right-pointing play triangle (drawn with geometry - the mono font lacks ▶/●). Built once.
 const PLAY_TRI = (() => {
@@ -25,6 +28,9 @@ export function TrackChannel({
   power,
   onButton,
   onStop,
+  onClear,
+  onSolo,
+  onLevel,
   resume,
 }: {
   i: number;
@@ -32,21 +38,61 @@ export function TrackChannel({
   power: boolean;
   onButton: (i: number) => void;
   onStop: (i: number) => void;
+  onClear: (i: number) => void;
+  onSolo: (i: number) => void;
+  onLevel: (i: number, level: number) => void;
   resume: () => void;
 }) {
   const cx = trackX(i);
   const ring = power ? ringColor(track.state) : PALETTE.ledOff;
-  const glow = power ? ringGlow(track.state) : 0;
+  // muted loop keeps running but is silenced: dim the ring so it reads as "held, not off"
+  const glow = power ? ringGlow(track.state) * (track.muted ? 0.25 : 1) : 0;
   const capY = TRACK.faderY - TRACK.faderH / 2 + track.level * TRACK.faderH;
+  const bigDown = useRef(0);
+  const stopDown = useRef(0);
 
-  const press = (e: ThreeEvent<PointerEvent>) => {
+  // big button: a quick tap runs the record/play/overdub cycle; a long hold solos the track
+  const bigStart = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    bigDown.current = e.timeStamp;
+  };
+  const bigEnd = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     resume();
-    onButton(i);
+    if (e.timeStamp - bigDown.current > HOLD_MS) onSolo(i);
+    else onButton(i);
   };
-  const stop = (e: ThreeEvent<PointerEvent>) => {
+  // stop button: a tap mutes (loop keeps running); a long hold clears the track
+  const stopStart = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    onStop(i);
+    stopDown.current = e.timeStamp;
+  };
+  const stopEnd = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    if (e.timeStamp - stopDown.current > HOLD_MS) onClear(i);
+    else onStop(i);
+  };
+  const stopInk = !power ? '#6a6d72' : track.muted ? PALETTE.ledAmber : '#cfd2d6';
+
+  // fader drag: a press starts a window-tracked vertical drag (robust to the flat-on-desk 3D
+  // transform - screen-Y deltas, not world coords), moving the level ~full travel over 160px.
+  const faderDown = (e: ThreeEvent<PointerEvent>) => {
+    e.stopPropagation();
+    let lastY = e.nativeEvent.clientY;
+    let lvl = track.level;
+    const move = (ev: PointerEvent) => {
+      lvl = Math.max(0, Math.min(1, lvl + (lastY - ev.clientY) / 160));
+      lastY = ev.clientY;
+      onLevel(i, lvl);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
 
   return (
@@ -59,7 +105,12 @@ export function TrackChannel({
         EDIT
       </Text>
 
-      {/* fader: a recessed groove + a prominent light cap at the level position */}
+      {/* fader: a recessed groove + a prominent light cap at the level position. An invisible wider
+          plane over it catches the drag (easy to grab); the level tracks the vertical drag. */}
+      <mesh position={[TRACK.faderXoff, TRACK.faderY, FRONT_Z + 0.1]} onPointerDown={faderDown}>
+        <planeGeometry args={[TRACK.faderW * 2.4, TRACK.faderH + 0.22]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
       <RoundedBox args={[TRACK.faderW * 0.42, TRACK.faderH + 0.06, 0.05]} radius={0.02} smoothness={3} position={[TRACK.faderXoff, TRACK.faderY, FRONT_Z + 0.01]}>
         <meshStandardMaterial color={PALETTE.faderTrack} roughness={0.95} />
       </RoundedBox>
@@ -78,19 +129,19 @@ export function TrackChannel({
         radius={0.045}
         smoothness={3}
         position={[TRACK.stopXoff, TRACK.stopY, FRONT_Z + 0.02]}
-        onPointerDown={(e) => e.stopPropagation()}
-        onPointerUp={stop}
-        onPointerCancel={stop}
+        onPointerDown={stopStart}
+        onPointerUp={stopEnd}
+        onPointerCancel={stopEnd}
       >
-        <meshStandardMaterial color={power ? '#33363b' : '#26282c'} metalness={0.3} roughness={0.5} />
+        <meshStandardMaterial color={track.muted ? '#4a3a1e' : power ? '#33363b' : '#26282c'} metalness={0.3} roughness={0.5} />
       </RoundedBox>
       <mesh position={[TRACK.stopXoff, TRACK.stopY, FRONT_Z + 0.055]}>
         <planeGeometry args={[0.088, 0.088]} />
-        <meshBasicMaterial color={power ? '#cfd2d6' : '#6a6d72'} toneMapped={false} />
+        <meshBasicMaterial color={stopInk} toneMapped={false} />
       </mesh>
 
-      {/* track number (centered under the controls, over the button) */}
-      <Text font={LABEL_FONT} position={[TRACK.numXoff, TRACK.numY, FRONT_Z + 0.02]} fontSize={0.26} color={power ? PALETTE.ink : PALETTE.inkDim} anchorX="center" anchorY="middle">
+      {/* track number (centered under the controls, over the button); tints when soloed */}
+      <Text font={LABEL_FONT} position={[TRACK.numXoff, TRACK.numY, FRONT_Z + 0.02]} fontSize={0.26} color={track.soloed ? PALETTE.ledGreen : power ? PALETTE.ink : PALETTE.inkDim} anchorX="center" anchorY="middle">
         {i + 1}
       </Text>
 
@@ -104,7 +155,7 @@ export function TrackChannel({
           <ringGeometry args={[TRACK.buttonR * 0.8, TRACK.buttonR, 56]} />
           <meshStandardMaterial color={ring} emissive={ring} emissiveIntensity={glow} toneMapped={false} roughness={0.4} />
         </mesh>
-        <mesh position={[0, 0, 0.06]} rotation={[Math.PI / 2, 0, 0]} onPointerDown={(e) => e.stopPropagation()} onPointerUp={press} onPointerCancel={press}>
+        <mesh position={[0, 0, 0.06]} rotation={[Math.PI / 2, 0, 0]} onPointerDown={bigStart} onPointerUp={bigEnd} onPointerCancel={bigEnd}>
           <cylinderGeometry args={[TRACK.buttonR * 0.7, TRACK.buttonR * 0.72, 0.1, 44]} />
           <meshStandardMaterial color="#15171a" metalness={0.35} roughness={0.45} />
         </mesh>

@@ -12,6 +12,7 @@ export class LoopStationController {
   private readonly engine: LoopEngine | null;
   private power = true;
   private inspect = false;
+  private lastTouched = 0; // the track the top-panel UNDO acts on (the one you last recorded/dubbed)
   private readonly listeners = new Set<Listener>();
   private readonly transport: Transport;
   // fallback track state used only when there is no engine (no audio)
@@ -54,6 +55,7 @@ export class LoopStationController {
   // --- the big round button: record -> play -> overdub cycle (or resume a stopped track) ---
   trackButton(i: number): void {
     if (!this.power || i < 0 || i >= TRACK_COUNT) return;
+    this.lastTouched = i;
     if (this.engine) this.engine.button(i);
     else this.tracks[i] = { ...this.tracks[i], state: nextOnButton(this.tracks[i].state) };
     this.publish();
@@ -82,15 +84,9 @@ export class LoopStationController {
     this.publish();
   }
 
-  trackUndo(i: number): void {
-    if (i < 0 || i >= TRACK_COUNT) return;
-    this.engine?.undo(i);
-    this.publish();
-  }
-
-  trackRedo(i: number): void {
-    if (i < 0 || i >= TRACK_COUNT) return;
-    this.engine?.redo(i);
+  // UNDO (top panel): revert the last take on the track you last recorded/overdubbed.
+  undoLast(): void {
+    this.engine?.undo(this.lastTouched);
     this.publish();
   }
 

@@ -131,17 +131,32 @@ export function Device({ vm, handlers }: DeviceProps) {
       <Knob x={KNOB_MEM.x} y={KNOB_MEM.y} r={KNOB_MEM.r} label={KNOB_MEM.label} power={on} />
       <Knob x={KNOB_OUTPUT.x} y={KNOB_OUTPUT.y} r={KNOB_OUTPUT.r} label={KNOB_OUTPUT.label} power={on} />
 
-      {/* transport row (colored buttons: a dark recess + a raised colored cap + a label below) */}
+      {/* transport row (colored buttons: a dark recess + a raised colored cap + a label below).
+          ALL mutes/unmutes every loop; UNDO reverts the last take. Tap on onPointerUp (touch). */}
       {TRANSPORT.map((b) => {
         const lit = b.label === 'RUN' && vm.playing && on;
         const base = TRANS_COLOR[b.kind];
+        const tap =
+          b.label === 'ALL' ? () => handlers.onAllStop() : b.label === 'UNDO' ? () => handlers.onUndo() : undefined;
         return (
           <group key={b.label} position={[b.x, b.y, FRONT_Z]}>
             <mesh position={[0, 0, 0.014]}>
               <circleGeometry args={[TRANSPORT_R + 0.022, 28]} />
               <meshStandardMaterial color="#0a0b0d" roughness={0.9} />
             </mesh>
-            <mesh position={[0, 0, 0.03]} rotation={[Math.PI / 2, 0, 0]}>
+            <mesh
+              position={[0, 0, 0.03]}
+              rotation={[Math.PI / 2, 0, 0]}
+              onPointerDown={tap ? (e) => e.stopPropagation() : undefined}
+              onPointerUp={
+                tap
+                  ? (e) => {
+                      e.stopPropagation();
+                      if (on) tap();
+                    }
+                  : undefined
+              }
+            >
               <cylinderGeometry args={[TRANSPORT_R, TRANSPORT_R * 1.04, 0.06, 28]} />
               <meshStandardMaterial color={on ? base : dim(base, 0.4)} emissive={lit ? base : '#000000'} emissiveIntensity={lit ? 1.1 : 0} toneMapped={false} metalness={0.15} roughness={0.42} />
             </mesh>
@@ -164,7 +179,18 @@ export function Device({ vm, handlers }: DeviceProps) {
 
       {/* the 5 track channels */}
       {Array.from({ length: TRACKS }, (_, i) => (
-        <TrackChannel key={i} i={i} track={vm.tracks[i]} power={on} onButton={handlers.onTrackButton} onStop={handlers.onTrackStop} resume={handlers.resume} />
+        <TrackChannel
+          key={i}
+          i={i}
+          track={vm.tracks[i]}
+          power={on}
+          onButton={handlers.onTrackButton}
+          onStop={handlers.onTrackStop}
+          onClear={handlers.onTrackClear}
+          onSolo={handlers.onTrackSolo}
+          onLevel={handlers.onLevel}
+          resume={handlers.resume}
+        />
       ))}
     </group>
   );

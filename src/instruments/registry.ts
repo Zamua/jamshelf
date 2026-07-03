@@ -2,11 +2,12 @@ import type { AnyInstrumentModule, InstrumentManifest } from '../shared/instrume
 import { hicloneModule } from './hiclone/module';
 import { stylocloneModule } from './styloclone/module';
 import { trb0bModule } from './trb0b/module';
+import { loopcloneModule } from './loopclone/module';
 
 // Every instrument on the shelf, as a full module (manifest + hook + device + chrome). The
 // shelf renders from this list and the router mounts each one at /<id>. Add an instrument by
 // appending its module here.
-export const INSTRUMENTS: readonly AnyInstrumentModule[] = [hicloneModule, stylocloneModule, trb0bModule];
+export const INSTRUMENTS: readonly AnyInstrumentModule[] = [hicloneModule, stylocloneModule, trb0bModule, loopcloneModule];
 
 export function instrumentById(id: string): AnyInstrumentModule | undefined {
   return INSTRUMENTS.find((m) => m.manifest.id === id);

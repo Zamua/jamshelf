@@ -91,11 +91,19 @@ person reads it instantly as "the thing everything follows."
 Mental model: *the transport bar is my DIN-sync master; each device is slaved to it or played
 free; I press play once and the rig is in time.*
 
-## Known gaps / follow-ups
+## Loops follow the tempo (pitch-preserving time-stretch)
 
-- **Tempo-lock after recording a loop.** A recorded loop is baked audio at the record tempo; changing
-  the transport BPM re-times the drums (they follow the clock) but NOT the loop, so they drift out of
-  sync. Fix: lock/disable the tempo control once any loop exists (or warn, or time-stretch). Deferred.
+A recorded loop is baked audio at its record tempo, so a naive player drifts against the (sequenced,
+already-following) drums when the BPM changes. Instead the looper RE-TIMES each layer with a
+pitch-preserving time-stretch (Signalsmith Stretch, MIT, WASM/AudioWorklet - lazy-loaded so it stays
+out of the initial bundle). Each `Track` keeps its ORIGINAL record-tempo PCM + `recordBpm`; on a
+(debounced) tempo change, `restretchTracks` renders each layer OFFLINE (an OfflineAudioContext with
+the Signalsmith node - note: `addBuffers` must be AWAITED or the render fires before the worklet has
+the audio) from the ORIGINAL (never a prior stretch, so no cumulative artifact) to the new tempo, then
+swaps the buffers in while keeping the loop's PHASE continuous so it never jumps against the drums.
+`infrastructure/audio/timeStretch.ts` is the isolated helper; the live playback path (AudioBufferSource)
+is unchanged. Verified end-to-end: a 1-bar loop at 120bpm re-renders to the exact bar length at 80 and
+160bpm, pitch preserved.
 
 ## Timing precision (future: an audio-clock scheduler)
 

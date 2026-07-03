@@ -29,7 +29,9 @@ const SCHEDULE_AHEAD = 0.12; // seconds of click events to schedule each poll
 interface Track {
   source: AudioBufferSourceNode;
   gain: GainNode; // per-layer gain, so a layer can be faded out on delete (no click)
-  buffer: AudioBuffer; // kept so the layer can be re-started (stop/resume, overdub count-in)
+  buffer: AudioBuffer; // the CURRENTLY-PLAYING buffer (the original, or a tempo-stretched copy)
+  orig: Float32Array[]; // the ORIGINAL captured PCM, at recordBpm - always time-stretch from this
+  recordBpm: number; // the tempo this layer was captured at
 }
 
 export class WebAudioLooper implements AudioLooper {
@@ -79,6 +81,10 @@ export class WebAudioLooper implements AudioLooper {
   private displayTimer: ReturnType<typeof setInterval> | null = null;
   private lastBeatKey = -1;
 
+  // tempo-follow: re-stretch recorded loops to a new tempo (debounced; token guards stale renders)
+  private restretchTimer: ReturnType<typeof setTimeout> | null = null;
+  private restretchToken = 0;
+
   private listeners = new Set<() => void>();
   private readonly store: LooperStore | null;
   private readonly transport: TransportControl | null; // drives the rig's stop/restart on record
@@ -103,7 +109,74 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   setBpm(bpm: number): void {
+    if (bpm === this.bpm) return;
     this.bpm = bpm;
+    this.scheduleRestretch(); // re-time any recorded loops to the new tempo (pitch-preserving)
+  }
+
+  // Debounce: a tempo drag fires many setBpm calls; re-stretch once, after it settles.
+  private scheduleRestretch(): void {
+    if (this.tracks.length === 0 || !this.ctx) return;
+    if (typeof OfflineAudioContext === 'undefined') return; // the stretch needs it (skip in non-browser)
+    if (this.restretchTimer !== null) clearTimeout(this.restretchTimer);
+    this.restretchTimer = setTimeout(() => {
+      this.restretchTimer = null;
+      void this.restretchTracks();
+    }, 180);
+  }
+
+  private pcmToBuffer(pcm: Float32Array[]): AudioBuffer {
+    const ctx = this.ctx!;
+    const buf = ctx.createBuffer(pcm.length, pcm[0].length, ctx.sampleRate);
+    pcm.forEach((c, i) => buf.getChannelData(i).set(c));
+    return buf;
+  }
+
+  // Re-time every recorded layer to the CURRENT tempo, pitch-preserved (Signalsmith, offline). Each
+  // layer is stretched from its ORIGINAL record-tempo PCM (never a prior stretch, so no cumulative
+  // artifact), then swapped in while keeping the loop's PHASE continuous - so it never jumps against
+  // the drums, which (being sequenced) already follow the tempo.
+  private async restretchTracks(): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx || this.tracks.length === 0 || this.loopBars === 0) return;
+    const bpm = this.bpm;
+    const token = ++this.restretchToken;
+    const barSamples = Math.max(1, Math.round((ctx.sampleRate * 60) / bpm)) * BEATS_PER_BAR;
+    const newLen = this.loopBars * barSamples;
+
+    // lazy-load the stretcher (Signalsmith WASM) only now that a loop is actually being re-timed,
+    // so it stays out of the initial bundle.
+    const { stretchLoop } = await import('./timeStretch');
+    const bufs = await Promise.all(
+      this.tracks.map(async (t) =>
+        t.recordBpm === bpm
+          ? this.pcmToBuffer(t.orig)
+          : this.pcmToBuffer(await stretchLoop(t.orig, ctx.sampleRate, t.recordBpm, bpm)),
+      ),
+    );
+    // the tempo (or the take set) may have moved on while we rendered - a newer run supersedes us
+    if (token !== this.restretchToken || this.bpm !== bpm || bufs.length !== this.tracks.length) return;
+
+    const at = ctx.currentTime + 0.03;
+    const oldSec = this.loopLenSamples / ctx.sampleRate;
+    const phase = oldSec > 0 ? ((((at - this.anchorTime) % oldSec) + oldSec) % oldSec) / oldSec : 0;
+    this.loopLenSamples = newLen;
+    this.loopBeats = this.loopBars * BEATS_PER_BAR;
+    const newSec = newLen / ctx.sampleRate;
+    const offset = phase * newSec;
+    this.anchorTime = at - offset; // loop phase-0 stays where the transport expects it
+    const play = this.mode === 'play' && !this.stopped;
+    this.stopAllSources();
+    this.tracks.forEach((t, i) => {
+      t.buffer = bufs[i];
+      if (play) {
+        const { source, gain } = this.startLoop(t.buffer, at, offset);
+        t.source = source;
+        t.gain = gain;
+      }
+    });
+    this.persist();
+    this.emit();
   }
 
   view(): LooperView {
@@ -344,7 +417,7 @@ export class WebAudioLooper implements AudioLooper {
     // The loop's phase 0 is the first note (anchorTime, set in noteStarted). Start
     // the looping source on the next loop boundary so playback is seamless.
     const startAt = this.nextBoundary();
-    this.tracks.push(this.startLoop(buf, startAt));
+    this.pushTrack(buf, startAt);
     this.selected = this.tracks.length - 1;
     this.recTrack = -1;
     this.mode = 'play';
@@ -419,10 +492,23 @@ export class WebAudioLooper implements AudioLooper {
   private restartTracks(at: number): void {
     this.stopAllSources();
     for (const t of this.tracks) {
-      const fresh = this.startLoop(t.buffer, at);
-      t.source = fresh.source;
-      t.gain = fresh.gain;
+      const { source, gain } = this.startLoop(t.buffer, at);
+      t.source = source;
+      t.gain = gain;
     }
+  }
+
+  // Create a Track from a freshly-recorded buffer, keeping its ORIGINAL PCM + record tempo so it can
+  // be time-stretched to a new tempo later (always from the original, never a prior stretch).
+  private pushTrack(buf: AudioBuffer, at: number): void {
+    const { source, gain } = this.startLoop(buf, at);
+    this.tracks.push({
+      source,
+      gain,
+      buffer: buf,
+      orig: [buf.getChannelData(0).slice(), buf.getChannelData(1).slice()],
+      recordBpm: this.bpm,
+    });
   }
   private scheduleAt(time: number, fn: () => void): void {
     const ms = Math.max(0, (time - this.ctx!.currentTime) * 1000);
@@ -449,7 +535,7 @@ export class WebAudioLooper implements AudioLooper {
     const buf = ctx.createBuffer(2, this.loopLenSamples, ctx.sampleRate);
     copyInto(buf.getChannelData(0), left);
     copyInto(buf.getChannelData(1), right);
-    this.tracks.push(this.startLoop(buf, this.nextBoundary()));
+    this.pushTrack(buf, this.nextBoundary());
     this.selected = this.tracks.length - 1;
     this.recTrack = -1;
     this.mode = 'play';
@@ -458,10 +544,10 @@ export class WebAudioLooper implements AudioLooper {
     this.persist();
   }
 
-  private startLoop(buf: AudioBuffer, at: number): Track {
+  private startLoop(buf: AudioBuffer, at: number, offset = 0): { source: AudioBufferSourceNode; gain: GainNode } {
     const { source, gain } = this.makeLayer(buf);
-    source.start(at);
-    return { source, gain, buffer: buf };
+    source.start(at, offset);
+    return { source, gain };
   }
   // Build a layer's source + per-layer gain wired to the loop bus, WITHOUT starting it
   // (a restored loop comes up stopped; startLoop adds the `start`).
@@ -519,7 +605,14 @@ export class WebAudioLooper implements AudioLooper {
       // an idle (un-started) source: the stopped state holds the buffer; a restart
       // (joystick-down) recreates a playing source from it.
       const { source, gain } = this.makeLayer(buf);
-      this.tracks.push({ source, gain, buffer: buf });
+      // treat the saved (record-tempo) PCM as this layer's original for future stretching
+      this.tracks.push({
+        source,
+        gain,
+        buffer: buf,
+        orig: [t.channels[0].slice(0, data.loopLenSamples), t.channels[1].slice(0, data.loopLenSamples)],
+        recordBpm: data.bpm,
+      });
     }
     this.selected = this.tracks.length - 1;
     this.recTrack = -1;

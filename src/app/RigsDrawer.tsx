@@ -1,5 +1,12 @@
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { RigSummary } from '../rig/rigStore';
 import { instrumentById } from '../instruments/registry';
+
+// The sheet is SHEET_VH tall; its two open detents show DEFAULT_VH (the resting height) or the
+// whole thing (full). translateY slides it: 0 = full, (SHEET-DEFAULT) = default, SHEET = dismissed.
+const SHEET_VH = 0.93;
+const DEFAULT_VH = 0.72;
+const FLICK = 0.5; // px/ms - past this, a flick wins over nearest-snap
 
 // "3 min ago" / "yesterday" / "2 wk ago" - a compact relative time for the rig list.
 function timeAgo(ms: number): string {
@@ -44,15 +51,85 @@ interface Props {
   onDelete: (uuid: string) => void;
 }
 
-// The "your rigs" bottom sheet: a new-rig row + a card per saved rig (open on tap, edit / delete
-// per card). All state lives in localStorage; this is a pure presentation of listRigs().
+// The "your rigs" bottom sheet: draggable by its handle (follows the finger, snaps to full /
+// default / dismissed), with an independently-scrolling rig list. All state is localStorage.
 export function RigsDrawer({ open, rigs, onClose, onNew, onOpen, onEdit, onDelete }: Props) {
+  const vh = () => (typeof window !== 'undefined' ? window.innerHeight : 900);
+  const detents = () => {
+    const h = vh();
+    return { full: 0, half: (SHEET_VH - DEFAULT_VH) * h, dismissed: SHEET_VH * h };
+  };
+  const [ty, setTyState] = useState(() => vh()); // start dismissed (off-screen)
+  const tyRef = useRef(ty);
+  const setTy = (v: number) => {
+    tyRef.current = v;
+    setTyState(v);
+  };
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ startY: number; startTy: number; lastY: number; lastT: number; v: number } | null>(null);
+
+  // Slide to the default detent when opened, off-screen when closed (the transition animates it).
+  useEffect(() => {
+    const d = detents();
+    setTy(open ? d.half : d.dismissed);
+  }, [open]);
+
+  const onDragStart = (e: ReactPointerEvent) => {
+    drag.current = { startY: e.clientY, startTy: tyRef.current, lastY: e.clientY, lastT: e.timeStamp, v: 0 };
+    setDragging(true);
+  };
+  // Move/up live on the WINDOW (not the handle) so the drag survives the finger leaving the handle
+  // as the sheet slides up under it - the app's canonical pointer pattern (see the joystick/pads).
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (e: PointerEvent) => {
+      const d = drag.current;
+      if (!d) return;
+      const { dismissed } = detents();
+      const dt = e.timeStamp - d.lastT;
+      if (dt > 0) d.v = (e.clientY - d.lastY) / dt; // px/ms, positive = downward
+      d.lastY = e.clientY;
+      d.lastT = e.timeStamp;
+      setTy(Math.max(0, Math.min(dismissed, d.startTy + (e.clientY - d.startY))));
+    };
+    const up = () => {
+      const d = drag.current;
+      drag.current = null;
+      setDragging(false);
+      if (!d) return;
+      const { full, half, dismissed } = detents();
+      const y = tyRef.current;
+      let target: number;
+      if (d.v > FLICK) target = y < half - 10 ? half : dismissed; // flick down: full->default->dismiss
+      else if (d.v < -FLICK) target = full; // flick up: expand to full
+      else target = [full, half, dismissed].reduce((a, b) => (Math.abs(b - y) < Math.abs(a - y) ? b : a));
+      setTy(target);
+      if (target === dismissed) onClose();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+    return () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+  }, [dragging]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <>
       <div className={'rigs-scrim' + (open ? ' is-open' : '')} onClick={onClose} />
-      <div className={'rigs-sheet' + (open ? ' is-open' : '')} role="dialog" aria-label="Your rigs" aria-hidden={!open}>
-        <div className="rigs-grab" />
-        <h2 className="rigs-h">Your rigs</h2>
+      <div
+        className={'rigs-sheet' + (dragging ? ' is-dragging' : '')}
+        style={{ transform: `translateY(${ty}px)` }}
+        role="dialog"
+        aria-label="Your rigs"
+        aria-hidden={!open}
+      >
+        <div className="rigs-handle" onPointerDown={onDragStart}>
+          <div className="rigs-grab" />
+          <h2 className="rigs-h">Your rigs</h2>
+        </div>
         <div className="rigs-list">
           <button className="rig-add" onClick={onNew}>
             <span className="rig-add-plus">＋</span> new rig

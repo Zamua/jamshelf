@@ -187,23 +187,26 @@
 .rigs-scrim.is-open { opacity: 1; pointer-events: auto; }
 .rigs-sheet {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 31;
-  height: 72vh; /* FIXED - never grows/shrinks with the rig count; the list scrolls inside */
+  height: 93vh; /* the FULL height; JS translateY picks which detent (full / default / dismissed) shows */
   display: flex; flex-direction: column;
   background: #241811;
   border-radius: 26px 26px 0 0;
   border-top: 1px solid rgba(255, 220, 180, 0.14);
   box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.55);
-  padding: 14px 16px 0;
-  transform: translateY(101%);
   transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1);
 }
-.rigs-sheet.is-open { transform: translateY(0); }
-.rigs-grab { flex-shrink: 0; width: 40px; height: 5px; border-radius: 3px; background: rgba(255, 220, 180, 0.24); margin: 2px auto 16px; }
-.rigs-h { flex-shrink: 0; font: 700 20px/1 system-ui, sans-serif; margin: 0 4px 14px; color: #f4ecdf; }
+.rigs-sheet.is-dragging { transition: none; } /* follow the finger 1:1 while dragging */
+/* the drag zone: grab bar + title. touch-action:none so a vertical drag isn't stolen by page scroll */
+.rigs-handle { flex-shrink: 0; padding: 14px 16px 6px; cursor: grab; touch-action: none; }
+.rigs-handle:active { cursor: grabbing; }
+.rigs-grab { width: 40px; height: 5px; border-radius: 3px; background: rgba(255, 220, 180, 0.30); margin: 2px auto 14px; }
+.rigs-h { font: 700 20px/1 system-ui, sans-serif; margin: 0 0 2px; color: #f4ecdf; }
 .rigs-list {
-  flex: 1; min-height: 0; overflow-y: auto; /* the ONLY scroller - contents scroll, the sheet doesn't move */
+  flex: 1; min-height: 0; overflow-y: auto; /* the list scrolls; the sheet itself only moves via the handle */
   display: flex; flex-direction: column; gap: 10px;
-  padding-bottom: calc(22px + env(safe-area-inset-bottom, 0));
+  padding: 10px 16px calc(22px + env(safe-area-inset-bottom, 0));
+  touch-action: pan-y;
+  overscroll-behavior: contain;
 }
 .rigs-empty { color: #9c8464; font: 500 13px/1.5 system-ui, sans-serif; padding: 4px 6px; }
 .rig-add {

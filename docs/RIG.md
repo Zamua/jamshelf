@@ -21,8 +21,9 @@ exactly like a DIN-sync cable or a MIDI clock stream.
 I/O-free domain object - a software DIN-sync master. It owns exactly:
 
 - **tempo** - one BPM.
-- **running** - is the clock advancing? (play / stop). Stopping *pauses* (holds position);
-  playing *resumes* from where it paused.
+- **running** - is the clock advancing? Two standard halts (as on a tape deck / MIDI transport):
+  **pause** holds position (the next play resumes from here); **stop** returns to bar 1 (the next
+  play starts from the top). `play()` / `pause()` / `stop()`; `toggle()` is play/pause.
 - **position** - a pulse counter at a base resolution (PPQN), from which `bar . beat . tick`
   and **phase** (position within the bar) are derived. Phase is what lets things line up on
   the downbeat.
@@ -77,11 +78,17 @@ the tempo.
 
 ## The experience
 
-One **Transport bar** is the master: `PLAY / STOP`, `TEMPO`, and a `bar.beat` readout. A gear
+One **Transport bar** is the master: `PLAY/PAUSE`, `STOP`, `TEMPO`, and a `bar.beat` readout. A gear
 person reads it instantly as "the thing everything follows."
 
 - Press **PLAY once** and the whole rig runs locked: drum steps, any arpeggio, and any loops all
   advance on the same clock and line up on the downbeat.
+- **Pause** freezes the whole timeline in place (drums AND loops hold; play resumes from there);
+  **Stop** returns everything to bar 1. Standard transport, so no instruction needed. The recorded
+  loops FOLLOW the transport (each looper subscribes): a Pause holds each loop at its phase (restarted
+  phase-continuously on resume), a Stop resets them to bar 1. The looper has no Pause *gesture* of its
+  own - a device's own Stop (the joystick down-flick) rides the shared transport, so 'stop' is one
+  thing across the rig. Solo (a rig of one, free-run) the looper stops its own loops directly.
 - Lean into an instrument (tap to zoom): its **own** controls are local (patterns, sounds, knobs).
   But **tempo and play are the shared master**, and they read the same on the instrument's own
   transport controls and on the Transport bar, because they are the same Transport. A device's

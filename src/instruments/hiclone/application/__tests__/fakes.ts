@@ -59,6 +59,11 @@ export class FakeAudioLooper implements AudioLooper {
     this.stops++;
     this.stopped = !this.stopped;
   }
+  follows: Array<{ playing: boolean; atStart: boolean }> = [];
+  followTransport(playing: boolean, atStart: boolean): void {
+    this.follows.push({ playing, atStart });
+    this.stopped = !playing;
+  }
   noteStarted(): void {
     this.notes++;
   }

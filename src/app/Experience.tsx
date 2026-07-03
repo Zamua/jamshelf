@@ -183,10 +183,13 @@ function StageHost({
 
   // Play/stop the whole rig (unlock every rig instrument's audio on the first gesture) + set the
   // one shared tempo.
+  // Play/Pause: HOLD position (resume from here). Stop: return to bar 1. Both unlock every rig
+  // instrument's audio on the first gesture. The loops follow the transport (each looper subscribes).
   const toggleTransport = () => {
     if (rig) for (const id of rig.instruments) entries[id]?.handlers?.resume?.();
     transport.toggle();
   };
+  const stopTransport = () => transport.stop();
   const setBpm = (next: number) => transport.setBpm(Math.max(40, Math.min(240, Math.round(next))));
 
   // Rig-BUILD mode (in the 3D room): the camera frames the shelf + desk; tapping a shelf instrument
@@ -491,9 +494,10 @@ function StageHost({
           position so the lock is visible. Shown throughout a rig. */}
       {rig && (
         <div className="transport-bar">
-          <button className={'transport-play' + (tview.running ? ' is-playing' : '')} onClick={toggleTransport} aria-label={tview.running ? 'Stop' : 'Play'}>
-            {tview.running ? '■' : '▶'}
+          <button className={'transport-play' + (tview.running ? ' is-playing' : '')} onClick={toggleTransport} aria-label={tview.running ? 'Pause' : 'Play'}>
+            {tview.running ? '❚❚' : '▶'}
           </button>
+          <button className="transport-stop" onClick={stopTransport} aria-label="Stop">■</button>
           <span className="transport-pos" aria-label="Position">{tview.bar}<small>.</small>{tview.beat}</span>
           <div className="transport-bpm">
             <button className="bpm-step" onClick={() => setBpm(tview.bpm - 1)} aria-label="Slower">–</button>

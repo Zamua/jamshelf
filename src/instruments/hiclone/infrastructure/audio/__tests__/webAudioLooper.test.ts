@@ -507,19 +507,36 @@ describe('WebAudioLooper', () => {
     expect(looper.view().mode).toBe('play');
   });
 
-  it('a joystick-down stop halts the whole rig (loops + transport), and a restart resumes it', () => {
+  it('toggleStop (solo) halts + restarts this instrument\'s loops, without touching the transport', () => {
     const transport = new FakeTransport();
     const { looper, ctx } = makeLooper(transport);
     looper.setBpm(120);
     recordMaster(looper, ctx, { playBlocks: 40 });
     const s0 = transport.suspends;
     const r0 = transport.resumes;
-    looper.toggleStop(); // down -> stop this instrument's loops AND the shared transport (drums)
+    looper.toggleStop(); // down -> stop the loops
     expect(looper.view().stopped).toBe(true);
-    expect(transport.suspends).toBe(s0 + 1);
-    looper.toggleStop(); // down again -> restart the whole rig from bar 1
+    looper.toggleStop(); // down -> restart them
     expect(looper.view().stopped).toBe(false);
-    expect(transport.resumes).toBe(r0 + 1);
+    // in solo the looper does NOT drive the shared transport - the rig controller owns that
+    expect(transport.suspends).toBe(s0);
+    expect(transport.resumes).toBe(r0);
+  });
+
+  it('followTransport rides the rig: pause HOLDS, stop resets to bar 1, play resumes', () => {
+    const transport = new FakeTransport();
+    const { looper, ctx } = makeLooper(transport);
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 });
+    expect(looper.view().stopped).toBe(false); // playing after record
+    looper.followTransport(false, false); // PAUSE (hold position)
+    expect(looper.view().stopped).toBe(true);
+    looper.followTransport(true, false); // PLAY (resume)
+    expect(looper.view().stopped).toBe(false);
+    looper.followTransport(false, true); // STOP (to bar 1)
+    expect(looper.view().stopped).toBe(true);
+    looper.followTransport(true, false); // PLAY (from the top)
+    expect(looper.view().stopped).toBe(false);
   });
 
   it('aborting an overdub count-in stops the layers scheduled for the cancelled downbeat (no zombie)', () => {

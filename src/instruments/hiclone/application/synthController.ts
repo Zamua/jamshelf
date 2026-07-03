@@ -122,7 +122,13 @@ export class SynthController {
     this.looper.setBpm(this.bpm);
     this.looper.onChange(() => this.publish());
     // Follow the shared tempo: mirror it into this.bpm and re-sync the looper + tempo-synced delay.
-    this.transport.onChange(() => this.syncTempo());
+    this.transport.onChange(() => {
+      this.syncTempo();
+      // In a rig (shared clock, not solo free-run), the recorded loops FOLLOW the transport: play /
+      // pause (hold) / stop (bar 1). Idempotent, so firing on every change (incl. tempo) is safe.
+      if (!this.transport.isFreeRun())
+        this.looper.followTransport(this.transport.isRunning(), this.transport.position().pulse === 0);
+    });
     // Seed the de-dupe baseline so the first publish doesn't re-save what we just loaded.
     this.lastSavedJson = JSON.stringify(this.snapshotSettings());
   }
@@ -217,10 +223,14 @@ export class SynthController {
     if (!this.power || this.inspect) return;
     this.looper.selectTrack(dir);
   }
-  // Joystick down (no pad held, loop playing): stop / restart the loops from the top.
+  // Joystick down (no pad held, loop playing): STOP. During a count-in it cancels the take. In a rig
+  // it drives the shared transport (stop the whole rig to bar 1 / play from the top) and the loops
+  // FOLLOW; solo (free-run) it stops/restarts just this instrument's loops.
   looperStop(): void {
     if (!this.power || this.inspect) return;
-    this.looper.toggleStop();
+    if (this.looper.view().countdown > 0) this.looper.toggleStop(); // cancel the in-progress take
+    else if (!this.transport.isFreeRun()) (this.transport.isRunning() ? this.transport.stop() : this.transport.play());
+    else this.looper.toggleStop();
     // Flash STOPPED once on the way into a stop, then let the screen fall back to the
     // live key/scale (the flash auto-reverts) so the word doesn't obstruct the OLED.
     if (this.looper.view().stopped) this.flash('STOPPED', 900);

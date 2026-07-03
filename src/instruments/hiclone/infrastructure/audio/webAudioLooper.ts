@@ -84,6 +84,9 @@ export class WebAudioLooper implements AudioLooper {
   // tempo-follow: re-stretch recorded loops to a new tempo (debounced; token guards stale renders)
   private restretchTimer: ReturnType<typeof setTimeout> | null = null;
   private restretchToken = 0;
+  // transport-follow: while stopped, the loop phase to resume from (null = resume from bar 1 = a Stop;
+  // a number = a Pause holding that phase).
+  private pausedPhase: number | null = null;
 
   private listeners = new Set<() => void>();
   private readonly store: LooperStore | null;
@@ -306,9 +309,10 @@ export class WebAudioLooper implements AudioLooper {
       this.lastActivity = this.ctx.currentTime;
   }
 
-  // Joystick down: STOP the whole rig (this instrument's loops AND the shared transport / drums),
-  // resume restarts everything from the top / bar 1. Pulled DOWN during a count-in instead CANCELS
-  // the pending recording (which also stops the rig via cancelTake).
+  // Joystick down (SOLO). During a count-in it cancels the take; otherwise it STOPS this instrument's
+  // loops (to bar 1) or restarts them. In a RIG the controller instead drives the shared transport
+  // and the loops FOLLOW via followTransport - so 'down' stops the whole rig there. This method is the
+  // looper-only path (solo, where there is no shared transport to ride).
   toggleStop(): void {
     if (this.countdown > 0) {
       this.cancelTake(false); // pulled down during a count-in: abandon the take, leave stopped
@@ -316,20 +320,51 @@ export class WebAudioLooper implements AudioLooper {
       return;
     }
     if (this.mode !== 'play') return;
-    if (!this.stopped) {
+    this.setLoopsPlaying(this.stopped, this.stopped ? false : true); // stopped -> restart; playing -> Stop (bar 1)
+    this.emit();
+  }
+
+  // Follow the shared transport (called by the controller on the rig's play/pause/stop). play ->
+  // loops play (from the held phase if paused, else bar 1); pause -> loops HOLD at their phase; stop
+  // (atStart) -> loops return to bar 1. Suppressed unless a loop is playing (record has its own flow).
+  followTransport(playing: boolean, atStart: boolean): void {
+    this.setLoopsPlaying(playing, atStart);
+    this.emit();
+  }
+
+  // The single play/pause/stop of the recorded loops. resetToStart distinguishes Pause (hold the
+  // current phase) from Stop (forget it - next play from bar 1). Idempotent: safe to call repeatedly.
+  private setLoopsPlaying(playing: boolean, resetToStart: boolean): void {
+    if (this.mode !== 'play' || this.tracks.length === 0 || !this.ctx) return;
+    if (playing) {
+      if (!this.stopped) return; // already playing
+      const at = this.ctx.currentTime + 0.03;
+      const lenSec = this.loopLenSamples / this.ctx.sampleRate;
+      const offset = (this.pausedPhase ?? 0) * lenSec; // resume from the held phase, or bar 1
+      this.anchorTime = at - offset;
+      this.stopAllSources();
+      for (const t of this.tracks) {
+        const { source, gain } = this.startLoop(t.buffer, at, offset);
+        t.source = source;
+        t.gain = gain;
+      }
+      this.stopped = false;
+      this.pausedPhase = null;
+      this.startDisplayTimer();
+    } else if (!this.stopped) {
+      this.pausedPhase = resetToStart ? null : this.currentPhase(); // Pause remembers the phase, Stop forgets
       this.stopAllSources();
       this.stopped = true;
       this.stopDisplayTimer();
-      this.transport?.suspend(); // "stop" halts the whole rig, not just this instrument's loops
-    } else {
-      const at = this.ctx!.currentTime + 0.05;
-      this.anchorTime = at;
-      this.restartTracks(at);
-      this.stopped = false;
-      this.startDisplayTimer();
-      this.transport?.resumeFromTop(); // and restarting resumes the rig from bar 1, in step
+    } else if (resetToStart) {
+      this.pausedPhase = null; // a Stop after a Pause: forget the held phase (next play from bar 1)
     }
-    this.emit();
+  }
+
+  private currentPhase(): number {
+    if (!this.ctx || this.loopLenSamples === 0) return 0;
+    const lenSec = this.loopLenSamples / this.ctx.sampleRate;
+    return ((((this.ctx.currentTime - this.anchorTime) % lenSec) + lenSec) % lenSec) / lenSec;
   }
 
   clear(): void {

@@ -95,8 +95,11 @@ export interface AudioLooper {
   // While a loop plays, move the selection cursor over the recorded layers (the
   // joystick left/right when no pad is held). No-op outside play.
   selectTrack(dir: -1 | 1): void;
-  // Joystick down: stop all layers / resume them from the top (bar 1).
+  // Joystick down (SOLO): stop all layers / resume them from the top (bar 1).
   toggleStop(): void;
+  // Follow the shared transport (a RIG): play resumes the loops, pause holds them at their phase,
+  // stop (atStart) returns them to bar 1. Driven by the controller off the transport's state.
+  followTransport(playing: boolean, atStart: boolean): void;
   // Long-press: clear the SELECTED layer while playing (the master, layer 0, clears
   // everything since it defines the loop length); otherwise wipe everything.
   clear(): void;

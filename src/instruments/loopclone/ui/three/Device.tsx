@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import { RoundedBox, Text } from '@react-three/drei';
 import type { DeviceProps } from '../deviceProps';
@@ -86,6 +87,7 @@ export function Device({ vm, handlers }: DeviceProps) {
   const scale = Math.min(1, (visW * 0.94) / BODY.w, (visH * 0.94) / BODY.h);
   const on = vm.power;
   const loops = vm.tracks.filter((t) => t.state !== 'empty').length;
+  const transDown = useRef(0); // press-time for the transport buttons (tap vs hold)
 
   return (
     <group scale={scale}>
@@ -132,12 +134,19 @@ export function Device({ vm, handlers }: DeviceProps) {
       <Knob x={KNOB_OUTPUT.x} y={KNOB_OUTPUT.y} r={KNOB_OUTPUT.r} label={KNOB_OUTPUT.label} power={on} />
 
       {/* transport row (colored buttons: a dark recess + a raised colored cap + a label below).
-          ALL mutes/unmutes every loop; UNDO reverts the last take. Tap on onPointerUp (touch). */}
+          ALL = mute/unmute all; UNDO = undo the last take (hold = redo); TAP = tap tempo. Touch: onPointerUp. */}
       {TRANSPORT.map((b) => {
         const lit = b.label === 'RUN' && vm.playing && on;
         const base = TRANS_COLOR[b.kind];
-        const tap =
-          b.label === 'ALL' ? () => handlers.onAllStop() : b.label === 'UNDO' ? () => handlers.onUndo() : undefined;
+        // { tap, hold? } per button; RUN is inert for now
+        const act =
+          b.label === 'ALL'
+            ? { tap: handlers.onAllStop }
+            : b.label === 'UNDO'
+              ? { tap: handlers.onUndo, hold: handlers.onRedo }
+              : b.label === 'TAP'
+                ? { tap: handlers.onTap }
+                : undefined;
         return (
           <group key={b.label} position={[b.x, b.y, FRONT_Z]}>
             <mesh position={[0, 0, 0.014]}>
@@ -147,12 +156,21 @@ export function Device({ vm, handlers }: DeviceProps) {
             <mesh
               position={[0, 0, 0.03]}
               rotation={[Math.PI / 2, 0, 0]}
-              onPointerDown={tap ? (e) => e.stopPropagation() : undefined}
-              onPointerUp={
-                tap
+              onPointerDown={
+                act
                   ? (e) => {
                       e.stopPropagation();
-                      if (on) tap();
+                      transDown.current = e.timeStamp;
+                    }
+                  : undefined
+              }
+              onPointerUp={
+                act
+                  ? (e) => {
+                      e.stopPropagation();
+                      if (!on) return;
+                      if (act.hold && e.timeStamp - transDown.current > 450) act.hold();
+                      else act.tap();
                     }
                   : undefined
               }

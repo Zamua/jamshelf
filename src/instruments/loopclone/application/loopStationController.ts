@@ -14,6 +14,7 @@ export class LoopStationController {
   private power = true;
   private inspect = false;
   private lastTouched = 0; // the track the top-panel UNDO acts on (the one you last recorded/dubbed)
+  private tapTimes: number[] = []; // recent TAP presses (ms), for tap-tempo
   private readonly listeners = new Set<Listener>();
   private readonly transport: Transport;
   // fallback track state used only when there is no engine (no audio)
@@ -88,6 +89,26 @@ export class LoopStationController {
   // UNDO (top panel): revert the last take on the track you last recorded/overdubbed.
   undoLast(): void {
     this.engine?.undo(this.lastTouched);
+    this.publish();
+  }
+  // hold UNDO: redo it.
+  redoLast(): void {
+    this.engine?.redo(this.lastTouched);
+    this.publish();
+  }
+
+  // TAP: tap tempo. The average of the recent tap intervals sets the shared BPM (transport clamps it).
+  tapTempo(now: number): void {
+    const last = this.tapTimes[this.tapTimes.length - 1];
+    if (last !== undefined && now - last > 2000) this.tapTimes = []; // long gap -> start a fresh count
+    this.tapTimes.push(now);
+    if (this.tapTimes.length > 4) this.tapTimes.shift();
+    if (this.tapTimes.length >= 2) {
+      let sum = 0;
+      for (let i = 1; i < this.tapTimes.length; i++) sum += this.tapTimes[i] - this.tapTimes[i - 1];
+      const avg = sum / (this.tapTimes.length - 1);
+      if (avg > 0) this.transport.setBpm(Math.round(60000 / avg));
+    }
     this.publish();
   }
 

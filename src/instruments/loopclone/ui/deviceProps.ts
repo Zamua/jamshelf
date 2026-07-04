@@ -9,6 +9,8 @@ export interface DeviceHandlers {
   onTrackClear(track: number): void; // hold-stop: empty the track
   onTrackSolo(track: number): void; // long-press the big button: solo (mute the others)
   onUndo(): void; // UNDO (top panel): revert the last take on the last-touched track
+  onRedo(): void; // hold UNDO: redo
+  onTap(): void; // TAP: tap tempo
   onAllStop(): void; // ALL: start/stop every loop at once
   onLevel(track: number, level: number): void; // the track fader (absolute 0..1)
   onPower(): void;

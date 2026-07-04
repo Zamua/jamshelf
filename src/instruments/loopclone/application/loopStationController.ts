@@ -2,6 +2,7 @@ import { Transport } from '../../../transport/transport';
 import type { SharedAudio } from '../../../rig/rigAudio';
 import { emptyTrack, nextOnButton, onStop, TRACK_COUNT, type Track } from '../domain/loopStation';
 import { LoopEngine } from '../infrastructure/audio/loopEngine';
+import type { LoopStore } from './persistence';
 import type { Listener, ViewModel } from './state';
 
 // Framework-agnostic application service for the LoopClone. Owns the LoopEngine (the audio: tap the
@@ -18,10 +19,10 @@ export class LoopStationController {
   // fallback track state used only when there is no engine (no audio)
   private tracks: Track[] = Array.from({ length: TRACK_COUNT }, emptyTrack);
 
-  constructor(transport: Transport, audio?: SharedAudio) {
+  constructor(transport: Transport, audio?: SharedAudio, store?: LoopStore) {
     this.transport = transport;
     this.transport.onChange(() => this.publish()); // reflect tempo / play state on the top panel
-    this.engine = audio ? new LoopEngine(audio.ctx, audio.looperInput, audio.loopOut, transport, () => this.publish()) : null;
+    this.engine = audio ? new LoopEngine(audio.ctx, audio.looperInput, audio.loopOut, transport, () => this.publish(), store) : null;
   }
 
   subscribe(cb: Listener): () => void {

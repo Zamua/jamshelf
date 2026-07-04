@@ -4,6 +4,7 @@ import type { ViewModel } from '../../application/state';
 import { Transport } from '../../../../transport/transport';
 import { IntervalTicker } from '../../../../transport/intervalTicker';
 import type { SharedAudio } from '../../../../rig/rigAudio';
+import { IndexedDbLoopStore } from '../../infrastructure/persistence/indexedDbLoops';
 import type { DeviceHandlers } from '../deviceProps';
 
 // React adapter for the LoopStationController: owns the controller, mirrors its ViewModel to React
@@ -13,7 +14,9 @@ export function useLoopStation(_enabled = true, transport?: Transport, audio?: S
   const controller = useMemo(() => {
     const t = transport ?? new Transport();
     if (!transport) new IntervalTicker(t);
-    return new LoopStationController(t, audio);
+    // loops persist to IndexedDB per instrument namespace (only when there's real audio to record)
+    const store = audio ? new IndexedDbLoopStore('loopclone') : undefined;
+    return new LoopStationController(t, audio, store);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transport, audio]);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());

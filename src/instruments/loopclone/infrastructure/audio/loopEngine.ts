@@ -1,5 +1,6 @@
 import type { Transport } from '../../../../transport/transport';
 import { TRACK_COUNT, type TrackState } from '../../domain/loopStation';
+import { NullLoopStore, type LoopStore, type SerializedLoops } from '../../application/persistence';
 
 // The LoopClone audio engine: taps the rig's shared input bus (the summed outputs of the devices
 // wired in), records it into per-track stereo loop buffers quantized to the shared beat, and plays
@@ -56,11 +57,14 @@ export class LoopEngine {
   private pendingOverdub = false;
 
   private readonly solos = new Set<number>();
+  private readonly store: LoopStore;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(ctx: AudioContext, input: AudioNode, out: AudioNode, transport: Transport, notify: () => void) {
+  constructor(ctx: AudioContext, input: AudioNode, out: AudioNode, transport: Transport, notify: () => void, store?: LoopStore) {
     this.ctx = ctx;
     this.transport = transport;
     this.notify = notify;
+    this.store = store ?? new NullLoopStore();
     this.tracks = Array.from({ length: TRACK_COUNT }, () => {
       const gain = ctx.createGain();
       gain.gain.value = 0.8;
@@ -75,6 +79,61 @@ export class LoopEngine {
     this.tap = tap;
     // watch the beat: an armed track starts capturing on the next bar downbeat (aligns to the drums)
     this.offPos = transport.onPosition(() => this.onPulse());
+    void this.load();
+  }
+
+  // --- persistence: loops survive a reload (loaded STOPPED, iOS needs a gesture before audio) ---
+  private async load(): Promise<void> {
+    // Retry a few times: an immediate reload can race the previous session's debounced, async save,
+    // so the key may land a few hundred ms after this fresh page's first read.
+    for (let i = 0; i < 4; i++) {
+      if (this.loopLenSamples !== 0 || this.tracks.some((tk) => tk.buffer)) return; // a recording began
+      const s = await this.store.load();
+      if (s) return this.restore(s);
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+
+  private restore(s: SerializedLoops): void {
+    if (this.loopLenSamples !== 0 || this.tracks.some((t) => t.buffer)) return; // a recording already began
+    this.loopLenSamples = s.loopLen;
+    this.loopBars = s.bars;
+    this.anchorTime = this.ctx.currentTime;
+    s.tracks.forEach((st, i) => {
+      if (!st || i >= TRACK_COUNT) return;
+      const buf = this.ctx.createBuffer(2, s.loopLen, s.sampleRate);
+      buf.getChannelData(0).set(st.ch[0].subarray(0, s.loopLen));
+      buf.getChannelData(1).set(st.ch[1].subarray(0, s.loopLen));
+      const t = this.tracks[i];
+      t.buffer = buf;
+      t.level = st.level;
+      t.muted = st.muted;
+      t.state = 'stopped'; // loaded halted; tapping the big button resumes it
+      t.gain.gain.value = 0;
+    });
+    this.notify();
+  }
+
+  private serialize(): SerializedLoops {
+    return {
+      v: 1,
+      sampleRate: this.ctx.sampleRate,
+      loopLen: this.loopLenSamples,
+      bars: this.loopBars,
+      tracks: this.tracks.map((t) =>
+        t.buffer ? { ch: [new Float32Array(t.buffer.getChannelData(0)), new Float32Array(t.buffer.getChannelData(1))], level: t.level, muted: t.muted } : null,
+      ),
+    };
+  }
+
+  // Debounced so a fader drag (many setLevel calls) coalesces into one write of the (heavy) PCM.
+  private persist(): void {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      if (this.tracks.some((t) => t.buffer)) this.store.save(this.serialize());
+      else this.store.clear();
+    }, 250);
   }
 
   // --- per-pulse: kick off a pending record on the next bar downbeat ---
@@ -183,6 +242,7 @@ export class LoopEngine {
     t.state = 'playing';
     this.startPlayback(i);
     this.notify();
+    this.persist();
   }
 
   // Start (or restart) a track's loop source, phase-aligned to the loop grid.
@@ -233,12 +293,14 @@ export class LoopEngine {
     t.level = Math.max(0, Math.min(1, level));
     this.applyGain(t, i);
     this.notify();
+    this.persist();
   }
   mute(i: number): void {
     const t = this.tracks[i];
     t.muted = !t.muted; // phase-preserving: the loop keeps running, silenced
     this.applyGain(t, i);
     this.notify();
+    this.persist();
   }
   solo(i: number): void {
     if (this.solos.has(i)) this.solos.delete(i);
@@ -259,6 +321,7 @@ export class LoopEngine {
       this.applyGain(t, i);
     });
     this.notify();
+    this.persist();
   }
 
   clear(i: number): void {
@@ -274,6 +337,7 @@ export class LoopEngine {
       this.loopBars = 0;
     }
     this.notify();
+    this.persist();
   }
 
   // --- undo / redo per track ---
@@ -289,6 +353,7 @@ export class LoopEngine {
     const prev = t.undo.pop() ?? null;
     this.applyBuffer(t, i, prev);
     this.notify();
+    this.persist();
   }
   redo(i: number): void {
     const t = this.tracks[i];
@@ -297,6 +362,7 @@ export class LoopEngine {
     const next = t.redo.pop() ?? null;
     this.applyBuffer(t, i, next);
     this.notify();
+    this.persist();
   }
   private applyBuffer(t: Track, i: number, buf: AudioBuffer | null): void {
     t.buffer = buf;
@@ -318,6 +384,7 @@ export class LoopEngine {
   }
 
   dispose(): void {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
     this.offPos();
     this.tracks.forEach((t) => this.stopSource(t));
     try {

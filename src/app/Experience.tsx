@@ -9,6 +9,8 @@ import { IntervalTicker } from '../transport/intervalTicker';
 import { RigAudio, type SharedAudio } from '../rig/rigAudio';
 import { BroadcastChannelSync, NullRigSync, type RigSync } from '../rig/rigSync';
 import { HostthisRelaySync, mintRoom } from '../jam/infrastructure/hostthisRelay';
+import { JamService } from '../jam/application/jamService';
+import type { Jam } from '../jam/domain/jam';
 import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, saveWires, importRig, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
 import { RigsDrawer } from './RigsDrawer';
 import { DeviceThumbForge } from './deviceThumbs';
@@ -270,6 +272,19 @@ function StageHost({
     },
     [rigUuid, sync],
   );
+
+  // The Jam session: presence + hard-lock occupancy over the same sync channel. Claim the focused
+  // device; release on unfocus/leave; other players' devices refuse taps (see onDeviceTap).
+  const jamSvc = useMemo(() => (rigUuid ? new JamService(rigUuid, sync) : null), [rigUuid, sync]);
+  useEffect(() => () => jamSvc?.dispose(), [jamSvc]);
+  const [jamView, setJamView] = useState<Jam | null>(null);
+  useEffect(() => (jamSvc ? jamSvc.subscribe(setJamView) : setJamView(null)), [jamSvc]);
+  useEffect(() => {
+    if (!jamSvc) return;
+    if (focused) jamSvc.claim(focused);
+    else jamSvc.release();
+  }, [jamSvc, focused]);
+  const others = jamView ? Object.keys(jamView.members).length - 1 : 0;
 
   // Go live: mint a hostthis room, stash the rig config in its KV (joiners fetch it), and move to
   // the /jam URL - that link IS the invite. Lazy: a rig touches the network only when you invite.
@@ -535,7 +550,9 @@ function StageHost({
       return;
     }
     if (rig) {
-      // all-view -> focus this instrument (zoom in to play it)
+      // all-view -> focus this instrument (zoom in to play it). In a session another player's
+      // device is hard-locked: tapping it does nothing (the occupancy model, docs/MULTIPLAYER.md).
+      if (jamSvc && !jamSvc.canClaim(id)) return;
       entries[id]?.handlers.resume();
       onFocus(id);
       return;
@@ -689,6 +706,11 @@ function StageHost({
           <button className={'jam-live' + (linkCopied ? ' is-copied' : '')} onClick={live ? copyJamLink : goLive} disabled={goingLive}>
             {live ? (linkCopied ? 'copied ✓' : 'link') : goingLive ? '…' : 'invite'}
           </button>
+          {live && others > 0 && (
+            <div className="jam-members" aria-label={`${others + 1} players here`}>
+              ●&nbsp;{others + 1} here
+            </div>
+          )}
           <footer className="build-hint">
             {patchMode
               ? 'tap a device jack to patch it into the looper'

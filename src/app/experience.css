@@ -126,6 +126,35 @@
   border-color: rgba(255, 190, 170, 0.5);
   color: #fff;
 }
+/* rig all-view: go live (mint a jam room) / copy the jam link */
+.jam-live {
+  position: absolute;
+  bottom: calc(58px + env(safe-area-inset-bottom, 0));
+  left: calc(16px + env(safe-area-inset-left, 0));
+  height: 40px;
+  padding: 0 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: rgba(30, 20, 12, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 220, 180, 0.14);
+  color: #f4ecdf;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.jam-live:disabled {
+  opacity: 0.6;
+}
+.jam-live.is-copied {
+  background: rgba(55, 160, 90, 0.85);
+  border-color: rgba(180, 255, 200, 0.4);
+  color: #fff;
+}
 .tools {
   position: absolute;
   top: calc(14px + env(safe-area-inset-top, 0));

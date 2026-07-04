@@ -146,6 +146,18 @@ export function savePlacement(uuid: string, id: string, p: Placement): void {
   }
 }
 
+// Store a rig config under a GIVEN uuid (joining a live jam: the shared config lands under the
+// jam/room id so the rest of the app finds it like any local rig).
+export function importRig(uuid: string, instruments: string[], placements: Record<string, Placement>, wires: string[]): void {
+  try {
+    const prev = loadRig(uuid);
+    const config: RigConfig = { instruments, placements, wires, createdAt: prev?.createdAt ?? Date.now(), updatedAt: Date.now() };
+    globalThis.localStorage?.setItem(key(uuid), JSON.stringify(config));
+  } catch {
+    /* storage disabled - the caller still has the config in memory */
+  }
+}
+
 // Persist the set of devices patched into the looper's input.
 export function saveWires(uuid: string, wires: string[]): void {
   const c = loadRig(uuid);

@@ -8,7 +8,8 @@ import { Transport } from '../transport/transport';
 import { IntervalTicker } from '../transport/intervalTicker';
 import { RigAudio, type SharedAudio } from '../rig/rigAudio';
 import { BroadcastChannelSync, NullRigSync, type RigSync } from '../rig/rigSync';
-import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, saveWires, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
+import { HostthisRelaySync, mintRoom } from '../jam/infrastructure/hostthisRelay';
+import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, saveWires, importRig, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
 import { RigsDrawer } from './RigsDrawer';
 import { DeviceThumbForge } from './deviceThumbs';
 import './experience.css';
@@ -74,10 +75,13 @@ function noopLike(handlers: any): any {
 
 // Parse the route into a mode: the shelf ('/'), a single instrument ('/<id>'), or a rig
 // ('/rig/<uuid>'). Anything else is invalid (redirected to the shelf).
-function parsePath(pathname: string): { kind: 'shelf' | 'single' | 'rig' | 'bad'; id?: string; uuid?: string } {
+function parsePath(pathname: string): { kind: 'shelf' | 'single' | 'rig' | 'jam' | 'bad'; id?: string; uuid?: string } {
   if (pathname === '/' || pathname === '') return { kind: 'shelf' };
   const rig = pathname.match(/^\/rig\/([A-Za-z0-9]+)\/?$/);
   if (rig) return { kind: 'rig', uuid: rig[1] };
+  // a live jam: the uuid is a hostthis room (UUIDv4, dashes), the rig config lives in the room's KV
+  const jam = pathname.match(/^\/jam\/([0-9a-fA-F-]{36})\/?$/);
+  if (jam) return { kind: 'jam', uuid: jam[1] };
   const id = pathname.replace(/^\//, '');
   if (instrumentById(id)) return { kind: 'single', id };
   return { kind: 'bad' };
@@ -101,10 +105,33 @@ export function Experience() {
   // AudioContext, so its output can be routed into the looper (Web Audio can't cross contexts).
   const rigAudio = useMemo(() => new RigAudio(), []);
 
-  const rig: RigConfig | null = parsed.kind === 'rig' ? loadRig(parsed.uuid!) : null;
+  // Joining a jam: the shared rig config lives in the room's KV. Cache-first (the host / a returning
+  // member has it locally under the jam id), else fetch it, import it under the jam id, re-render.
+  const [jamTick, setJamTick] = useState(0);
+  const rig: RigConfig | null = parsed.kind === 'rig' || parsed.kind === 'jam' ? loadRig(parsed.uuid!) : null;
+  useEffect(() => {
+    if (parsed.kind !== 'jam' || rig) return;
+    let dead = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/rooms/${parsed.uuid}/rig`);
+        if (!res.ok) throw new Error(String(res.status));
+        const c = (await res.json()) as { instruments?: string[]; placements?: Record<string, Placement>; wires?: string[] };
+        if (dead || !Array.isArray(c.instruments) || !c.placements) throw new Error('bad config');
+        importRig(parsed.uuid!, c.instruments, c.placements, c.wires ?? []);
+        setJamTick((t) => t + 1); // re-render; loadRig now finds it
+      } catch {
+        if (!dead) navigate('/', { replace: true }); // no such jam (or no rooms backend)
+      }
+    })();
+    return () => {
+      dead = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsed.kind, parsed.uuid, jamTick]);
 
   useEffect(() => {
-    // a rig route with no stored config is invalid (rigs are made via the build flow)
+    // a rig route with no stored config is invalid (rigs are made via the build flow; a jam fetches)
     if (parsed.kind === 'bad' || (parsed.kind === 'rig' && !rig)) navigate('/', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsed.kind, parsed.uuid]);
@@ -116,7 +143,7 @@ export function Experience() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parsed.uuid, parsed.kind]);
 
-  const activeId = parsed.kind === 'single' ? parsed.id! : parsed.kind === 'rig' ? focused : null;
+  const activeId = parsed.kind === 'single' ? parsed.id! : parsed.kind === 'rig' || parsed.kind === 'jam' ? focused : null;
 
   // Build the provider stack (one hook per instrument) around the StageHost. Only the focused/played
   // instrument is `enabled` (desktop keyboard); the rest are mounted + audio-live.
@@ -132,7 +159,7 @@ export function Experience() {
         {children}
       </InstrumentProvider>
     ),
-    <StageHost activeId={activeId} rig={rig} rigUuid={parsed.kind === 'rig' ? parsed.uuid! : null} audio={rigAudio} focused={focused} onFocus={setFocused} onNavigate={navigate} transport={transport} />,
+    <StageHost activeId={activeId} rig={rig} rigUuid={parsed.kind === 'rig' || parsed.kind === 'jam' ? parsed.uuid! : null} live={parsed.kind === 'jam'} audio={rigAudio} focused={focused} onFocus={setFocused} onNavigate={navigate} transport={transport} />,
   );
 
   return <div className="experience">{tree}</div>;
@@ -142,6 +169,7 @@ function StageHost({
   activeId,
   rig,
   rigUuid,
+  live,
   audio,
   focused,
   onFocus,
@@ -151,6 +179,7 @@ function StageHost({
   activeId: string | null;
   rig: RigConfig | null;
   rigUuid: string | null;
+  live: boolean; // a /jam route: synced over the hostthis room relay (else BroadcastChannel)
   audio: RigAudio;
   focused: string | null;
   onFocus: (id: string | null) => void;
@@ -179,9 +208,12 @@ function StageHost({
     }
   }, [wires, rig, audio]);
 
-  // Multiplayer sync (backend-agnostic behind the RigSync port). BroadcastChannel = real local
-  // two-tab multiplayer today; the hostthis ws relay is the cross-device backend (see MULTIPLAYER.md).
-  const sync = useMemo<RigSync>(() => (rigUuid ? new BroadcastChannelSync(rigUuid) : new NullRigSync()), [rigUuid]);
+  // Multiplayer sync (backend-agnostic behind the RigSync port). A live jam syncs over the hostthis
+  // room relay (cross-device); a local rig over BroadcastChannel (two tabs); solo is a no-op.
+  const sync = useMemo<RigSync>(
+    () => (rigUuid && live ? new HostthisRelaySync(rigUuid) : rigUuid ? new BroadcastChannelSync(rigUuid) : new NullRigSync()),
+    [rigUuid, live],
+  );
   useEffect(() => () => sync.dispose(), [sync]);
   const applyingRemote = useRef(false);
   const wiresRef = useRef(wires); // live wires, so a snapshot reply isn't a stale closure
@@ -238,6 +270,39 @@ function StageHost({
     },
     [rigUuid, sync],
   );
+
+  // Go live: mint a hostthis room, stash the rig config in its KV (joiners fetch it), and move to
+  // the /jam URL - that link IS the invite. Lazy: a rig touches the network only when you invite.
+  const [goingLive, setGoingLive] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const goLive = useCallback(() => {
+    if (!rig || goingLive) return;
+    setGoingLive(true);
+    void (async () => {
+      try {
+        const roomId = await mintRoom();
+        const config = { instruments: rig.instruments, placements: rig.placements, wires: wiresRef.current };
+        const put = await fetch(`/api/rooms/${roomId}/rig`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+        });
+        if (!put.ok) throw new Error(String(put.status));
+        importRig(roomId, config.instruments, config.placements, config.wires); // the host's local copy
+        onNavigate(`/jam/${roomId}`);
+      } catch {
+        alert('Could not go live - the rooms backend is unreachable from this deploy.');
+      } finally {
+        setGoingLive(false);
+      }
+    })();
+  }, [rig, goingLive, onNavigate]);
+  const copyJamLink = useCallback(() => {
+    void navigator.clipboard?.writeText(location.href).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1600);
+    });
+  }, []);
 
   // A minimal view of the shared Transport for the transport bar: running + tempo + the bar.beat
   // position. Re-renders only when a displayed value actually changes (onPosition fires every pulse,
@@ -614,15 +679,22 @@ function StageHost({
         </div>
       )}
 
-      {/* rig all-view chrome (top-down, nothing focused): back + a hint */}
+      {/* rig all-view chrome (top-down, nothing focused): back + wire + invite/link + a hint */}
       {rig && focused === null && (
         <div className="overlay build-chrome is-on">
           <button className="back-to-shelf" onClick={() => onNavigate('/')} aria-label="Back to the shelf">‹</button>
           <button className={'patch-toggle' + (patchMode ? ' is-active' : '')} onClick={() => setPatchMode((v) => !v)}>
             {patchMode ? 'done' : 'wire'}
           </button>
+          <button className={'jam-live' + (linkCopied ? ' is-copied' : '')} onClick={live ? copyJamLink : goLive} disabled={goingLive}>
+            {live ? (linkCopied ? 'copied ✓' : 'link') : goingLive ? '…' : 'invite'}
+          </button>
           <footer className="build-hint">
-            {patchMode ? 'tap a device jack to patch it into the looper' : 'tap an instrument to play it'}
+            {patchMode
+              ? 'tap a device jack to patch it into the looper'
+              : live
+                ? 'live jam - share the link to invite'
+                : 'tap an instrument to play it'}
           </footer>
         </div>
       )}

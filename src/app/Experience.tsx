@@ -7,6 +7,7 @@ import type { AnyInstrumentModule } from '../shared/instrument';
 import { Transport } from '../transport/transport';
 import { IntervalTicker } from '../transport/intervalTicker';
 import { RigAudio, type SharedAudio } from '../rig/rigAudio';
+import { BroadcastChannelSync, NullRigSync, type RigSync } from '../rig/rigSync';
 import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, saveWires, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
 import { RigsDrawer } from './RigsDrawer';
 import { DeviceThumbForge } from './deviceThumbs';
@@ -177,15 +178,65 @@ function StageHost({
       else audio.unwire(id);
     }
   }, [wires, rig, audio]);
+
+  // Multiplayer sync (backend-agnostic behind the RigSync port). BroadcastChannel = real local
+  // two-tab multiplayer today; the hostthis ws relay is the cross-device backend (see MULTIPLAYER.md).
+  const sync = useMemo<RigSync>(() => (rigUuid ? new BroadcastChannelSync(rigUuid) : new NullRigSync()), [rigUuid]);
+  useEffect(() => () => sync.dispose(), [sync]);
+  const applyingRemote = useRef(false);
+  const wiresRef = useRef(wires); // live wires, so a snapshot reply isn't a stale closure
+  wiresRef.current = wires;
+  const applyWires = useCallback(
+    (next: string[]) => {
+      if (rigUuid) saveWires(rigUuid, next);
+      setWires(next);
+    },
+    [rigUuid],
+  );
+  // broadcast local transport changes; apply remote ones (guarded so applying doesn't re-broadcast).
+  // On join, a peer says hello + the others reply with a snapshot (so a late joiner catches up - the
+  // hostthis relay does this from its KV namespace; here we ask peers directly).
+  useEffect(() => {
+    const offLocal = transport.onChange(() => {
+      if (applyingRemote.current) return;
+      sync.send({ type: 'transport', running: transport.isRunning(), bpm: transport.getBpm() });
+    });
+    const offRemote = sync.onEvent((ev) => {
+      if (ev.type === 'hello') {
+        sync.send({ type: 'snapshot', running: transport.isRunning(), bpm: transport.getBpm(), wires: wiresRef.current });
+        return;
+      }
+      applyingRemote.current = true;
+      if (ev.type === 'transport' || ev.type === 'snapshot') {
+        transport.setBpm(ev.bpm);
+        if (ev.running && !transport.isRunning()) transport.play();
+        else if (!ev.running && transport.isRunning()) transport.pause();
+        if (ev.type === 'snapshot') applyWires(ev.wires);
+      } else if (ev.type === 'wire') {
+        if (wiresRef.current.includes(ev.device) !== ev.on) {
+          applyWires(ev.on ? [...wiresRef.current, ev.device] : wiresRef.current.filter((x) => x !== ev.device));
+        }
+      }
+      applyingRemote.current = false;
+    });
+    sync.send({ type: 'hello' }); // ask the room for the current state
+    return () => {
+      offLocal();
+      offRemote();
+    };
+  }, [sync, transport, applyWires]);
+
   const onToggleWire = useCallback(
     (id: string) => {
       setWires((prev) => {
-        const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+        const on = !prev.includes(id);
+        const next = on ? [...prev, id] : prev.filter((x) => x !== id);
         if (rigUuid) saveWires(rigUuid, next);
+        if (!applyingRemote.current) sync.send({ type: 'wire', device: id, on });
         return next;
       });
     },
-    [rigUuid],
+    [rigUuid, sync],
   );
 
   // A minimal view of the shared Transport for the transport bar: running + tempo + the bar.beat

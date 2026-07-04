@@ -229,12 +229,16 @@ export class LoopEngine {
     }
     const len = this.loopLenSamples;
     const buf = t.buffer && overdub ? this.copyBuffer(t.buffer) : this.ctx.createBuffer(2, len, this.ctx.sampleRate);
-    // fold the captured samples into the buffer (wrap-add so a tail past the bar returns to the top)
+    // The tap (a ScriptProcessor) sees audio ~one block + the output latency LATE, so the samples we
+    // start accumulating on the downbeat are actually from just BEFORE it - a loop recorded raw plays
+    // late vs the drums. Compensate by folding the capture back EARLIER by that latency (wrap-add, so
+    // the pre-downbeat tail lands at the end of the loop). Consistent across takes, so overdubs align.
+    const off = (((TAP_SIZE + Math.round((this.ctx.baseLatency || 0) * this.ctx.sampleRate)) % len) + len) % len;
     const cap = [flatten(this.capL), flatten(this.capR)];
     for (let ch = 0; ch < 2; ch++) {
       const dst = buf.getChannelData(ch);
       const src = cap[ch];
-      for (let n = 0; n < src.length; n++) dst[n % len] += src[n];
+      for (let n = 0; n < src.length; n++) dst[(n - off + len) % len] += src[n];
     }
     // undo: remember what the track was before this take
     this.pushUndo(t, overdub ? t.buffer : null);

@@ -19,7 +19,7 @@ const EDGE_BACK = 0.56; // device center -> its back edge
 const EDGE_LOOP = 0.52; // looper center -> its back edge
 const PORT_SPREAD = 0.34; // spacing between the looper's back-panel input ports
 const PLUG_OUT = 0.08; // how far past the port the cable attaches (the boot)
-const SIDE_CLEAR = 1.05; // how far beside a device the cable detours, to clear its ~0.75 half-footprint
+const DEVICE_R = 0.92; // a device's ~half-footprint + clearance, as the circle a cable must skirt
 type XYZ = [number, number, number];
 
 // The world back direction of a device flat on the desk with the given yaw.
@@ -27,24 +27,67 @@ function backDir(yaw: number): XYZ {
   return [-Math.sin(yaw), 0, -Math.cos(yaw)];
 }
 
-// A slack patch cable. It leaves each plug straight along that plug's back axis, then routes AROUND
-// the source device's side (via `via`, a waypoint beside the device) so it never cuts across the
-// device face - the back port is on the far side from the looper, so a straight drape would clip it.
-function Cable({ a, b, dirA, dirB, via, onTap }: { a: XYZ; b: XYZ; dirA: XYZ; dirB: XYZ; via: XYZ; onTap?: () => void }) {
+interface Obstacle {
+  x: number;
+  z: number;
+  r: number;
+}
+
+// Route a cable from A to B (exiting each along its back axis) AROUND every device on the desk. A
+// rubber-band relaxation: sample the path, then repeatedly (a) pull each point toward the midpoint of
+// its neighbours (toward taut) and (b) push it out of any device circle it lands inside. Converges to
+// a path that hugs the obstacles' edges. `initSide` seeds which way it bows so it commits to one side.
+function routeAround(A: XYZ, B: XYZ, dirA: XYZ, dirB: XYZ, obstacles: Obstacle[], initSide: XYZ): XYZ[] {
+  const len = Math.hypot(B[0] - A[0], B[2] - A[2]) || 1;
+  const stub = Math.min(0.3, len * 0.24);
+  const s: [number, number] = [A[0] + dirA[0] * stub, A[2] + dirA[2] * stub]; // exit guide (fixed)
+  const e: [number, number] = [B[0] + dirB[0] * stub, B[2] + dirB[2] * stub]; // approach guide (fixed)
+  const N = 18;
+  const pts: [number, number][] = [];
+  for (let i = 1; i < N; i++) {
+    const t = i / N;
+    const bow = Math.sin(t * Math.PI); // 0 at the ends, 1 in the middle
+    pts.push([s[0] + (e[0] - s[0]) * t + initSide[0] * bow * 0.6, s[1] + (e[1] - s[1]) * t + initSide[2] * bow * 0.6]);
+  }
+  for (let iter = 0; iter < 18; iter++) {
+    for (let k = 0; k < pts.length; k++) {
+      const prev = k === 0 ? s : pts[k - 1];
+      const next = k === pts.length - 1 ? e : pts[k + 1];
+      pts[k][0] = (pts[k][0] + prev[0] + next[0]) / 3; // relax toward taut
+      pts[k][1] = (pts[k][1] + prev[1] + next[1]) / 3;
+      for (const o of obstacles) {
+        const dx = pts[k][0] - o.x;
+        const dz = pts[k][1] - o.z;
+        const d = Math.hypot(dx, dz);
+        if (d < o.r) {
+          if (d < 1e-3) {
+            pts[k][0] = o.x + initSide[0] * o.r;
+            pts[k][1] = o.z + initSide[2] * o.r;
+          } else {
+            pts[k][0] = o.x + (dx / d) * o.r;
+            pts[k][1] = o.z + (dz / d) * o.r;
+          }
+        }
+      }
+    }
+  }
+  const y = A[1];
+  const out: XYZ[] = [A, [s[0], y, s[1]]];
+  for (const pt of pts) out.push([pt[0], y, pt[1]]);
+  out.push([e[0], y, e[1]], B);
+  return out;
+}
+
+// A slack patch cable through the routed points (a little bell-curve lift so it lies just off the desk).
+function Cable({ pts, onTap }: { pts: XYZ[]; onTap?: () => void }) {
   const geo = useMemo(() => {
-    const A = new Vector3(...a);
-    const B = new Vector3(...b);
-    const V = new Vector3(...via);
-    const dA = new Vector3(...dirA).normalize();
-    const dB = new Vector3(...dirB).normalize();
-    const len = A.distanceTo(B) || 1;
-    const stub = Math.min(0.28, len * 0.24); // a short fixed exit out of the plug
-    const p1 = A.clone().addScaledVector(dA, stub); // exit A's back, straight
-    const p3 = B.clone().addScaledVector(dB, stub); // approach B's back, straight
-    // A -> exit -> around the device's side -> looper approach -> B. The lift gives it desk-cable body.
-    V.y += 0.04 + 0.02 * len;
-    return new TubeGeometry(new CatmullRomCurve3([A, p1, V, p3, B]), 64, 0.016, 7, false);
-  }, [a, b, dirA, dirB, via]);
+    const n = pts.length;
+    const vs = pts.map((p, i) => {
+      const t = i / (n - 1);
+      return new Vector3(p[0], p[1] + Math.sin(t * Math.PI) * 0.12, p[2]);
+    });
+    return new TubeGeometry(new CatmullRomCurve3(vs), Math.max(40, n * 5), 0.016, 7, false);
+  }, [pts]);
   return (
     <mesh
       geometry={geo}
@@ -129,15 +172,17 @@ export function PatchLayer({ placements, wires, deskY, editable, onToggleWire }:
         const loopBase: XYZ = [looper.x + lbd[0] * EDGE_LOOP + lperp[0] * spread, y, looper.z + lbd[2] * EDGE_LOOP + lperp[2] * spread];
         const loopAttach: XYZ = [loopBase[0] + lbd[0] * PLUG_OUT, y, loopBase[2] + lbd[2] * PLUG_OUT];
         const on = wires.includes(id);
-        // Route AROUND the device: a waypoint beside it, on its OUTER side (away from the looper's x),
-        // so the cable never crosses the device face on its way from the back port to the looper.
+        // Obstacles = every device on the desk (incl. this one). The looper is left out: the cable
+        // ends on its back edge, approaching from outside, so it never crosses the looper body.
+        const obstacles: Obstacle[] = devices.map((oid) => ({ x: placements[oid].x, z: placements[oid].z, r: DEVICE_R }));
+        // Seed which way the route bows: outward from the looper's center, so cables fan to the edges.
         const tlx = loopBase[0] - p.x;
         const tlz = loopBase[2] - p.z;
         const tl = Math.hypot(tlx, tlz) || 1;
-        let side: XYZ = [-tlz / tl, 0, tlx / tl]; // perpendicular to device->looper, in the desk plane
-        const outward = p.x - looper.x >= 0 ? 1 : -1; // detour on the side away from the looper's center
+        let side: XYZ = [-tlz / tl, 0, tlx / tl];
+        const outward = p.x - looper.x >= 0 ? 1 : -1;
         if (Math.sign(side[0]) !== outward && side[0] !== 0) side = [-side[0], 0, -side[2]];
-        const via: XYZ = [p.x + side[0] * SIDE_CLEAR, y, p.z + side[2] * SIDE_CLEAR];
+        const pts = on ? routeAround(devAttach, loopAttach, dbd, lbd, obstacles, side) : [];
         return (
           <group key={id}>
             {editable && <TapDisc pos={[devBase[0], y, devBase[2]]} onTap={() => onToggleWire(id)} />}
@@ -145,7 +190,7 @@ export function PatchLayer({ placements, wires, deskY, editable, onToggleWire }:
             {on && (
               <>
                 <Plug base={loopBase} axis={lbd} on={on} />
-                <Cable a={devAttach} b={loopAttach} dirA={dbd} dirB={lbd} via={via} onTap={editable ? () => onToggleWire(id) : undefined} />
+                <Cable pts={pts} onTap={editable ? () => onToggleWire(id) : undefined} />
               </>
             )}
           </group>

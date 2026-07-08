@@ -77,7 +77,11 @@ export class JamService {
 
   dispose(): void {
     clearInterval(this.beat);
-    this.release(); // best-effort: tell the room we are gone (the heartbeat gap is the backstop)
+    try {
+      this.release(); // best-effort: tell the room we are gone (the heartbeat gap is the backstop)
+    } catch {
+      // the sync channel may already be torn down (mode-transition cleanup ordering) - fine
+    }
     this.offSync();
     this.listeners.clear();
   }

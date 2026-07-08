@@ -46,7 +46,11 @@ export class BroadcastChannelSync implements RigSync {
   }
 
   send(ev: RigSyncEvent): void {
-    this.ch.postMessage({ from: this.self, ev });
+    try {
+      this.ch.postMessage({ from: this.self, ev });
+    } catch {
+      // a closed channel (mode transition teardown ordering) - dropping the frame is correct
+    }
   }
   onEvent(cb: (ev: RigSyncEvent) => void): () => void {
     this.subs.add(cb);

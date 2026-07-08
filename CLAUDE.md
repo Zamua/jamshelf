@@ -82,9 +82,43 @@ mounted + audio-live (the mount-all architecture), the drum beat keeps rolling w
 NEW VIRTUAL DEVICES on the shelf, not as abstract "features": recording = a **Recorder** device you add
 to a rig, mixing = a **Mixer** device, fx = an fx unit, etc. You add gear to your rig the way you would
 physical hardware; there are no feature toggles. Bonus: each capability then stays its own bounded DDD
-context (its own `InstrumentModule` + domain), exactly like the instruments. AND: the whole app is
-**local-only, no backend, ever** - localStorage for settings/rigs, IndexedDB for loop audio. Anything
-that would need a server is out of scope (multiplayer, if built, is peer-to-peer / client-synced).
+context (its own `InstrumentModule` + domain), exactly like the instruments. Storage is local-first
+(localStorage for settings/rigs, IndexedDB for loop audio); the ONE sanctioned server surface (added
+2026-07-04, superseding the old "no backend, ever" line) is **hostthis rooms** for live jams - a rig
+only touches the network when you explicitly go live, and solo/local play needs no server at all.
+
+**The LoopClone + the shared audio graph (2026-07-03/04).** `src/instruments/loopclone/` is an
+RC-505-style 5-track loop station that records the OTHER devices. Rests on: (1) **`src/rig/rigAudio.ts`**,
+ONE shared AudioContext for the whole app (created in Experience like the Transport, threaded via
+`useInstrument(enabled, transport, audio)`) - every instrument's adapter connects its limiter to its
+per-device output "jack" instead of ctx.destination, so device audio is routable; (2) **virtual patch
+cables** (`src/stage/PatchLayer.tsx`): a "wire" mode in the rig all-view - tap a device's rear-panel
+plug to patch it into the looper's input bus (cables route around every device via a rubber-band
+obstacle-avoidance path; persisted as `RigConfig.wires`, mirrored into `RigAudio.wire/unwire`);
+(3) **`loopEngine.ts`**: taps the summed input bus (ScriptProcessor, tap-latency compensated), records
+per-track stereo loops quantized to the shared beat (first take sets the length in whole bars),
+plays them phase-locked; per track: record/play/overdub (big button; hold = solo), mute (stop button;
+hold = clear), fader drag, plus top-panel ALL / UNDO (hold = redo) / TAP tempo; loops persist to
+IndexedDB (restored STOPPED). Design doc: `docs/ROUTING.md`.
+
+**Jams = multiplayer (2026-07-04, verified cross-device on prod 2026-07-08).** Design in
+`docs/MULTIPLAYER.md`; the occupancy model makes shared state conflict-free by construction (single
+writer per item). Pieces: **`src/rig/rigSync.ts`** - the swappable `RigSync` port (transport / wire /
+presence events) with `BroadcastChannelSync` (same-device tabs) + `NullRigSync` (solo);
+**`src/jam/`** - the Jam bounded context: pure domain (`jam.ts`: members, hard-lock claim/release,
+lowest-peer-id race resolution, stale-member pruning), `JamService` (heartbeats every 5s, claim on
+focus / release on unfocus), and **`hostthisRelay.ts`** - the cross-device backend over hostthis
+rooms: writes are HTTP `PUT /api/rooms/<id>/<key>` (durable + live-mirrored to the room's
+websockets; hostthis ships multi-pod mirrors since v0.65.0), reads come over the room ws (a KV
+snapshot on join, then put/delete frames); RigSyncEvents translate to KV keys (`transport`,
+`wire_<device>`, `presence_<peer>`). **Go-live flow**: the rig all-view's *invite* button mints a
+room (`POST /api/rooms` on the CURRENT origin - same-origin, no slug hardcoded), stashes the rig
+config at the room's `rig` key, and navigates to `/jam/<roomId>` (= the invite link; the button
+becomes *link* = copy). Joining `/jam/<uuid>` loads the rig cache-first, else fetches `rig` from the
+room KV and imports it under the jam id. Another player's device is hard-locked (taps refused); a
+live jam shows an "N here" pill. GOTCHA (fixed 2d9b324): the rig->jam navigation swaps the sync
+backend, and React disposes the old sync BEFORE JamService's farewell release - both sides guard the
+closed-channel send now; keep dispose paths throw-proof.
 
 **Sync is a real shared clock now** (`src/transport/`, spec in `docs/RIG.md`). ONE `Transport` (a
 software DIN-sync master: tempo + running/play-stop + a pulse-index position -> bar/beat/tick/phase)

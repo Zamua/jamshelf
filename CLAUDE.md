@@ -1,12 +1,11 @@
 # jamshelf — working notes
 
 **jamshelf** is a 3D "shelf" of playable browser instruments: the shelf at `/` displays
-the instruments as 3D models; tapping one opens it at `/<id>` to play. The first (and
-currently only) instrument is the **HiClone**, a chord groovebox inspired by the HiChord
-(Pocket Audio), unbranded. React + react-three-fiber + TypeScript + Vite + react-router,
-organized with DDD. Future: multi-instrument "rig" configurations at `/rig/<uuid>` (the
-same UUID becomes a multiplayer jam room). Was the `chord-synth` repo; renamed + restructured
-into the shelf-of-instruments shape on 2026-06-30.
+the instruments as 3D models; tapping one opens it at `/<id>` to play. Instruments
+(`src/instruments/registry.ts`): the **HiClone** (a chord groovebox inspired by the HiChord,
+unbranded), the StyloClone, the TR-B0B drum machine and the LoopClone. Rigs at `/rig/<uuid>`
+combine several; a rig goes live as a multiplayer jam at `/jam/<uuid>`. React +
+react-three-fiber + TypeScript + Vite + react-router, organized with DDD.
 
 ## Top-level structure (the jamshelf framework)
 
@@ -29,12 +28,12 @@ src/
     StudioLights.tsx   the metallic-sheen lighting rig (the Stage adds warm lamps on top)
   instruments/
     registry.ts        INSTRUMENTS[] + instrumentById() - the Experience reads this
-    hichord/           the HiClone instrument (its own DDD stack, below)
+    hiclone/           the HiClone instrument (its own DDD stack, below)
       manifest.ts      the HiClone's shelf metadata
       domain/music/    PURE music theory (types, scales, chords, performance). Unit-tested.
       application/     ports.ts (SynthPort/Clock), state.ts (ViewModel), persistence.ts
                        (SettingsStore/LooperStore ports + coerceSettings), synthController.ts
-      infrastructure/  audio/{webAudioSynth,nullSynth,webAudioLooper}, clock/intervalClock,
+      infrastructure/  audio/{webAudioSynth,nullSynth,webAudioLooper},
                        persistence/{localStorageSettings,indexedDbLooper} (NAMESPACED per instrument)
       ui/              three/Device.tsx + parts, deviceProps.ts, components/Manual, hooks/useSynth.ts
 ```
@@ -83,9 +82,9 @@ NEW VIRTUAL DEVICES on the shelf, not as abstract "features": recording = a **Re
 to a rig, mixing = a **Mixer** device, fx = an fx unit, etc. You add gear to your rig the way you would
 physical hardware; there are no feature toggles. Bonus: each capability then stays its own bounded DDD
 context (its own `InstrumentModule` + domain), exactly like the instruments. Storage is local-first
-(localStorage for settings/rigs, IndexedDB for loop audio); the ONE sanctioned server surface (added
-2026-07-04, superseding the old "no backend, ever" line) is **hostthis rooms** for live jams - a rig
-only touches the network when you explicitly go live, and solo/local play needs no server at all.
+(localStorage for settings/rigs, IndexedDB for loop audio); the ONE sanctioned server surface is
+**hostthis rooms** for live jams - a rig only touches the network when you explicitly go live, and
+solo/local play needs no server at all.
 
 **The LoopClone + the shared audio graph (2026-07-03/04).** `src/instruments/loopclone/` is an
 RC-505-style 5-track loop station that records the OTHER devices. Rests on: (1) **`src/rig/rigAudio.ts`**,
@@ -137,7 +136,7 @@ per-instrument `IntervalClock`s are GONE. The StyloClone ignores the transport (
 domain (`sequencer.ts`: pattern grid + step advance), a controller driven by a `Clock` (16th-note ticks
 advance the playhead + trigger active voices), per-voice LEVEL knobs (the 808's per-instrument level),
 and the 3D device (charcoal body, the 16 step buttons in color groups of 4, voice-select row, TEMPO
-knob, START/STOP). The `Clock` port is shaped to be swapped for the rig's shared transport later. Note
+knob, START/STOP). Its sequencer runs on a `gated` sub-clock of the shared Transport. Note
 knob indicators sweep min=lower-left to max=lower-right (a fixed inversion). Per-step VELOCITY was
 deferred (UX undecided; the drum engine's `trigger(voice, accent)` already reserves an accent gain).
 
@@ -159,7 +158,7 @@ animate:
 - **play end (progress 1):** lying PERFECTLY FLAT on the desk (`PLAY_TILT = -90deg`), camera EXACTLY straight DOWN so the face is fronto-parallel / 2D - the old head-on play view, now on the desk. A straight-down camera needs the up-vector to NOT be parallel to the view: the up swings `SHELF_UP +Y` -> `PLAY_UP -Z` across the float (lerped in `applyPose`), so at the desk up is `-Z` (perpendicular to the -Y view) and the device's top edge stays at the top of screen. (A naive straight-down WITHOUT swinging up renders edge-on - which is also what an UN-posed device looks like; both bit us, see the pose-before-paint note above.)
 - **inspect (a SECOND progress, `INSPECT_*`):** the eye button (`tool-btn` in the play chrome) raises a `inspect` flag; `Stage` blends a SECOND eased progress (`inspectTarget`, `INSPECT_DURATION` 0.75s) on top of the float one. `applyPose` takes both (`fe`, `ie`) and blends shelf->play->inspect; at full inspect the device floats UP off the desk to a centered presentation pose (`INSPECT_POS/TILT/SCALE`), the camera pulls back with up swung back to `+Y` (3/4 perspective, not straight-down), and the float arc is faded out (`*(1-ie)`). The user **drags to SPIN**: `Experience` accumulates a `spin {x,y,vx,vy,dragging}` ref from pointer events on a full-screen `.inspect-drag` surface (horizontal -> `spin.y` turn, vertical -> `spin.x` tilt, clamped), and `applyPose` applies it as `device.rotation.set(baseTilt + spin.x*ie, spin.y*ie, 0)` - so the spin only bites while inspecting and the device rotates IN PLACE (no OrbitControls / camera-control handoff). Play handlers are no-op'd while inspecting (you're examining it, not playing it); spin resets on each open; leaving play closes inspect.
 - **Momentum (the floaty flick):** a clean INPUT/RENDER split. The input layer (`Experience` drag handlers) sets BOTH position and angular velocity (`vx`/`vy`), deriving velocity from the **real pointer-event timing** (`(deltaRad)/(e.timeStamp delta)`, exp-smoothed) - NOT frame-sampled, so it survives the release. The render layer (`stepSpin` in the `Rig` frame loop) coasts: while `dragging` it bleeds velocity (`SPIN_HOLD_DECAY`) so a stop-then-lift doesn't fling; once released it integrates `vx/vy` and decays them (`SPIN_FRICTION` ~0.95/60fps-frame -> ~1s coast), capped at `SPIN_MAX_V`. (First cut frame-sampled the velocity and it died on release - the idle frame between the last drag-move and pointer-up decayed it to ~0; pointer-timestamp velocity is the fix.)
-- **Rest exactly, don't eyeball:** the device's local bbox was MEASURED (`Box3.setFromObject`, ~2.41 x 1.76 x 0.45, pivot ~centered). `SHELF_POS.y` = plank-top + the device's lowest-point-below-pivot at the shelf tilt (~0.73); `PLAY_POS.y` = desk-top + the lowest point when flat (~0.22). Repeated "still clipping" reports were me under-estimating the height by eye - measure it.
+- **Rest exactly, don't eyeball:** the device's local bbox was MEASURED (`Box3.setFromObject`, ~2.41 x 1.76 x 0.45, pivot ~centered). `SHELF_POS.y` = plank-top + the device's lowest-point-below-pivot at the shelf tilt (~0.73); `PLAY_POS.y` = desk-top + the lowest point when flat (~0.22). Re-measure after any geometry change; an eyeballed height clips.
 
 **Tapping the shelved device floats it to the desk in ONE continuous move - no route swap,
 no fade, no cut.** A `Rig` advances one progress toward the target (shelf=0/play=1) and
@@ -183,18 +182,14 @@ after entering play (so taps mid-float don't fire notes); on the shelf a tap hit
 invisible catcher that calls `onShelfTap` (navigate to play). A cold deep-link to `/<id>`
 snaps to the play pose (the `Rig`'s progress ref initializes to the target, no animation).
 
-History: this REPLACED a first cut where the shelf + the play view were two separate canvases
-bridged by a camera-dive + dark fade + route swap - which still read as a jump cut (warm shelf
--> cold play stage). Unifying into one persistent canvas is what makes it truly seamless.
-
---- everything below is the HiClone instrument (under `src/instruments/hichord/`) ---
+--- everything below is the HiClone instrument (under `src/instruments/hiclone/`) ---
 
 ## The HiClone instrument (DDD, dependency rule points inward)
 
 7 chord pads play the 7 diatonic chords of a chosen key + scale ("no wrong notes"). A
 joystick morphs the held chord live; gray/yellow/red menu buttons set key/scale/octave,
 sound, and tempo. The device is a real 3D model you can rotate and inspect. Multi-touch,
-mobile-first. (Paths below are relative to `src/instruments/hichord/`.)
+mobile-first. (Paths below are relative to `src/instruments/hiclone/`.)
 
 **The contracts that keep lanes decoupled** (do not break these casually):
 - `SynthPort` — what the controller calls; what audio adapters implement. Voice groups keyed by an opaque `voiceId` (one chord = one group). `noteOn` with the same id REPLACES the group (a fresh attack); `retune` slides a SOUNDING group to new pitches WITHOUT re-attacking (the LEGATO joystick morph - overlapping notes glide ~25ms, added notes swell in, dropped notes release out). The live morph + inversions + key/scale edits of a held chord all go through `retune` so they never re-pluck; `retune` falls back to `noteOn` if the id is not currently held.
@@ -304,8 +299,8 @@ speed, rate, and BPM. Design is in `docs/SPEC.md` (Phase 1). Key pieces:
 
 - `domain/music/performance.ts`: PURE helpers (`PlayMode`/`ArpPattern`/`Rate`/
   `StrumSpeed`, `arpOrder`, `leadNote`, `rateBeats`, `strumMs`). No timing/randomness.
-- `application/ports.ts` `Clock`: a BPM tick source (port, NOT domain). Impl is
-  `infrastructure/clock/intervalClock.ts`. The controller subscribes to ticks and
+- `application/ports.ts` `Clock`: a BPM tick source (port, NOT domain), supplied as a
+  `free` sub-clock of the shared Transport. The controller subscribes to ticks and
   drives the arp/repeat through the pure helpers, so it is testable with a fake clock.
 - `SynthController`: per-mode pad dispatch + a ONE generalized menu engine (KEY +
   MODE, context-dependent field set). The clock is gated on a pad being held, so it
@@ -335,10 +330,9 @@ speed, rate, and BPM. Design is in `docs/SPEC.md` (Phase 1). Key pieces:
   glyphs**: ShareTechMono has no `▲`/`▼` (U+25B2/25BC), and a MISSING glyph makes
   troika-three-text fetch a fallback font from a CDN - a stalled request that leaves iOS
   Safari's tab loading-bar spinning (the canonical "bundle the font locally" gotcha, here
-  triggered by a glyph the bundled font lacks). History: this layout replaced (a) the original
-  one-line `screenSmall` + drei `Text` `maxWidth`-wrap that overflowed + overlapped once GLIDE
-  made the KEY menu 6 fields, and (b) a first fix that auto-SHRANK the font to fit all rows -
-  too small to read. `screenBig`/`screenSmall` remain for the NON-menu OLED (key/chord +
+  triggered by a glyph the bundled font lacks). Do not wrap rows or shrink the font to fit
+  every row: wrapping overflows the glass and a fit-all font is too small to read.
+  `screenBig`/`screenSmall` remain for the NON-menu OLED (key/chord +
   patch/mode, loop transport). Mono `OLED_FONT` makes the leading-space cursor column align.
 - **Pressing yellow (sound) while a menu is open CLOSES the menu** (`pressSound` -> `closeMenu`
   first) so the OLED shows the instrument (or inversion) flashing instead of staying on the
@@ -399,12 +393,9 @@ KEY-menu field (OFF/SLOW/MED/FAST, `glideSeconds`) drives it - HiChord-style tog
   attacks exactly one voice).
 
 **Looper (`infrastructure/audio/webAudioLooper.ts`, `AudioLooper` port)**: an AUDIO
-loop recorder, NOT an event looper (rewritten 2026-06-29 - the old event `Looper` +
-`RecordingSynth` + `Ticker`/`RafTicker` are gone). It records the synth's RENDERED
-output off a tap on the live bus, so every layer is frozen the instant it is captured -
-switching patch / play-mode / fx afterward never alters a recorded loop (the old event
-looper replayed through the live synth, so changing to STRUM made an old loop strum -
-the bug this fixes). Output routing (`webAudioSynth.ts`): the live graph (master dry +
+loop recorder, NOT an event looper. It records the synth's RENDERED output off a tap on
+the live bus, so every layer is frozen the instant it is captured - switching patch /
+play-mode / fx afterward never alters a recorded loop. Output routing (`webAudioSynth.ts`): the live graph (master dry +
 reverb + delay + chorus) sums into `liveSum`, which the looper taps via a
 ScriptProcessorNode; loop playback + the metronome go through a SEPARATE `loopSum` bus
 that joins after the tap, so loops are never re-recorded and overdubs layer cleanly.
@@ -513,7 +504,7 @@ generalized to any scale length (the 7 pads wrap the 5/6-note scales into octave
 (`SynthPort.setFx`); an FX field in the KEY menu cycles OFF/DELAY/CHORUS/BOTH; the
 delay re-syncs to BPM. Reverb is always-on per-patch.
 
-The KEY menu is now KEY/SCL/OCT/BASS/FX; the MODE menu is context-dependent (ARP ->
+The KEY menu is KEY/SCL/OCT/BASS/FX/GLIDE; the MODE menu is context-dependent (ARP ->
 PATTERN+RATE, STRUM -> SPEED, REPEAT -> RATE, DRUM -> KIT, all + BPM).
 
 Touch hardening shipped:
@@ -532,7 +523,7 @@ Touch hardening shipped:
   selectstart/gesturestart + locked viewport are kept as extra layers.)
 
 Next, in rough priority: joystick EXTENDED/CHROMATIC modes (richer voicings + key
-modulation); a step sequencer; Web-MIDI out; presets; chord-lock; more effects
+modulation); Web-MIDI out; presets; chord-lock; more effects
 (tremolo/filter/flanger); games. Source: github.com/Zamua/jamshelf.
 
 ## Persistence (local only; survives reload + PWA reopen)
@@ -567,7 +558,7 @@ with a `MemorySettingsStore`), `webAudioLooper.test.ts` "persists + restores STO
 
 ## Current state
 
-DDD skeleton + real Web Audio engine + the modeled/assembled 3D device + Phase 1
-play modes are built, tested, and deployed. Domain
-+ controller are unit-tested. Active work: closing HiChord feature gaps (see roadmap)
-and iterative polish. See `README.md` for the human-facing overview.
+Four instruments (HiClone, StyloClone, TR-B0B, LoopClone), rigs with patch cables and a
+shared Transport, and multiplayer jams over hostthis rooms are built, tested and deployed.
+Active work: HiClone feature gaps (see roadmap) and polish. See `README.md` for the
+human-facing overview.

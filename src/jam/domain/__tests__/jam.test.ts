@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emptyJam, holderOf, canClaim, claim, release, upsertMember, pruneMembers, claimWinner, GONE_MS } from '../jam';
+import { emptyJam, holderOf, canClaim, claim, release, upsertMember, observe, pruneMembers, idleExpired, GONE_MS, IDLE_MS } from '../jam';
 
 describe('Jam presence (hard-lock occupancy)', () => {
   it('starts with just self, holding nothing', () => {
@@ -39,9 +39,25 @@ describe('Jam presence (hard-lock occupancy)', () => {
     expect(holderOf(j, 'hiclone')).toBeNull();
   });
 
-  it('a claim race resolves to the lowest peer-id', () => {
-    expect(claimWinner('aaa', 'bbb')).toBe('aaa');
-    expect(claimWinner('zzz', 'aaa')).toBe('aaa');
+  it('a claim race resolves to the lowest peer-id on both peers', () => {
+    const seenBy = (self: string, other: string) =>
+      observe(claim(emptyJam('r', self, self, 0), self, 'hiclone', 10), { peerId: other, name: other, holding: 'hiclone', lastSeen: 10 });
+    for (const j of [seenBy('aaa', 'bbb'), seenBy('bbb', 'aaa')]) {
+      expect(holderOf(j, 'hiclone')).toBe('aaa');
+      expect(j.members.bbb.holding).toBeNull();
+    }
+  });
+
+  it('observing a peer on another device keeps both claims', () => {
+    let j = claim(emptyJam('r', 'bbb', 'B', 0), 'bbb', 'hiclone', 10);
+    j = observe(j, { peerId: 'aaa', name: 'A', holding: 'trb0b', lastSeen: 10 });
+    expect(holderOf(j, 'hiclone')).toBe('bbb');
+    expect(holderOf(j, 'trb0b')).toBe('aaa');
+  });
+
+  it('a holder idles out after IDLE_MS without input', () => {
+    expect(idleExpired(0, IDLE_MS)).toBe(false);
+    expect(idleExpired(0, IDLE_MS + 1)).toBe(true);
   });
 
   it('prunes members with a stale heartbeat, never self', () => {

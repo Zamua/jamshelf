@@ -74,7 +74,7 @@ tap-to-open with edit (pencil) / delete (trash). New rig -> a build overlay (mul
 -> `createRig()` stores the config (`src/rig/rigStore.ts`, localStorage keyed by uuid, `{instruments,
 placements, createdAt, updatedAt}`) -> navigates to `/rig/<uuid>`. Edit reopens the SAME build overlay
 pre-loaded with the rig's placements; save -> `updateRig()` keeps the same uuid (+ URL/room). The store
-CRUD is `createRig` / `loadRig` / `listRigs` (recent-first) / `updateRig` / `deleteRig` / `savePlacement`,
+CRUD is `createRig` / `loadRig` / `listRigs` (recent-first) / `updateRig` / `deleteRig` / `saveWires` / `importRig`,
 all localStorage, all guarded (tested in `rig/__tests__/rigStore.test.ts`). Rigs have no NAME yet -
 identified by their instruments + time. `app/route.ts` parses the URL into shelf / single (`/<id>`) / rig / jam.
 In rig mode the instruments lie scattered FLAT on the desk (`rigStore` placements); the camera flies

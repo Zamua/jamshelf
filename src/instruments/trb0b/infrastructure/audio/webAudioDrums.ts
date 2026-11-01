@@ -1,6 +1,7 @@
 import type { DrumVoice } from '../../domain/sequencer';
 import type { DrumMachinePort } from '../../application/ports';
 import type { SharedAudio } from '../../../../rig/rigAudio';
+import { newAudioContext, unlockAudio } from '../../../../shared/webAudio';
 
 // The TR-B0B drum engine: each voice is a one-shot SYNTHESIZED hit (no samples), modelled on the
 // 808's analog voices. Everything routes master -> limiter -> its rig output jack so stacked hits
@@ -23,17 +24,7 @@ export class WebAudioDrums implements DrumMachinePort {
 
   resume(): void {
     if (!this.ctx) this.build();
-    const ctx = this.ctx!;
-    try {
-      const b = ctx.createBuffer(1, 1, 22050);
-      const s = ctx.createBufferSource();
-      s.buffer = b;
-      s.connect(ctx.destination);
-      s.start(0);
-    } catch {
-      /* unlock is best-effort */
-    }
-    if (ctx.state === 'suspended') void ctx.resume();
+    unlockAudio(this.ctx!);
   }
 
   trigger(voice: DrumVoice, accent = false): void {
@@ -69,9 +60,7 @@ export class WebAudioDrums implements DrumMachinePort {
 
   // --- internals ---
   private build(): void {
-    const ctx =
-      this.shared?.ctx ??
-      new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const ctx = this.shared?.ctx ?? newAudioContext();
     this.ctx = ctx;
 
     const master = ctx.createGain();

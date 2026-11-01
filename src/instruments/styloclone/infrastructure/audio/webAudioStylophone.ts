@@ -1,6 +1,7 @@
 import { midiToFreq, type Midi } from '../../domain/keyboard';
 import type { StylophonePort, VoiceName } from '../../application/ports';
 import type { SharedAudio } from '../../../../rig/rigAudio';
+import { newAudioContext, unlockAudio } from '../../../../shared/webAudio';
 
 // The StyloClone's audio engine: a strictly MONOPHONIC relaxation-oscillator voice, faithful
 // to the 1968 Stylophone's dirty, reedy buzz. ONE oscillator runs continuously; the stylus
@@ -68,18 +69,7 @@ export class WebAudioStylophone implements StylophonePort {
 
   resume(): void {
     if (!this.ctx) this.build();
-    const ctx = this.ctx!;
-    // 1-sample silent buffer: unlocks audio on iOS/Safari first-gesture.
-    try {
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-    } catch {
-      /* unlock is best-effort */
-    }
-    if (ctx.state === 'suspended') void ctx.resume();
+    unlockAudio(this.ctx!);
   }
 
   noteOn(midi: Midi): void {
@@ -148,9 +138,7 @@ export class WebAudioStylophone implements StylophonePort {
 
   // --- internals ---
   private build(): void {
-    const ctx =
-      this.shared?.ctx ??
-      new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const ctx = this.shared?.ctx ?? newAudioContext();
     this.ctx = ctx;
 
     const spec = VOICES[this.voice];

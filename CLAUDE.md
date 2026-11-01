@@ -412,8 +412,12 @@ HiChord): the joystick CLICK first ENTERS looper mode (`active` flag, no recordi
 subsequent clicks run the record cycle; joystick UP EXITS the mode + stops playback (loops
 kept, halted; `exit()`), DOWN pauses/restarts (`toggleStop()`), LEFT/RIGHT selects a track,
 long-press clears the selected track (all gated on `active`). The OLED looper view only
-shows while `active`.** State machine, once IN the mode (joystick click):
-idle -> rec -> play; play -> rec overdubs a new layer. **Recording (master OR overdub) is
+shows while `active`.** The lifecycle is the pure `application/looperMachine.ts`: `Phase` = idle /
+countIn{track, beatsLeft} / capturing{track} / playing / halted, plus `active`, `layers`, `selected`;
+`nextLooper(state, event)` is the ONLY place it changes, and `WebAudioLooper` dispatches every input
+(clicks, joystick, rig transport, count-in timers) and performs the returned effects. Once IN the mode:
+idle -> countIn -> capturing -> playing; playing -> countIn overdubs a new layer. In a rig the loops
+follow the transport from its position in beats (`followTransport(playing, beat)`), no stored phase. **Recording (master OR overdub) is
 transport-locked (`beginTake`, unified - there is no more 'armed' state):** it SUSPENDS the shared
 Transport, counts in 4 beats (OLED `COUNT n`), then at the downbeat REWINDS the rig to bar 1 + resumes
 it AND begins capturing - so the loop's bar 1 IS the transport's bar 1 (the drums replay from the top
@@ -429,7 +433,7 @@ the take** (`cancelTake(true)`): abandons the layer, kills the scheduled count-i
 capture-start, and resumes from bar 1 (a master goes back to idle, an overdub back to play) - so rapid
 presses can't finalize near-empty bogus tracks or stack metronomes. **Click oscillators are cancellable**:
 `click()` tracks each `{osc, at}` in `clickNodes`, and `killFutureClicks()` (called from
-`stopMetronome`, `cancelOverdub`, `resetAll`) stops the ones not yet fired, so a cancelled
+`stopMetronome`, `cancelTake`, `wipe`) stops the ones not yet fired, so a cancelled
 arm/count-in never leaves audio-scheduled blips to overlap the next one. **Joystick DOWN =
 stop** (`toggleStop`, `useSynth` navLooper down-flick at the forgiving `LOOP_STOP_THRESHOLD`
 = 0.55, NOT the 0.85 menu-nav push - 0.85 felt unreliable and a gentle pull got misread as a

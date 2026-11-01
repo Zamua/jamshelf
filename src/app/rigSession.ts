@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import type { Transport } from '../transport/transport';
 import type { RigAudio } from '../rig/rigAudio';
@@ -49,11 +49,18 @@ interface SessionArgs {
   transport: Transport;
   focused: string | null;
   onFocus: (id: string | null) => void;
+  connect?: Connect;
 }
+
+// Opens a rig's sync channel: a live jam over the hostthis room relay (cross-device), a local rig
+// over BroadcastChannel (two tabs).
+export type Connect = (rigUuid: string, live: boolean) => RigSync;
+const connectRoom: Connect = (rigUuid, live) => (live ? new HostthisRelaySync(rigUuid) : new BroadcastChannelSync(rigUuid));
+const NULL_SYNC: RigSync = new NullRigSync(); // no rig, or before the channel opens
 
 // A rig's shared session: the patch cables (persisted, mirrored into the audio graph, synced), the
 // shared transport over the sync channel, and the jam's presence + hard-lock occupancy.
-export function useRigSession({ rig, rigUuid, live, audio, transport, focused, onFocus }: SessionArgs) {
+export function useRigSession({ rig, rigUuid, live, audio, transport, focused, onFocus, connect = connectRoom }: SessionArgs) {
   const [wires, setWires] = useState<string[]>(() => rig?.wires ?? []);
   const [patchMode, setPatchMode] = useState(false);
   useEffect(() => {
@@ -69,13 +76,15 @@ export function useRigSession({ rig, rigUuid, live, audio, transport, focused, o
     }
   }, [wires, rig, audio]);
 
-  // A live jam syncs over the hostthis room relay (cross-device); a local rig over BroadcastChannel
-  // (two tabs); solo is a no-op.
-  const sync = useMemo<RigSync>(
-    () => (rigUuid && live ? new HostthisRelaySync(rigUuid) : rigUuid ? new BroadcastChannelSync(rigUuid) : new NullRigSync()),
-    [rigUuid, live],
-  );
-  useEffect(() => () => sync.dispose(), [sync]);
+  // Made and disposed in one effect, never in render: StrictMode's mount-cleanup-mount then leaves a
+  // live channel behind instead of reusing the one it just disposed.
+  const [sync, setSync] = useState<RigSync>(NULL_SYNC);
+  useEffect(() => {
+    if (!rigUuid) return setSync(NULL_SYNC);
+    const s = connect(rigUuid, live);
+    setSync(s);
+    return () => s.dispose();
+  }, [rigUuid, live, connect]);
   const applyingRemote = useRef(false);
   const wiresRef = useRef(wires); // live wires, so a snapshot reply isn't a stale closure
   wiresRef.current = wires;
@@ -100,17 +109,20 @@ export function useRigSession({ rig, rigUuid, live, audio, transport, focused, o
         return;
       }
       applyingRemote.current = true;
-      if (ev.type === 'transport' || ev.type === 'snapshot') {
-        transport.setBpm(ev.bpm);
-        if (ev.running && !transport.isRunning()) transport.play();
-        else if (!ev.running && transport.isRunning()) transport.pause();
-        if (ev.type === 'snapshot') applyWires(ev.wires);
-      } else if (ev.type === 'wire') {
-        if (wiresRef.current.includes(ev.device) !== ev.on) {
-          applyWires(ev.on ? [...wiresRef.current, ev.device] : wiresRef.current.filter((x) => x !== ev.device));
+      try {
+        if (ev.type === 'transport' || ev.type === 'snapshot') {
+          transport.setBpm(ev.bpm);
+          if (ev.running && !transport.isRunning()) transport.play();
+          else if (!ev.running && transport.isRunning()) transport.pause();
+          if (ev.type === 'snapshot') applyWires(ev.wires);
+        } else if (ev.type === 'wire') {
+          if (wiresRef.current.includes(ev.device) !== ev.on) {
+            applyWires(ev.on ? [...wiresRef.current, ev.device] : wiresRef.current.filter((x) => x !== ev.device));
+          }
         }
+      } finally {
+        applyingRemote.current = false; // a throwing listener must not silence our own broadcasts
       }
-      applyingRemote.current = false;
     });
     sync.send({ type: 'hello' });
     return () => {
@@ -134,8 +146,13 @@ export function useRigSession({ rig, rigUuid, live, audio, transport, focused, o
 
   // Occupancy: claim the focused device, release on unfocus; losing it (a claim race or idling out)
   // drops back to the all-view; input on the held device holds off the idle release.
-  const jamSvc = useMemo(() => (rigUuid ? new JamService(rigUuid, sync) : null), [rigUuid, sync]);
-  useEffect(() => () => jamSvc?.dispose(), [jamSvc]);
+  const [jamSvc, setJamSvc] = useState<JamService | null>(null);
+  useEffect(() => {
+    if (!rigUuid || sync === NULL_SYNC) return setJamSvc(null);
+    const svc = new JamService(rigUuid, sync);
+    setJamSvc(svc);
+    return () => svc.dispose();
+  }, [rigUuid, sync]);
   const [jamView, setJamView] = useState<Jam | null>(null);
   useEffect(() => (jamSvc ? jamSvc.subscribe(setJamView) : setJamView(null)), [jamSvc]);
   useEffect(() => {

@@ -14,13 +14,14 @@ export interface Jam {
   readonly id: string; // the room / jam id (shared in the link)
   readonly self: string; // this peer's id (always present in members)
   readonly members: Record<string, Member>; // by peerId
+  readonly lastInput: number; // ms epoch of this peer's last input on the device it holds
 }
 
 export const GONE_MS = 12_000; // no heartbeat within this -> the member is treated as disconnected
 export const IDLE_MS = 60_000; // no input within this -> the member relinquishes its device
 
 export function emptyJam(id: string, self: string, name: string, now: number): Jam {
-  return { id, self, members: { [self]: { peerId: self, name, holding: null, lastSeen: now } } };
+  return { id, self, members: { [self]: { peerId: self, name, holding: null, lastSeen: now } }, lastInput: now };
 }
 
 // The peer currently holding `device` (null = free).
@@ -89,11 +90,60 @@ export function leave(jam: Jam, peer: string): Jam {
   return { ...jam, members };
 }
 
-// Drop members whose heartbeat is older than GONE_MS (self is never dropped).
+// Drop members whose heartbeat is older than GONE_MS (self is never dropped). Unchanged if none.
 export function pruneMembers(jam: Jam, now: number): Jam {
   const members: Record<string, Member> = {};
   for (const [id, m] of Object.entries(jam.members)) {
     if (id === jam.self || now - m.lastSeen <= GONE_MS) members[id] = m;
   }
-  return { ...jam, members };
+  return Object.keys(members).length === Object.keys(jam.members).length ? jam : { ...jam, members };
+}
+
+// --- the session lifecycle: every change to this peer's view of the jam goes through nextJam ---
+
+export type JamEvent =
+  | { readonly type: 'claim'; readonly device: string } // this peer focuses a device
+  | { readonly type: 'release' } // this peer goes back to the all-view
+  | { readonly type: 'presence'; readonly peer: string; readonly holding: string | null } // a peer's heartbeat
+  | { readonly type: 'leave'; readonly peer: string }
+  | { readonly type: 'input' } // this peer played its device
+  | { readonly type: 'tick' }; // the heartbeat: announce, prune the silent, release when idle
+
+export type JamEffect =
+  | { readonly kind: 'announce' } // send this peer's presence
+  | { readonly kind: 'lost' }; // this peer does not hold the device it is focused on: drop the focus
+
+export interface JamTransition {
+  readonly jam: Jam;
+  readonly effects: readonly JamEffect[];
+}
+
+const heldBy = (jam: Jam, peer: string): string | null => jam.members[peer]?.holding ?? null;
+
+export function nextJam(jam: Jam, e: JamEvent, now: number): JamTransition {
+  switch (e.type) {
+    case 'claim':
+      // refused (someone else holds it): the focus has to go
+      if (!canClaim(jam, jam.self, e.device)) return { jam, effects: [{ kind: 'lost' }] };
+      return { jam: { ...claim(jam, jam.self, e.device, now), lastInput: now }, effects: [{ kind: 'announce' }] };
+    case 'release':
+      return { jam: release(jam, jam.self, now), effects: [{ kind: 'announce' }] };
+    case 'presence': {
+      if (e.peer === jam.self) return { jam, effects: [] }; // a relay echo: local state is the truth for self
+      const next = observe(jam, { peerId: e.peer, name: e.peer, holding: e.holding, lastSeen: now });
+      const lostRace = heldBy(jam, jam.self) !== null && heldBy(next, jam.self) === null;
+      return { jam: next, effects: lostRace ? [{ kind: 'announce' }, { kind: 'lost' }] : [] };
+    }
+    case 'leave':
+      return { jam: leave(jam, e.peer), effects: [] };
+    case 'input':
+      return { jam: { ...jam, lastInput: now }, effects: [] };
+    case 'tick': {
+      const pruned = pruneMembers(jam, now);
+      if (heldBy(pruned, jam.self) !== null && idleExpired(jam.lastInput, now)) {
+        return { jam: release(pruned, jam.self, now), effects: [{ kind: 'announce' }, { kind: 'lost' }] };
+      }
+      return { jam: pruned, effects: [{ kind: 'announce' }] };
+    }
+  }
 }

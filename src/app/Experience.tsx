@@ -284,6 +284,18 @@ function StageHost({
     if (focused) jamSvc.claim(focused);
     else jamSvc.release();
   }, [jamSvc, focused]);
+  // Losing the device (a claim race or idling out) drops back to the all-view.
+  useEffect(() => jamSvc?.onLost(() => onFocus(null)), [jamSvc, onFocus]);
+  useEffect(() => {
+    if (!jamSvc || !focused) return;
+    const touch = () => jamSvc.touch();
+    window.addEventListener('pointerdown', touch);
+    window.addEventListener('keydown', touch);
+    return () => {
+      window.removeEventListener('pointerdown', touch);
+      window.removeEventListener('keydown', touch);
+    };
+  }, [jamSvc, focused]);
   const others = jamView ? Object.keys(jamView.members).length - 1 : 0;
 
   // Go live: mint a hostthis room, stash the rig config in its KV (joiners fetch it), and move to
@@ -502,10 +514,16 @@ function StageHost({
       const dy = e.clientY - start.y;
       start = null;
       if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy)) return; // needs a clear horizontal swipe
+      const step = dx < 0 ? 1 : -1; // swipe left = next
       const cur = order.indexOf(focused);
-      const next = order[(cur + (dx < 0 ? 1 : -1) + order.length) % order.length]; // swipe left = next
-      entries[next]?.handlers?.resume?.();
-      onFocus(next);
+      // the nearest device in that direction nobody else holds
+      for (let k = 1; k < order.length; k++) {
+        const next = order[(((cur + step * k) % order.length) + order.length) % order.length];
+        if (jamSvc && !jamSvc.canClaim(next)) continue;
+        entries[next]?.handlers?.resume?.();
+        onFocus(next);
+        return;
+      }
     };
     const cancel = () => (start = null);
     window.addEventListener('pointerdown', down);
@@ -516,7 +534,7 @@ function StageHost({
       window.removeEventListener('pointerup', up);
       window.removeEventListener('pointercancel', cancel);
     };
-  }, [rig, focused, entries, onFocus]);
+  }, [rig, focused, entries, onFocus, jamSvc]);
 
   const active = activeId ? entries[activeId] : null;
 

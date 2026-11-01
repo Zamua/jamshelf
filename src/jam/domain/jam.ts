@@ -60,6 +60,28 @@ export function upsertMember(jam: Jam, m: Member): Jam {
   return { ...jam, members: { ...jam.members, [m.peerId]: m } };
 }
 
+// Record a peer's presence, then settle any device two members both hold: the claimWinner keeps it,
+// the other is back in the all-view. Every peer settles the same way, so they all agree.
+export function observe(jam: Jam, m: Member): Jam {
+  const next = upsertMember(jam, m);
+  const keeper = new Map<string, string>(); // device -> winning peer
+  for (const p of Object.values(next.members)) {
+    if (p.holding === null) continue;
+    const cur = keeper.get(p.holding);
+    keeper.set(p.holding, cur === undefined ? p.peerId : claimWinner(cur, p.peerId));
+  }
+  let members = next.members;
+  for (const p of Object.values(next.members)) {
+    if (p.holding !== null && keeper.get(p.holding) !== p.peerId) members = { ...members, [p.peerId]: { ...p, holding: null } };
+  }
+  return members === next.members ? next : { ...next, members };
+}
+
+// Has a holder gone long enough without input to give its device up?
+export function idleExpired(lastInput: number, now: number): boolean {
+  return now - lastInput > IDLE_MS;
+}
+
 // Drop members whose heartbeat is older than GONE_MS (self is never dropped).
 export function pruneMembers(jam: Jam, now: number): Jam {
   const members: Record<string, Member> = {};

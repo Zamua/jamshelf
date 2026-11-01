@@ -103,7 +103,10 @@ obstacle-avoidance path; persisted as `RigConfig.wires`, mirrored into `RigAudio
 per-track stereo loops quantized to the shared beat (first take sets the length in whole bars),
 plays them phase-locked; per track: record/play/overdub (big button; hold = solo), mute (stop button;
 hold = clear), fader drag, plus top-panel ALL / UNDO (hold = redo) / TAP tempo; loops persist to
-IndexedDB (restored STOPPED). Design doc: `docs/ROUTING.md`.
+IndexedDB (restored STOPPED). Which tracks hold loops and the ONE take in flight (idle / armed /
+capturing) change only in the pure `domain/loopStation.ts` `next(station, event)`; the engine performs
+the effects it returns. Pressing another track mid-take closes that take first; an armed take survives
+a STOP and starts on the next play's bar 1. Design doc: `docs/ROUTING.md`.
 
 **Jams = multiplayer (2026-07-04, verified cross-device on prod 2026-07-08).** Design in
 `docs/MULTIPLAYER.md`; the occupancy model makes shared state conflict-free by construction (single

@@ -1,5 +1,5 @@
 import { BEATS_PER_BAR, PPQN, type Transport } from '../../../../transport/transport';
-import { DEFAULT_LEVEL, TRACK_COUNT, type TrackState } from '../../domain/loopStation';
+import { DEFAULT_LEVEL, TRACK_COUNT, emptyStation, next, trackState, type Station, type StationEffect, type StationEvent } from '../../domain/loopStation';
 import { NullLoopStore, type LoopStore, type SerializedLoops } from '../../application/persistence';
 import type { LoopEnginePort, LoopTrackView } from '../../application/loopEnginePort';
 
@@ -19,7 +19,6 @@ const TAP_SIZE = 4096;
 const UNDO_MAX = 8;
 
 interface Track {
-  state: TrackState;
   buffer: AudioBuffer | null;
   source: AudioBufferSourceNode | null;
   readonly gain: GainNode;
@@ -37,18 +36,16 @@ export class LoopEngine implements LoopEnginePort {
   private readonly listeners = new Set<() => void>();
   private readonly offPos: () => void;
 
+  private station: Station = emptyStation(); // which tracks hold loops + the one take in flight
   private loopLenSamples = 0; // set by the first recorded track
   private loopBars = 0;
   private anchorTime = 0; // ctx time of the loop's bar 1
 
-  // capture
-  private capTrack = -1; // track index currently being captured (-1 = none)
-  private capOverdub = false;
+  // the audio of the take being captured (meaningful only while the station is capturing)
   private capL: Float32Array[] = [];
   private capR: Float32Array[] = [];
   private capCount = 0;
-  private pending = -1; // a track armed, waiting for the next downbeat to start
-  private pendingOverdub = false;
+  private restoring: SerializedLoops | null = null; // the saved loops a 'restore' effect applies
 
   private readonly solos = new Set<number>();
   private readonly store: LoopStore;
@@ -62,7 +59,7 @@ export class LoopEngine implements LoopEnginePort {
       const gain = ctx.createGain();
       gain.gain.value = DEFAULT_LEVEL;
       gain.connect(out);
-      return { state: 'empty' as TrackState, buffer: null, source: null, gain, level: DEFAULT_LEVEL, muted: false, undo: [], redo: [] };
+      return { buffer: null, source: null, gain, level: DEFAULT_LEVEL, muted: false, undo: [], redo: [] };
     });
     // tap the input bus (record only); a silent sink keeps the ScriptProcessor running
     const tap = ctx.createScriptProcessor(TAP_SIZE, 2, 2);
@@ -80,7 +77,7 @@ export class LoopEngine implements LoopEnginePort {
     // Retry a few times: an immediate reload can race the previous session's debounced, async save,
     // so the key may land a few hundred ms after this fresh page's first read.
     for (let i = 0; i < 4; i++) {
-      if (this.loopLenSamples !== 0 || this.tracks.some((tk) => tk.buffer)) return; // a recording began
+      if (this.station.capture.kind !== 'idle' || this.tracks.some((tk) => tk.buffer)) return; // a take began
       const s = await this.store.load();
       if (s) return this.restore(s);
       await new Promise((r) => setTimeout(r, 300));
@@ -88,7 +85,12 @@ export class LoopEngine implements LoopEnginePort {
   }
 
   private restore(s: SerializedLoops): void {
-    if (this.loopLenSamples !== 0 || this.tracks.some((t) => t.buffer)) return; // a recording already began
+    this.restoring = s;
+    this.dispatch({ type: 'restored', present: this.tracks.map((_, i) => !!s.tracks[i]) });
+    this.restoring = null;
+  }
+
+  private applyRestore(s: SerializedLoops): void {
     this.loopLenSamples = s.loopLen;
     this.loopBars = s.bars;
     this.anchorTime = this.ctx.currentTime;
@@ -101,10 +103,8 @@ export class LoopEngine implements LoopEnginePort {
       t.buffer = buf;
       t.level = st.level;
       t.muted = st.muted;
-      t.state = 'stopped'; // loaded halted; tapping the big button resumes it
-      t.gain.gain.value = 0;
+      t.gain.gain.value = 0; // loaded halted; tapping the big button resumes it
     });
-    this.notify();
   }
 
   private serialize(): SerializedLoops {
@@ -129,75 +129,65 @@ export class LoopEngine implements LoopEnginePort {
     }, 250);
   }
 
-  // --- per-pulse: kick off a pending record on the next bar downbeat ---
-  private onPulse(): void {
-    if (this.pending < 0) return;
-    if (this.transport.position().pulse % PULSES_PER_BAR !== 0) return; // wait for a bar downbeat
-    const i = this.pending;
-    this.pending = -1;
-    this.startCapture(i, this.pendingOverdub);
+  // The station's only door: apply the transition, then perform its effects.
+  private dispatch(event: StationEvent): void {
+    const prev = this.station;
+    const { station, effects } = next(prev, event);
+    this.station = station;
+    for (const fx of effects) this.perform(fx);
+    if (station !== prev || effects.length > 0) this.notify();
   }
 
-  // Begin capturing the input bus into track i. The first non-overdub take anchors the loop grid.
-  private startCapture(i: number, overdub: boolean): void {
-    if (this.loopLenSamples === 0 && !overdub) this.anchorTime = this.ctx.currentTime;
-    this.capTrack = i;
-    this.capOverdub = overdub;
+  private perform(fx: StationEffect): void {
+    switch (fx.kind) {
+      case 'startCapture':
+        // the first record anchors the loop grid
+        if (this.loopLenSamples === 0 && !fx.overdub) this.anchorTime = this.ctx.currentTime;
+        this.dropCapturedAudio();
+        return;
+      case 'finishCapture':
+        return this.finishCapture(fx.track, fx.overdub);
+      case 'discardCapture':
+        return this.dropCapturedAudio();
+      case 'resume':
+        return this.startPlayback(fx.track);
+      case 'clear':
+        return this.clearTrack(fx.track);
+      case 'history':
+        return this.stepHistory(fx.track, fx.step);
+      case 'restore':
+        if (this.restoring) this.applyRestore(this.restoring);
+        return;
+    }
+  }
+
+  private dropCapturedAudio(): void {
     this.capL = [];
     this.capR = [];
     this.capCount = 0;
-    this.tracks[i].state = overdub ? 'overdub' : 'recording';
-    this.notify();
   }
 
-  // Arm a record: quantize to the next downbeat when the beat is running, else start now (solo).
-  private arm(i: number, overdub: boolean): void {
-    if (this.transport.isAdvancing()) {
-      this.pending = i;
-      this.pendingOverdub = overdub;
-      if (!overdub) this.tracks[i].state = 'recording'; // armed indicator until the downbeat
-    } else {
-      this.startCapture(i, overdub);
-    }
-  }
-  private cancelArm(i: number): void {
-    if (this.pending === i) this.pending = -1;
-    this.tracks[i].state = 'empty';
+  // An armed take starts on the next bar downbeat while the transport runs. A STOP or rewind also
+  // reports the downbeat, but on a halted clock: the take stays armed for the next play's bar 1.
+  private onPulse(): void {
+    if (!this.transport.isAdvancing()) return;
+    if (this.transport.position().pulse % PULSES_PER_BAR !== 0) return;
+    this.dispatch({ type: 'downbeat' });
   }
 
-  // --- the tap: accumulate the input bus while a track is capturing ---
+  // --- the tap: accumulate the input bus while a take is capturing ---
   private onAudio(e: AudioProcessingEvent): void {
-    if (this.capTrack < 0) return;
+    if (this.station.capture.kind !== 'capturing') return;
     this.capL.push(new Float32Array(e.inputBuffer.getChannelData(0)));
     this.capR.push(new Float32Array(e.inputBuffer.getChannelData(1)));
     this.capCount += e.inputBuffer.length;
-    // a non-first track (loop length known) auto-closes after exactly one loop
-    if (this.loopLenSamples > 0 && this.capCount >= this.loopLenSamples) this.finishCapture();
+    // once a loop length exists, a take closes itself after exactly one loop
+    if (this.loopLenSamples > 0 && this.capCount >= this.loopLenSamples) this.dispatch({ type: 'loopFilled' });
   }
 
   // --- the big round button: record -> play -> overdub -> play, or resume a stopped track ---
   button(i: number): void {
-    const t = this.tracks[i];
-    switch (t.state) {
-      case 'empty':
-        this.arm(i, false);
-        break;
-      case 'recording':
-        if (this.capTrack === i) this.finishCapture(); // close the loop (first track sets the length)
-        else this.cancelArm(i); // was armed but not yet capturing -> cancel
-        break;
-      case 'playing':
-        this.arm(i, true); // overdub
-        break;
-      case 'overdub':
-        this.finishCapture();
-        break;
-      case 'stopped':
-        this.startPlayback(i);
-        t.state = 'playing';
-        break;
-    }
-    this.notify();
+    this.dispatch({ type: 'button', track: i, advancing: this.transport.isAdvancing() });
   }
 
   private barSamples(): number {
@@ -205,14 +195,9 @@ export class LoopEngine implements LoopEnginePort {
     return Math.max(1, Math.round((this.ctx.sampleRate * 60) / bpm)) * 4;
   }
 
-  // Close the current capture into the track's buffer + start it looping.
-  private finishCapture(): void {
-    const i = this.capTrack;
-    if (i < 0) return;
+  // Close the captured audio into track i's buffer + start it looping.
+  private finishCapture(i: number, overdub: boolean): void {
     const t = this.tracks[i];
-    const overdub = this.capOverdub;
-    this.capTrack = -1;
-    this.capOverdub = false;
 
     if (this.loopLenSamples === 0) {
       // first track: snap the captured length to a whole number of bars (>= 1)
@@ -236,9 +221,8 @@ export class LoopEngine implements LoopEnginePort {
     // undo: remember what the track was before this take
     this.pushUndo(t, overdub ? t.buffer : null);
     t.buffer = buf;
-    t.state = 'playing';
+    this.dropCapturedAudio();
     this.startPlayback(i);
-    this.notify();
     this.persist();
   }
 
@@ -322,18 +306,20 @@ export class LoopEngine implements LoopEnginePort {
   }
 
   clear(i: number): void {
+    this.dispatch({ type: 'clear', track: i });
+  }
+
+  private clearTrack(i: number): void {
     const t = this.tracks[i];
     this.pushUndo(t, t.buffer);
     this.stopSource(t);
     t.buffer = null;
-    t.state = 'empty';
     t.muted = false;
     this.solos.delete(i);
     if (this.tracks.every((x) => !x.buffer)) {
       this.loopLenSamples = 0; // last loop gone -> the next record sets a fresh length
       this.loopBars = 0;
     }
-    this.notify();
     this.persist();
   }
 
@@ -344,32 +330,19 @@ export class LoopEngine implements LoopEnginePort {
     t.redo = [];
   }
   undo(i: number): void {
-    const t = this.tracks[i];
-    if (t.undo.length === 0) return;
-    t.redo.push(t.buffer);
-    const prev = t.undo.pop() ?? null;
-    this.applyBuffer(t, i, prev);
-    this.notify();
-    this.persist();
+    this.dispatch({ type: 'history', track: i, step: 'undo', result: peek(this.tracks[i].undo) });
   }
   redo(i: number): void {
-    const t = this.tracks[i];
-    if (t.redo.length === 0) return;
-    t.undo.push(t.buffer);
-    const next = t.redo.pop() ?? null;
-    this.applyBuffer(t, i, next);
-    this.notify();
-    this.persist();
+    this.dispatch({ type: 'history', track: i, step: 'redo', result: peek(this.tracks[i].redo) });
   }
-  private applyBuffer(t: Track, i: number, buf: AudioBuffer | null): void {
-    t.buffer = buf;
-    if (buf) {
-      t.state = 'playing';
-      this.startPlayback(i);
-    } else {
-      this.stopSource(t);
-      t.state = 'empty';
-    }
+  private stepHistory(i: number, step: 'undo' | 'redo'): void {
+    const t = this.tracks[i];
+    const [from, to] = step === 'undo' ? [t.undo, t.redo] : [t.redo, t.undo];
+    to.push(t.buffer);
+    t.buffer = from.pop() ?? null;
+    if (t.buffer) this.startPlayback(i);
+    else this.stopSource(t);
+    this.persist();
   }
 
   onChange(cb: () => void): () => void {
@@ -382,7 +355,7 @@ export class LoopEngine implements LoopEnginePort {
 
   // --- views + teardown ---
   view(): LoopTrackView[] {
-    return this.tracks.map((t, i) => ({ state: t.state, level: t.level, muted: t.muted, soloed: this.solos.has(i) }));
+    return this.tracks.map((t, i) => ({ state: trackState(this.station, i), level: t.level, muted: t.muted, soloed: this.solos.has(i) }));
   }
   canUndo(i: number): boolean {
     return this.tracks[i].undo.length > 0;
@@ -406,6 +379,12 @@ export class LoopEngine implements LoopEnginePort {
     for (let ch = 0; ch < b.numberOfChannels; ch++) c.getChannelData(ch).set(b.getChannelData(ch));
     return c;
   }
+}
+
+// What an undo or redo step would leave on the track.
+function peek(stack: (AudioBuffer | null)[]): 'loop' | 'empty' | 'none' {
+  if (stack.length === 0) return 'none';
+  return stack[stack.length - 1] ? 'loop' : 'empty';
 }
 
 function flatten(chunks: Float32Array[]): Float32Array {

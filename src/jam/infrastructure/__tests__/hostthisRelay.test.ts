@@ -50,12 +50,14 @@ describe('hostthis relay KV translation', () => {
 // A socket the test drives: it records the instance so frames can be pushed in.
 class FakeSocket {
   static last: FakeSocket | null = null;
+  static count = 0;
   onopen: (() => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
   private listeners: ((e: { data: string }) => void)[] = [];
   constructor() {
     FakeSocket.last = this;
+    FakeSocket.count++;
   }
   addEventListener(_: string, cb: (e: { data: string }) => void) {
     this.listeners.push(cb);
@@ -80,6 +82,7 @@ describe('HostthisRelaySync', () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     vi.useRealTimers();
   });
 
@@ -128,6 +131,50 @@ describe('HostthisRelaySync', () => {
     sync.send({ type: 'presence', peer: sync.self, holding: null }); // a farewell from a later cleanup
     vi.advanceTimersByTime(100);
     expect(puts).toEqual([{ url: `/api/rooms/room1/presence_${sync.self}`, method: 'DELETE', keepalive: true, body: undefined }]);
+  });
+
+  it('reconnects after a drop, and at once when the page wakes', () => {
+    const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+    vi.stubGlobal('document', doc);
+    const sync = new HostthisRelaySync('room1');
+    const first = FakeSocket.count;
+    FakeSocket.last!.onopen!();
+    FakeSocket.last!.onclose!();
+    vi.advanceTimersByTime(249); // the first wait is 250-500 ms
+    FakeSocket.last!.onclose!(); // a second close of the dropped socket changes nothing
+    expect(FakeSocket.count).toBe(first);
+    vi.advanceTimersByTime(251);
+    expect(FakeSocket.count).toBe(first + 1);
+    FakeSocket.last!.onclose!(); // fails again: now backing off up to a second
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(FakeSocket.count).toBe(first + 2);
+    sync.dispose();
+  });
+
+  it('resends a write that failed while the room was unreachable once the socket reopens', async () => {
+    let up = false;
+    vi.stubGlobal('fetch', (url: string, init: { method?: string; body?: string }) => {
+      puts.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : undefined });
+      return up ? Promise.resolve({ ok: true, status: 204 }) : Promise.reject(new TypeError('offline'));
+    });
+    const sync = new HostthisRelaySync('room1');
+    FakeSocket.last!.onopen!();
+    sync.send({ type: 'wire', device: 'hiclone', on: true });
+    await vi.advanceTimersByTimeAsync(100);
+    FakeSocket.last!.onclose!();
+    // a snapshot on the next socket still says the cable is off: our newer write wins
+    up = true;
+    await vi.advanceTimersByTimeAsync(1000);
+    const got: RigSyncEvent[] = [];
+    sync.onEvent((ev) => got.push(ev));
+    FakeSocket.last!.frame({ type: 'snapshot', state: { wire_hiclone: { on: false, from: 'someone' } } });
+    FakeSocket.last!.onopen!();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(got).toEqual([]);
+    const wirePuts = puts.filter((p) => p.url.endsWith('/wire_hiclone'));
+    expect(wirePuts).toHaveLength(2);
+    expect(wirePuts[1].body).toMatchObject({ on: true });
+    sync.dispose();
   });
 });
 

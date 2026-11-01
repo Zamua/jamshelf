@@ -508,12 +508,14 @@ function StageHost({
       entries[next]?.handlers?.resume?.();
       onFocus(next);
     };
+    const cancel = () => (start = null);
     window.addEventListener('pointerdown', down);
     window.addEventListener('pointerup', up);
-    window.addEventListener('pointercancel', () => (start = null));
+    window.addEventListener('pointercancel', cancel);
     return () => {
       window.removeEventListener('pointerdown', down);
       window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
     };
   }, [rig, focused, entries, onFocus]);
 

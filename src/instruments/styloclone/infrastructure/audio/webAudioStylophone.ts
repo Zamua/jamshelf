@@ -2,6 +2,7 @@ import { midiToFreq, type Midi } from '../../domain/keyboard';
 import type { StylophonePort, VoiceName } from '../../application/ports';
 import type { SharedAudio } from '../../../../rig/rigAudio';
 import { newAudioContext, unlockAudio } from '../../../../shared/webAudio';
+import { stylocloneManifest } from '../../manifest';
 
 // The StyloClone's audio engine: a strictly MONOPHONIC relaxation-oscillator voice, faithful
 // to the 1968 Stylophone's dirty, reedy buzz. ONE oscillator runs continuously; the stylus
@@ -62,7 +63,7 @@ export class WebAudioStylophone implements StylophonePort {
   private readonly shared: SharedAudio | undefined; // the rig's shared audio (undefined = own ctx, e.g. tests)
   private readonly deviceId: string;
 
-  constructor(shared?: SharedAudio, deviceId = 'styloclone') {
+  constructor(shared?: SharedAudio, deviceId = stylocloneManifest.id) {
     this.shared = shared;
     this.deviceId = deviceId;
   }

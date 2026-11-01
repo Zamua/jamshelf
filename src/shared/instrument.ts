@@ -19,13 +19,18 @@ export interface InstrumentManifest {
   readonly accent: string;
 }
 
+// What the host calls on every instrument's handlers: wake its audio inside a user gesture.
+export interface InstrumentHandlers {
+  resume(): void;
+}
+
 // Everything the jamshelf host needs to mount ONE instrument. Each instrument bundles its
 // manifest, its React hook, its 3D device, and its optional chrome into a self-typed module;
 // the host (Experience) reads the registry, mounts every module's device on the shelf, and
 // wires the active one's play chrome. This is the seam that lets the shelf host N instruments
 // without the host importing any single instrument. Typed over the instrument's own VM /
 // Handlers (the registry stores them behind `AnyInstrumentModule`).
-export interface InstrumentModule<VM = unknown, H = unknown> {
+export interface InstrumentModule<VM = unknown, H extends InstrumentHandlers = InstrumentHandlers> {
   readonly manifest: InstrumentManifest;
   // The instrument's React hook. `enabled` gates always-on side effects (desktop keyboard play)
   // so only the ACTIVE instrument responds when several are mounted on the shelf. `transport` is

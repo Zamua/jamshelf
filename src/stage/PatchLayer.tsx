@@ -1,3 +1,4 @@
+import { loopcloneManifest } from '../instruments/loopclone/manifest';
 import { useMemo } from 'react';
 import { CatmullRomCurve3, Vector3, Quaternion, TubeGeometry } from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -10,7 +11,7 @@ import type { Placement } from '../rig/rigStore';
 // tap a device's port in wire mode to patch/unpatch it (the RC-505 model: all wired sources sum into
 // the looper's input, and recording captures whatever is playing).
 
-const LOOPER_ID = 'loopclone';
+const LOOPER_ID = loopcloneManifest.id;
 const UP = new Vector3(0, 1, 0);
 // A flat device's pivot is at deskY and it is ~0.28 thick, so its side/back face is centred on deskY;
 // sit the ports just above centre so they read as set into the back face, not the top surface.

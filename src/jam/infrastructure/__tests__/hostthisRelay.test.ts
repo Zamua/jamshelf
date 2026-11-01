@@ -122,9 +122,11 @@ describe('HostthisRelaySync', () => {
     sync.dispose();
   });
 
-  it('leaving deletes our own presence key, surviving a closing tab', () => {
+  it('leaving deletes our own presence key, surviving a closing tab, and nothing writes it back', () => {
     const sync = new HostthisRelaySync('room1');
     sync.dispose();
+    sync.send({ type: 'presence', peer: sync.self, holding: null }); // a farewell from a later cleanup
+    vi.advanceTimersByTime(100);
     expect(puts).toEqual([{ url: `/api/rooms/room1/presence_${sync.self}`, method: 'DELETE', keepalive: true, body: undefined }]);
   });
 });

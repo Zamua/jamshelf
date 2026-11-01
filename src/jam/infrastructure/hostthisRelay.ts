@@ -159,7 +159,7 @@ export class HostthisRelaySync implements RigSync {
 
   send(ev: RigSyncEvent): void {
     const kv = eventToKV(ev);
-    if (!kv) return;
+    if (!kv || this.closed) return; // after dispose: a late farewell would recreate the presence it deleted
     const existing = this.pending.get(kv.key);
     if (existing) clearTimeout(existing.timer);
     const value = { ...kv.value, from: this.self };

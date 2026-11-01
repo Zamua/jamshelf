@@ -112,10 +112,12 @@ export function deleteRig(uuid: string): void {
 }
 
 // Replace a rig's instrument set + placements (an edit), preserving createdAt and bumping updatedAt.
+// Patch cables survive the edit, minus any from a device that left the rig.
 export function updateRig(uuid: string, instruments: string[], placements: Record<string, Placement>): void {
   const prev = loadRig(uuid);
   try {
-    const config: RigConfig = { instruments, placements, createdAt: prev?.createdAt, updatedAt: Date.now() };
+    const wires = prev?.wires?.filter((id) => instruments.includes(id));
+    const config: RigConfig = { instruments, placements, wires, createdAt: prev?.createdAt, updatedAt: Date.now() };
     globalThis.localStorage?.setItem(key(uuid), JSON.stringify(config));
   } catch {
     /* ignore */

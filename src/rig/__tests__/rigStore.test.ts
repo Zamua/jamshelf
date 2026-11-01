@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { createRig, listRigs, loadRig, deleteRig, updateRig } from '../rigStore';
+import { createRig, listRigs, loadRig, deleteRig, updateRig, saveWires } from '../rigStore';
 
 // A tiny in-memory localStorage so the store's persistence is testable without a browser.
 class MemLS {
@@ -65,6 +65,13 @@ describe('rigStore CRUD', () => {
     expect(updated.instruments).toEqual(['hiclone', 'trb0b']);
     expect(updated.createdAt).toBe(created.createdAt); // preserved
     expect(updated.updatedAt!).toBeGreaterThan(created.updatedAt!); // bumped
+  });
+
+  it('updateRig keeps patch cables of devices still in the rig', () => {
+    const id = createRig(['hiclone', 'trb0b', 'loopclone'], {});
+    saveWires(id, ['hiclone', 'trb0b']);
+    updateRig(id, ['hiclone', 'loopclone'], {});
+    expect(loadRig(id)?.wires).toEqual(['hiclone']);
   });
 
   it('listRigs ignores non-rig localStorage keys', () => {

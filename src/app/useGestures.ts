@@ -1,20 +1,17 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
 import { restingSpin, type Carousel, type Spin } from '../stage/motion';
 import { carouselDragPos, dragSpin, inSwipeMargin, rigSwipeTarget, snapCarousel, type PointerSample } from './gestures';
 
 const sample = (e: { clientX: number; clientY: number; timeStamp: number }): PointerSample => ({ x: e.clientX, y: e.clientY, t: e.timeStamp });
 
-// Inspect mode: a flag plus the spin the Stage reads every frame, driven by a full-screen drag surface.
+// Inspect's drag-to-spin: the spin the Stage reads every frame, driven by a full-screen drag surface.
 export function useInspectSpin() {
-  const [inspect, setInspect] = useState(false);
   const spin = useRef<Spin>(restingSpin());
   const last = useRef<PointerSample | null>(null);
 
-  const toggleInspect = () =>
-    setInspect((on) => {
-      if (!on) spin.current = restingSpin(); // each open starts square-on
-      return !on;
-    });
+  const resetSpin = () => {
+    spin.current = restingSpin(); // each inspect starts square-on
+  };
   const end = () => {
     last.current = null;
     spin.current.dragging = false;
@@ -34,7 +31,7 @@ export function useInspectSpin() {
     onPointerLeave: end,
     onPointerCancel: end,
   };
-  return { inspect, setInspect, toggleInspect, spin, dragHandlers };
+  return { spin, resetSpin, dragHandlers };
 }
 
 // Swipe-to-browse the shelf carousel. A window-level drag moves the live position (the Stage's tap

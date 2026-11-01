@@ -2,6 +2,9 @@ import type { RigSync, RigSyncEvent } from '../../rig/rigSync';
 import { parseRigConfig, type RigConfig } from '../../rig/rigStore';
 import { GONE_MS } from '../domain/jam';
 import { firstConnection, nextConnection, type Connection, type ConnectionEffect, type ConnectionEvent } from './relayConnection';
+import type { TransportState } from '../../transport/transport';
+
+const TRANSPORT_STATES: readonly TransportState[] = ['playing', 'paused', 'stopped'];
 
 // The hostthis room backend for the RigSync port: cross-device multiplayer over hostthis rooms.
 // The room is a shared KV namespace with a live relay. WRITES go via HTTP PUT /api/rooms/<id>/<key>
@@ -44,7 +47,8 @@ interface KV {
 export function eventToKV(ev: RigSyncEvent): KV | null {
   switch (ev.type) {
     case 'transport':
-      return { key: 'transport', value: { running: ev.running, bpm: ev.bpm } };
+      // `running` too, for peers still on a build that reads only that
+      return { key: 'transport', value: { state: ev.state, running: ev.state === 'playing', bpm: ev.bpm } };
     case 'wire':
       return { key: `wire_${ev.device}`, value: { on: ev.on } };
     case 'presence':
@@ -58,7 +62,9 @@ export function kvToEvent(key: string, value: unknown): RigSyncEvent | null {
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;
   if (key === 'transport') {
-    return typeof v.bpm === 'number' && Number.isFinite(v.bpm) ? { type: 'transport', running: v.running === true, bpm: v.bpm } : null;
+    if (typeof v.bpm !== 'number' || !Number.isFinite(v.bpm)) return null;
+    const state = TRANSPORT_STATES.find((s) => s === v.state) ?? (v.running === true ? 'playing' : 'paused');
+    return { type: 'transport', state, bpm: v.bpm };
   }
   if (key.startsWith('wire_')) return { type: 'wire', device: key.slice(5), on: v.on === true };
   if (key.startsWith('presence_')) return { type: 'presence', peer: key.slice(9), holding: typeof v.holding === 'string' ? v.holding : null };

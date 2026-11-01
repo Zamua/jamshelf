@@ -6,9 +6,14 @@ import { GONE_MS } from '../../domain/jam';
 // The relay is a KV store, so RigSyncEvents translate to KV keys/values and back. Pin the round-trip.
 describe('hostthis relay KV translation', () => {
   it('transport <-> the transport key', () => {
-    const kv = eventToKV({ type: 'transport', running: true, bpm: 128 });
-    expect(kv).toEqual({ key: 'transport', value: { running: true, bpm: 128 } });
-    expect(kvToEvent('transport', { running: true, bpm: 128 })).toEqual({ type: 'transport', running: true, bpm: 128 });
+    const kv = eventToKV({ type: 'transport', state: 'stopped', bpm: 128 });
+    expect(kv).toEqual({ key: 'transport', value: { state: 'stopped', running: false, bpm: 128 } });
+    expect(kvToEvent('transport', kv!.value)).toEqual({ type: 'transport', state: 'stopped', bpm: 128 });
+  });
+
+  it('reads a peer on an older build that sends only running', () => {
+    expect(kvToEvent('transport', { running: true, bpm: 100 })).toEqual({ type: 'transport', state: 'playing', bpm: 100 });
+    expect(kvToEvent('transport', { running: false, bpm: 100 })).toEqual({ type: 'transport', state: 'paused', bpm: 100 });
   });
 
   it('drops a transport value without a numeric bpm', () => {
@@ -30,7 +35,7 @@ describe('hostthis relay KV translation', () => {
 
   it('the BroadcastChannel-only handshake events are not written to KV', () => {
     expect(eventToKV({ type: 'hello' } as RigSyncEvent)).toBeNull();
-    expect(eventToKV({ type: 'snapshot', running: false, bpm: 120, wires: [] } as RigSyncEvent)).toBeNull();
+    expect(eventToKV({ type: 'snapshot', state: 'paused', bpm: 120, wires: [] } as RigSyncEvent)).toBeNull();
   });
 
   it('an unknown KV key maps to nothing', () => {
@@ -90,13 +95,13 @@ describe('HostthisRelaySync', () => {
     const sync = new HostthisRelaySync('room1');
     const got: RigSyncEvent[] = [];
     sync.onEvent((ev) => got.push(ev));
-    sync.send({ type: 'transport', running: true, bpm: 100 });
+    sync.send({ type: 'transport', state: 'playing', bpm: 100 });
     vi.advanceTimersByTime(100);
     expect(puts).toHaveLength(1);
     FakeSocket.last!.frame({ type: 'put', key: 'transport', value: puts[0].body }); // the echo
     expect(got).toEqual([]);
-    FakeSocket.last!.frame({ type: 'put', key: 'transport', value: { running: false, bpm: 90, from: 'someone-else' } });
-    expect(got).toEqual([{ type: 'transport', running: false, bpm: 90 }]);
+    FakeSocket.last!.frame({ type: 'put', key: 'transport', value: { state: 'paused', bpm: 90, from: 'someone-else' } });
+    expect(got).toEqual([{ type: 'transport', state: 'paused', bpm: 90 }]);
     sync.dispose();
   });
 

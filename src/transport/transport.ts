@@ -32,6 +32,8 @@ export interface Clock {
 
 export type Listener = () => void;
 
+export type TransportState = 'playing' | 'paused' | 'stopped';
+
 // The one tempo range every instrument, control and stored setting shares.
 export const MIN_BPM = 40;
 export const MAX_BPM = 240;
@@ -57,6 +59,11 @@ export class Transport {
   }
   isRunning(): boolean {
     return this.running;
+  }
+  // Playing, paused where it halted, or stopped at bar 1 (the next play starts from the top).
+  state(): TransportState {
+    if (this.running) return 'playing';
+    return this.pulse < 0 ? 'stopped' : 'paused';
   }
   isFreeRun(): boolean {
     return this.freeRun;

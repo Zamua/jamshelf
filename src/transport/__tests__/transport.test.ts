@@ -143,4 +143,16 @@ describe('Transport (the master clock)', () => {
     t.setBpm(130); // structural
     expect(changes).toBe(2);
   });
+
+  it('reports playing, paused where it halted, or stopped at bar 1', () => {
+    expect(t.state()).toBe('stopped');
+    t.play();
+    expect(t.state()).toBe('playing');
+    run(t, 10);
+    t.pause();
+    expect(t.state()).toBe('paused');
+    t.stop();
+    expect(t.state()).toBe('stopped');
+  });
 });
+

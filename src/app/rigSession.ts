@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
-import type { Transport } from '../transport/transport';
+import type { Transport, TransportState } from '../transport/transport';
 import type { RigAudio } from '../rig/rigAudio';
 import { BroadcastChannelSync, NullRigSync, type RigSync } from '../rig/rigSync';
 import { importRig, loadRig, saveWires, type RigConfig } from '../rig/rigStore';
@@ -8,6 +8,14 @@ import { HostthisRelaySync, fetchRoomRig, mintRoom, putRoomRig } from '../jam/in
 import { JamService } from '../jam/application/jamService';
 import type { Jam } from '../jam/domain/jam';
 import { rigUuidOf, type Route } from './route';
+
+// Bring the local transport to a peer's play / pause / stop (a stop also rewinds to bar 1).
+function followRemote(transport: Transport, state: TransportState): void {
+  if (state === transport.state()) return;
+  if (state === 'playing') transport.play();
+  else if (state === 'paused') transport.pause();
+  else transport.stop();
+}
 
 // The rig a route plays. A jam joined by link has no local copy yet: fetch it from the room, store
 // it under the room id, re-render. A route with no rig to play goes back to the shelf.
@@ -101,19 +109,18 @@ export function useRigSession({ rig, rigUuid, live, audio, transport, focused, o
   useEffect(() => {
     const offLocal = transport.onChange(() => {
       if (applyingRemote.current) return;
-      sync.send({ type: 'transport', running: transport.isRunning(), bpm: transport.getBpm() });
+      sync.send({ type: 'transport', state: transport.state(), bpm: transport.getBpm() });
     });
     const offRemote = sync.onEvent((ev) => {
       if (ev.type === 'hello') {
-        sync.send({ type: 'snapshot', running: transport.isRunning(), bpm: transport.getBpm(), wires: wiresRef.current });
+        sync.send({ type: 'snapshot', state: transport.state(), bpm: transport.getBpm(), wires: wiresRef.current });
         return;
       }
       applyingRemote.current = true;
       try {
         if (ev.type === 'transport' || ev.type === 'snapshot') {
           transport.setBpm(ev.bpm);
-          if (ev.running && !transport.isRunning()) transport.play();
-          else if (!ev.running && transport.isRunning()) transport.pause();
+          followRemote(transport, ev.state);
           if (ev.type === 'snapshot') applyWires(ev.wires);
         } else if (ev.type === 'wire') {
           if (wiresRef.current.includes(ev.device) !== ev.on) {

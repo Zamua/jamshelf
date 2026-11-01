@@ -32,8 +32,12 @@ export interface Clock {
 
 export type Listener = () => void;
 
-function clampBpm(bpm: number): number {
-  return Math.max(20, Math.min(300, Math.round(bpm)));
+// The one tempo range every instrument, control and stored setting shares.
+export const MIN_BPM = 40;
+export const MAX_BPM = 240;
+
+export function clampBpm(bpm: number): number {
+  return Math.max(MIN_BPM, Math.min(MAX_BPM, Math.round(bpm)));
 }
 
 export class Transport {
@@ -73,6 +77,7 @@ export class Transport {
   }
 
   setBpm(bpm: number): void {
+    if (!Number.isFinite(bpm)) return;
     const next = clampBpm(bpm);
     if (next === this.bpm) return;
     this.bpm = next;

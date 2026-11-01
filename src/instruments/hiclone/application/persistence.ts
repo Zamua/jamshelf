@@ -20,6 +20,7 @@ import {
   type StrumSpeed,
 } from '../domain/music';
 import { PATCH_ORDER, type PatchName } from './ports';
+import { MAX_BPM, MIN_BPM } from '../../../transport/transport';
 
 // The DURABLE musical settings, as a plain serializable object (no transient state
 // like the held pads, the morph quality, the menu, power, or the loop transport). A
@@ -65,7 +66,7 @@ export function coerceSettings(raw: unknown, fallback: SettingsSnapshot): Settin
     scale: oneOf(r.scale, SCALE_ORDER, fallback.scale),
     octave: clampInt(r.octave, -2, 2, fallback.octave),
     patch: oneOf(r.patch, PATCH_ORDER, fallback.patch),
-    bpm: clampInt(r.bpm, 40, 240, fallback.bpm),
+    bpm: clampInt(r.bpm, MIN_BPM, MAX_BPM, fallback.bpm),
     volume: clampNum(r.volume, 0, 1, fallback.volume),
     themeIndex: clampInt(r.themeIndex, 0, 999, fallback.themeIndex),
     mode: oneOf(r.mode, PLAY_MODES, fallback.mode),

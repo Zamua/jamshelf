@@ -18,8 +18,6 @@ export interface ViewModel {
 
 export type Listener = (vm: ViewModel) => void;
 
-export const MIN_BPM = 40;
-export const MAX_BPM = 240;
 export const DEFAULT_LEVEL = 0.8;
 
 // Every voice at the default level.

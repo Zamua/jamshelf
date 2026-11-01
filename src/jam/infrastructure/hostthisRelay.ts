@@ -33,7 +33,10 @@ export function eventToKV(ev: RigSyncEvent): KV | null {
   }
 }
 export function kvToEvent(key: string, value: Record<string, unknown>): RigSyncEvent | null {
-  if (key === 'transport') return { type: 'transport', running: !!value.running, bpm: Number(value.bpm) };
+  if (key === 'transport') {
+    const bpm = value.bpm;
+    return typeof bpm === 'number' && Number.isFinite(bpm) ? { type: 'transport', running: !!value.running, bpm } : null;
+  }
   if (key.startsWith('wire_')) return { type: 'wire', device: key.slice(5), on: !!value.on };
   if (key.startsWith('presence_')) return { type: 'presence', peer: key.slice(9), holding: (value.holding as string | null) ?? null };
   return null;

@@ -10,6 +10,11 @@ describe('hostthis relay KV translation', () => {
     expect(kvToEvent('transport', { running: true, bpm: 128 })).toEqual({ type: 'transport', running: true, bpm: 128 });
   });
 
+  it('drops a transport value without a numeric bpm', () => {
+    expect(kvToEvent('transport', { running: true })).toBeNull();
+    expect(kvToEvent('transport', { running: true, bpm: '120' })).toBeNull();
+  });
+
   it('wire <-> a per-device key', () => {
     const kv = eventToKV({ type: 'wire', device: 'styloclone', on: true });
     expect(kv).toEqual({ key: 'wire_styloclone', value: { on: true } });

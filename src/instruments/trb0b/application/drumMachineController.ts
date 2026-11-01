@@ -9,8 +9,8 @@ import {
   type Pattern,
 } from '../domain/sequencer';
 import type { DrumMachinePort, DrumSettings, SettingsStore } from './ports';
-import type { Clock, Transport } from '../../../transport/transport';
-import { MAX_BPM, MIN_BPM, defaultLevels, type Listener, type ViewModel } from './state';
+import { clampBpm, type Clock, type Transport } from '../../../transport/transport';
+import { defaultLevels, type Listener, type ViewModel } from './state';
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
@@ -29,7 +29,7 @@ export function coerceSettings(raw: unknown, fallback: DrumSettings): DrumSettin
       for (let i = 0; i < STEPS; i++) pattern[v][i] = row[i] === true;
     }
   }
-  const bpm = typeof o.bpm === 'number' && Number.isFinite(o.bpm) ? clamp(o.bpm, MIN_BPM, MAX_BPM) : fallback.bpm;
+  const bpm = typeof o.bpm === 'number' && Number.isFinite(o.bpm) ? clampBpm(o.bpm) : fallback.bpm;
   const volume = typeof o.volume === 'number' && Number.isFinite(o.volume) ? clamp(o.volume, 0, 1) : fallback.volume;
   const selected = VOICES.includes(o.selected as DrumVoice) ? (o.selected as DrumVoice) : fallback.selected;
   const levels = defaultLevels();
@@ -176,7 +176,7 @@ export class DrumMachineController {
   }
 
   setBpm(bpm: number): void {
-    this.transport.setBpm(clamp(Math.round(bpm), MIN_BPM, MAX_BPM)); // one tempo owner; onChange redraws
+    this.transport.setBpm(bpm); // one tempo owner (it clamps); onChange redraws
   }
 
   nudgeBpm(delta: number): void {

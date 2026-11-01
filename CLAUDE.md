@@ -12,11 +12,16 @@ react-three-fiber + TypeScript + Vite + react-router, organized with DDD.
 ```
 src/
   app/App.tsx          BrowserRouter > Experience (thin shell). Real URLs (/ , /<id>,
-                       future /rig/<uuid>) for deep-linking, but the ROUTE only sets a mode.
-  app/Experience.tsx   the composition root: useSynth() (the live HiClone), reads the route
-                       -> mode 'shelf'|'play', renders the persistent <Stage> + the HTML
-                       chrome (shelf caption / play tools+back) CROSS-FADED, gates device
-                       interactivity until it lands, owns the Manual.
+                       /rig/<uuid>, /jam/<room>) for deep-linking; the ROUTE only sets a mode.
+  app/Experience.tsx   the composition root: mounts every instrument's hook, renders the
+                       persistent <Stage> + the HTML chrome (shelf / build / rig / play)
+                       CROSS-FADED, gates device interactivity until it lands, owns the Manual.
+  app/route.ts         parseRoute: the URL -> a Route union (shelf / single / rig / jam / bad).
+  app/rigSession.ts    useRigConfig (load or join a rig), useRigSession (patch cables, sync,
+                       jam occupancy), useGoLive (mint a room, the invite link).
+  app/rigLibrary.ts    the "your rigs" drawer + the build overlay (new / edit / open / delete).
+  app/gestures.ts      pure gesture math (spin drag, carousel, rig swipe), unit-tested;
+                       app/useGestures.ts owns the window listeners.
   stage/Stage.tsx      THE ONE PERSISTENT CANVAS. The shelf + the play view are the SAME
                        scene at two ends of a continuous move: the device floats off a wall
                        shelf, arcs forward + down onto a desk, while the camera swings to a
@@ -71,7 +76,7 @@ placements, createdAt, updatedAt}`) -> navigates to `/rig/<uuid>`. Edit reopens 
 pre-loaded with the rig's placements; save -> `updateRig()` keeps the same uuid (+ URL/room). The store
 CRUD is `createRig` / `loadRig` / `listRigs` (recent-first) / `updateRig` / `deleteRig` / `savePlacement`,
 all localStorage, all guarded (tested in `rig/__tests__/rigStore.test.ts`). Rigs have no NAME yet -
-identified by their instruments + time. `Experience.parsePath` routes shelf / single (`/<id>`) / rig.
+identified by their instruments + time. `app/route.ts` parses the URL into shelf / single (`/<id>`) / rig / jam.
 In rig mode the instruments lie scattered FLAT on the desk (`rigStore` placements); the camera flies
 between a top-down all-view and a focused instrument (tap to zoom in, swipe the empty margins to cycle
 next/prev, back to the all-view). `activeId` = the focused instrument. Because EVERY instrument stays
@@ -282,7 +287,7 @@ structural facts, learned by iterating against the official photos in
   (cycled by `swapColor()`, exposed on the ViewModel); the UI maps it modulo the
   theme count - NO hex colors leak into the application layer. Chassis/Speaker/Knob
   + the joystick dots take their colors from the resolved theme; cream keys, accent
-  buttons and the screen are fixed. The play-chrome color swatch (in `Experience.tsx`) cycles it.
+  buttons and the screen are fixed. The play-chrome color swatch (the HiClone module's `PlayTools`) cycles it.
 - All geometry lives in `layout.ts` (`KEY_WELL`, `SCREEN`, `MENU`, `SPEAKER`,
   `MIC`, `KNOB`, `COLS`, `KEY_W`, `BLOCK.gap`, `BRAND`, `JOY_DOTS`, `PAD`,
   `padSpecs()`). Tune there.

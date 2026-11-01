@@ -1,4 +1,4 @@
-import type { Transport } from '../../../../transport/transport';
+import { BEATS_PER_BAR, PPQN, type Transport } from '../../../../transport/transport';
 import { DEFAULT_LEVEL, TRACK_COUNT, type TrackState } from '../../domain/loopStation';
 import { NullLoopStore, type LoopStore, type SerializedLoops } from '../../application/persistence';
 import type { LoopEnginePort, LoopTrackView } from '../../application/loopEnginePort';
@@ -14,7 +14,7 @@ import type { LoopEnginePort, LoopTrackView } from '../../application/loopEngine
 // we anchor the loop grid to the ctx-time of a transport downbeat, so loops stay ~bar-aligned to the
 // drums (within one audio buffer). Sample-tight sync is a later refinement.
 
-const PULSES_PER_BAR = 96; // Transport PPQN(24) * BEATS_PER_BAR(4)
+const PULSES_PER_BAR = PPQN * BEATS_PER_BAR;
 const TAP_SIZE = 4096;
 const UNDO_MAX = 8;
 

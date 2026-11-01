@@ -5,6 +5,7 @@ import { StudioLights } from '../shared/StudioLights';
 import { ShelfLabel } from './ShelfLabel';
 import { PatchLayer } from './PatchLayer';
 import { centroid, type Placement } from '../rig/rigStore';
+import { FLOAT_DURATION, SPIN_TILT_MAX, SPIN_TILT_MIN, type Carousel, type Spin } from './motion';
 
 // The two ends of the one continuous move. progress 0 = resting on the shelf (a swipeable
 // CAROUSEL: the centered instrument large + head-on, its neighbours smaller + pushed to the
@@ -42,7 +43,6 @@ const INSPECT_CAM = new Vector3(0, 1.3, 9.7);
 const INSPECT_TGT = new Vector3(0, 0.4, 2.2);
 const INSPECT_UP = new Vector3(0, 1, 0);
 
-const DURATION = 1.2;
 const INSPECT_DURATION = 0.75;
 const FLOAT_LIFT = 1.3;
 const FLOAT_BOW = 1.7;
@@ -87,24 +87,6 @@ function applyRigPose(device: Group, p: Placement): void {
   device.scale.setScalar(RIG_SCALE);
 }
 
-interface Spin {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  dragging: boolean;
-}
-
-// The live carousel position: `pos` is the fractional centered index (moves with the finger),
-// `target` the integer it snaps to, `dragging` gates the snap ease.
-export interface Carousel {
-  pos: number;
-  target: number;
-  dragging: boolean;
-}
-
-const SPIN_TILT_MIN = -1.2;
-const SPIN_TILT_MAX = 1.2;
 const SPIN_FRICTION = 0.95;
 const SPIN_MAX_V = 14;
 const SPIN_HOLD_DECAY = 0.9;
@@ -281,7 +263,7 @@ function CameraRig({
       return;
     }
     rigInit.current = false;
-    advance(fRaw, floatTarget, dt / DURATION);
+    advance(fRaw, floatTarget, dt / FLOAT_DURATION);
     advance(iRaw, inspectTarget, dt / INSPECT_DURATION);
     advance(bRaw, buildTarget, dt / BUILD_DURATION);
     applyCameraPose(state.camera, eased(fRaw.current), eased(iRaw.current), eased(bRaw.current), t2.current, tUp.current, tgt.current);
@@ -355,7 +337,7 @@ function DeviceRig({
     ref.current?.updateMatrixWorld(true);
   });
   useFrame((_, dt) => {
-    advance(fRaw, floatTarget, dt / DURATION);
+    advance(fRaw, floatTarget, dt / FLOAT_DURATION);
     advance(iRaw, inspectTarget, dt / INSPECT_DURATION);
     stepSpin(spinRef.current, dt);
     applyPose();

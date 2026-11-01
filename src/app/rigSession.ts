@@ -1,0 +1,192 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { NavigateFunction } from 'react-router-dom';
+import type { Transport } from '../transport/transport';
+import type { RigAudio } from '../rig/rigAudio';
+import { BroadcastChannelSync, NullRigSync, type RigSync } from '../rig/rigSync';
+import { importRig, loadRig, saveWires, type RigConfig } from '../rig/rigStore';
+import { HostthisRelaySync, fetchRoomRig, mintRoom, putRoomRig } from '../jam/infrastructure/hostthisRelay';
+import { JamService } from '../jam/application/jamService';
+import type { Jam } from '../jam/domain/jam';
+import { rigUuidOf, type Route } from './route';
+
+// The rig a route plays. A jam joined by link has no local copy yet: fetch it from the room, store
+// it under the room id, re-render. A route with no rig to play goes back to the shelf.
+export function useRigConfig(route: Route, navigate: NavigateFunction): RigConfig | null {
+  const uuid = rigUuidOf(route);
+  const [joined, setJoined] = useState(0);
+  const rig = uuid ? loadRig(uuid) : null; // re-read every render: an edit keeps the same uuid
+  const missing = route.kind === 'jam' && !rig;
+  useEffect(() => {
+    if (!missing || !uuid) return;
+    let dead = false;
+    fetchRoomRig(uuid).then(
+      (config) => {
+        if (dead) return;
+        importRig(uuid, config);
+        setJoined((n) => n + 1);
+      },
+      () => {
+        if (!dead) navigate('/', { replace: true }); // no such jam (or no rooms backend)
+      },
+    );
+    return () => {
+      dead = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missing, uuid, joined]);
+  useEffect(() => {
+    if (route.kind === 'bad' || (route.kind === 'rig' && !rig)) navigate('/', { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.kind, uuid]);
+  return rig;
+}
+
+interface SessionArgs {
+  rig: RigConfig | null;
+  rigUuid: string | null;
+  live: boolean; // a /jam route: synced over the hostthis room relay (else BroadcastChannel)
+  audio: RigAudio;
+  transport: Transport;
+  focused: string | null;
+  onFocus: (id: string | null) => void;
+}
+
+// A rig's shared session: the patch cables (persisted, mirrored into the audio graph, synced), the
+// shared transport over the sync channel, and the jam's presence + hard-lock occupancy.
+export function useRigSession({ rig, rigUuid, live, audio, transport, focused, onFocus }: SessionArgs) {
+  const [wires, setWires] = useState<string[]>(() => rig?.wires ?? []);
+  const [patchMode, setPatchMode] = useState(false);
+  useEffect(() => {
+    setWires(rig?.wires ?? []);
+    setPatchMode(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rigUuid]);
+  useEffect(() => {
+    const on = new Set(wires);
+    for (const id of rig?.instruments ?? []) {
+      if (on.has(id)) audio.wire(id);
+      else audio.unwire(id);
+    }
+  }, [wires, rig, audio]);
+
+  // A live jam syncs over the hostthis room relay (cross-device); a local rig over BroadcastChannel
+  // (two tabs); solo is a no-op.
+  const sync = useMemo<RigSync>(
+    () => (rigUuid && live ? new HostthisRelaySync(rigUuid) : rigUuid ? new BroadcastChannelSync(rigUuid) : new NullRigSync()),
+    [rigUuid, live],
+  );
+  useEffect(() => () => sync.dispose(), [sync]);
+  const applyingRemote = useRef(false);
+  const wiresRef = useRef(wires); // live wires, so a snapshot reply isn't a stale closure
+  wiresRef.current = wires;
+  const applyWires = useCallback(
+    (next: string[]) => {
+      if (rigUuid) saveWires(rigUuid, next);
+      setWires(next);
+    },
+    [rigUuid],
+  );
+  // Broadcast local transport changes; apply remote ones (guarded so applying doesn't re-broadcast).
+  // On join a peer says hello and the others reply with a snapshot (the hostthis relay answers from
+  // its KV instead).
+  useEffect(() => {
+    const offLocal = transport.onChange(() => {
+      if (applyingRemote.current) return;
+      sync.send({ type: 'transport', running: transport.isRunning(), bpm: transport.getBpm() });
+    });
+    const offRemote = sync.onEvent((ev) => {
+      if (ev.type === 'hello') {
+        sync.send({ type: 'snapshot', running: transport.isRunning(), bpm: transport.getBpm(), wires: wiresRef.current });
+        return;
+      }
+      applyingRemote.current = true;
+      if (ev.type === 'transport' || ev.type === 'snapshot') {
+        transport.setBpm(ev.bpm);
+        if (ev.running && !transport.isRunning()) transport.play();
+        else if (!ev.running && transport.isRunning()) transport.pause();
+        if (ev.type === 'snapshot') applyWires(ev.wires);
+      } else if (ev.type === 'wire') {
+        if (wiresRef.current.includes(ev.device) !== ev.on) {
+          applyWires(ev.on ? [...wiresRef.current, ev.device] : wiresRef.current.filter((x) => x !== ev.device));
+        }
+      }
+      applyingRemote.current = false;
+    });
+    sync.send({ type: 'hello' });
+    return () => {
+      offLocal();
+      offRemote();
+    };
+  }, [sync, transport, applyWires]);
+
+  const toggleWire = useCallback(
+    (id: string) => {
+      setWires((prev) => {
+        const on = !prev.includes(id);
+        const next = on ? [...prev, id] : prev.filter((x) => x !== id);
+        if (rigUuid) saveWires(rigUuid, next);
+        if (!applyingRemote.current) sync.send({ type: 'wire', device: id, on });
+        return next;
+      });
+    },
+    [rigUuid, sync],
+  );
+
+  // Occupancy: claim the focused device, release on unfocus; losing it (a claim race or idling out)
+  // drops back to the all-view; input on the held device holds off the idle release.
+  const jamSvc = useMemo(() => (rigUuid ? new JamService(rigUuid, sync) : null), [rigUuid, sync]);
+  useEffect(() => () => jamSvc?.dispose(), [jamSvc]);
+  const [jamView, setJamView] = useState<Jam | null>(null);
+  useEffect(() => (jamSvc ? jamSvc.subscribe(setJamView) : setJamView(null)), [jamSvc]);
+  useEffect(() => {
+    if (!jamSvc) return;
+    if (focused) jamSvc.claim(focused);
+    else jamSvc.release();
+  }, [jamSvc, focused]);
+  useEffect(() => jamSvc?.onLost(() => onFocus(null)), [jamSvc, onFocus]);
+  useEffect(() => {
+    if (!jamSvc || !focused) return;
+    const touch = () => jamSvc.touch();
+    window.addEventListener('pointerdown', touch);
+    window.addEventListener('keydown', touch);
+    return () => {
+      window.removeEventListener('pointerdown', touch);
+      window.removeEventListener('keydown', touch);
+    };
+  }, [jamSvc, focused]);
+  const canTake = useCallback((id: string) => !jamSvc || jamSvc.canClaim(id), [jamSvc]);
+  const players = jamView ? Object.keys(jamView.members).length : 1;
+
+  return { wires, patchMode, setPatchMode, toggleWire, canTake, players };
+}
+
+// Go live: mint a hostthis room, stash the rig in its KV (joiners fetch it), and move to the /jam
+// URL, which is the invite link. A rig touches the network only here.
+export function useGoLive(rig: RigConfig | null, wires: string[], onNavigate: (to: string) => void) {
+  const [goingLive, setGoingLive] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const goLive = () => {
+    if (!rig || goingLive) return;
+    setGoingLive(true);
+    void (async () => {
+      try {
+        const roomId = await mintRoom();
+        const config: RigConfig = { ...rig, wires };
+        await putRoomRig(roomId, config);
+        importRig(roomId, config); // the host's local copy
+        onNavigate(`/jam/${roomId}`);
+      } catch {
+        alert('Could not go live - the rooms backend is unreachable from this deploy.');
+      } finally {
+        setGoingLive(false);
+      }
+    })();
+  };
+  const copyJamLink = () => {
+    void navigator.clipboard?.writeText(location.href).then(() => {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1600);
+    });
+  };
+  return { goLive, goingLive, copyJamLink, linkCopied };
+}

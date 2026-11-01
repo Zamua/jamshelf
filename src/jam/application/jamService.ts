@@ -1,5 +1,5 @@
 import type { RigSync } from '../../rig/rigSync';
-import { claim, release, observe, pruneMembers, holderOf, canClaim, emptyJam, idleExpired, GONE_MS, type Jam } from '../domain/jam';
+import { claim, release, observe, leave, pruneMembers, holderOf, canClaim, emptyJam, idleExpired, GONE_MS, type Jam } from '../domain/jam';
 
 // The Jam session service: owns the live Jam state (who is here + who holds which device), threads
 // presence over the RigSync channel, and heartbeats so peers can prune the disconnected. All the
@@ -22,6 +22,11 @@ export class JamService {
     this.sync = sync;
     this.jam = emptyJam(roomId, sync.self, name ?? 'player', Date.now());
     this.offSync = sync.onEvent((ev) => {
+      if (ev.type === 'leave') {
+        this.jam = leave(this.jam, ev.peer);
+        this.publish();
+        return;
+      }
       // A relay may echo our own presence back late; local state is the truth for self.
       if (ev.type !== 'presence' || ev.peer === this.jam.self) return;
       const held = this.held();

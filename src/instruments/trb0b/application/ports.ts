@@ -24,6 +24,6 @@ export interface DrumSettings {
 }
 
 export interface SettingsStore {
-  load(): DrumSettings | null;
+  load(): unknown; // the stored payload, unparsed (coerceSettings parses it)
   save(s: DrumSettings): void;
 }

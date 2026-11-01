@@ -4,7 +4,8 @@ import type { ViewModel } from '../../application/state';
 import { Transport } from '../../../../transport/transport';
 import { IntervalTicker } from '../../../../transport/intervalTicker';
 import type { SharedAudio } from '../../../../rig/rigAudio';
-import { IndexedDbLoopStore } from '../../infrastructure/persistence/indexedDbLoops';
+import { IdbRecord } from '../../../../shared/storage';
+import { parseSerializedLoops } from '../../application/persistence';
 import { LoopEngine } from '../../infrastructure/audio/loopEngine';
 import { NullLoopEngine } from '../../application/loopEnginePort';
 import type { DeviceHandlers } from '../deviceProps';
@@ -18,7 +19,7 @@ export function useLoopStation(_enabled = true, transport?: Transport, audio?: S
     if (!transport) new IntervalTicker(t);
     // loops persist to IndexedDB per instrument namespace
     const engine = audio
-      ? new LoopEngine(audio.ctx, audio.looperInput, audio.loopOut, t, new IndexedDbLoopStore('loopclone'))
+      ? new LoopEngine(audio.ctx, audio.looperInput, audio.loopOut, t, new IdbRecord('loopclone:loops', parseSerializedLoops))
       : new NullLoopEngine();
     return new LoopStationController(t, engine);
     // eslint-disable-next-line react-hooks/exhaustive-deps

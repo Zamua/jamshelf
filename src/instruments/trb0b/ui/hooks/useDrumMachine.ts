@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { DrumMachineController } from '../../application/drumMachineController';
 import type { ViewModel } from '../../application/state';
 import { WebAudioDrums } from '../../infrastructure/audio/webAudioDrums';
-import { LocalStorageDrumSettings } from '../../infrastructure/persistence/localStorageDrumSettings';
+import { LocalSettingsStore } from '../../../../shared/storage';
+import type { DrumSettings } from '../../application/ports';
 import { Transport } from '../../../../transport/transport';
 import { IntervalTicker } from '../../../../transport/intervalTicker';
 import type { SharedAudio } from '../../../../rig/rigAudio';
@@ -21,7 +22,7 @@ export function useDrumMachine(enabled = true, transport?: Transport, audio?: Sh
     const synth = new WebAudioDrums(audio, ns);
     const t = transport ?? new Transport();
     if (!transport) new IntervalTicker(t); // solo: drive our own transport in real time
-    return new DrumMachineController(synth, t, new LocalStorageDrumSettings(ns));
+    return new DrumMachineController(synth, t, new LocalSettingsStore<DrumSettings>(ns));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transport]);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());

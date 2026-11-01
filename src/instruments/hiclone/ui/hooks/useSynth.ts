@@ -4,8 +4,8 @@ import type { ViewModel } from '../../application/state';
 import { WebAudioSynth } from '../../infrastructure/audio/webAudioSynth';
 import { WebAudioLooper } from '../../infrastructure/audio/webAudioLooper';
 import type { TransportControl } from '../../application/ports';
-import { LocalStorageSettingsStore, migrateSettingsNamespace } from '../../infrastructure/persistence/localStorageSettings';
-import { IndexedDbLooperStore } from '../../infrastructure/persistence/indexedDbLooper';
+import { IdbRecord, LocalSettingsStore, migrateSettingsNamespace } from '../../../../shared/storage';
+import { parseSerializedLooper, type SettingsSnapshot } from '../../application/persistence';
 import type { Degree, Quality } from '../../domain/music';
 import type { DeviceHandlers } from '../three/deviceProps';
 import { Transport } from '../../../../transport/transport';
@@ -109,8 +109,8 @@ export function useSynth(enabled = true, transport?: Transport, audio?: SharedAu
         if (!t.isFreeRun()) t.play();
       },
     };
-    const looper = new WebAudioLooper(realSynth, new IndexedDbLooperStore(ns), transportControl);
-    return new SynthController(realSynth, t, looper, new LocalStorageSettingsStore(ns));
+    const looper = new WebAudioLooper(realSynth, new IdbRecord(ns, parseSerializedLooper), transportControl);
+    return new SynthController(realSynth, t, looper, new LocalSettingsStore<SettingsSnapshot>(ns));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transport]);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());

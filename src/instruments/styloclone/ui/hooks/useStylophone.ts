@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { StylophoneController } from '../../application/stylophoneController';
 import type { ViewModel } from '../../application/state';
 import { WebAudioStylophone } from '../../infrastructure/audio/webAudioStylophone';
-import { LocalStorageStylophoneSettings } from '../../infrastructure/persistence/localStorageStylophoneSettings';
+import { LocalSettingsStore } from '../../../../shared/storage';
+import type { StylophoneSettings } from '../../application/ports';
 import { KEYS, keyRow, type Midi } from '../../domain/keyboard';
 import type { SharedAudio } from '../../../../rig/rigAudio';
 import type { DeviceHandlers } from '../deviceProps';
@@ -33,7 +34,7 @@ export function useStylophone(enabled = true, audio?: SharedAudio) {
   const controller = useMemo(() => {
     const ns = 'styloclone';
     const synth = new WebAudioStylophone(audio, ns);
-    return new StylophoneController(synth, new LocalStorageStylophoneSettings(ns));
+    return new StylophoneController(synth, new LocalSettingsStore<StylophoneSettings>(ns));
   }, []);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());
 

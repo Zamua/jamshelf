@@ -38,8 +38,8 @@ src/
       domain/music/    PURE music theory (types, scales, chords, performance). Unit-tested.
       application/     ports.ts (SynthPort/Clock), state.ts (ViewModel), persistence.ts
                        (SettingsStore/LooperStore ports + coerceSettings), synthController.ts
-      infrastructure/  audio/{webAudioSynth,nullSynth,webAudioLooper},
-                       persistence/{localStorageSettings,indexedDbLooper} (NAMESPACED per instrument)
+      infrastructure/  audio/{webAudioSynth,nullSynth,webAudioLooper}; persistence is the shared
+                       shared/storage.ts (LocalSettingsStore, IdbRecord), NAMESPACED per instrument
       ui/              three/Device.tsx + parts, deviceProps.ts, components/Manual, hooks/useSynth.ts
 ```
 

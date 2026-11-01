@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { Transport } from '../../../../transport/transport';
 import { LoopStationController } from '../loopStationController';
+import { NullLoopEngine } from '../loopEnginePort';
 
-// tapTempo is pure timing logic (no audio needed - the controller runs engine-less without SharedAudio).
+// tapTempo is pure timing logic: no audio needed.
 describe('LoopStationController tapTempo', () => {
   it('sets BPM from the average tap interval', () => {
     const t = new Transport();
-    const c = new LoopStationController(t);
+    const c = new LoopStationController(t, new NullLoopEngine());
     c.tapTempo(0);
     c.tapTempo(500);
     c.tapTempo(1000);
@@ -17,14 +18,14 @@ describe('LoopStationController tapTempo', () => {
   it('needs at least two taps before it changes tempo', () => {
     const t = new Transport();
     const before = t.getBpm();
-    const c = new LoopStationController(t);
+    const c = new LoopStationController(t, new NullLoopEngine());
     c.tapTempo(0); // a single tap does nothing
     expect(t.getBpm()).toBe(before);
   });
 
   it('restarts the count after a long gap', () => {
     const t = new Transport();
-    const c = new LoopStationController(t);
+    const c = new LoopStationController(t, new NullLoopEngine());
     c.tapTempo(0);
     c.tapTempo(500); // 120 BPM
     expect(t.getBpm()).toBe(120);

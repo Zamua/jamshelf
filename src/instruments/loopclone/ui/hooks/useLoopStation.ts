@@ -5,18 +5,22 @@ import { Transport } from '../../../../transport/transport';
 import { IntervalTicker } from '../../../../transport/intervalTicker';
 import type { SharedAudio } from '../../../../rig/rigAudio';
 import { IndexedDbLoopStore } from '../../infrastructure/persistence/indexedDbLoops';
+import { LoopEngine } from '../../infrastructure/audio/loopEngine';
+import { NullLoopEngine } from '../../application/loopEnginePort';
 import type { DeviceHandlers } from '../deviceProps';
 
 // React adapter for the LoopStationController: owns the controller, mirrors its ViewModel to React
 // state, exposes DeviceHandlers. In a rig it slaves to the shared Transport; solo it spins its own
-// ("solo is a rig of one"). `audio` (the shared graph) is threaded for Phase 2 (the record engine).
+// ("solo is a rig of one"). With no shared audio graph (a shelf thumbnail) the engine is inert.
 export function useLoopStation(_enabled = true, transport?: Transport, audio?: SharedAudio) {
   const controller = useMemo(() => {
     const t = transport ?? new Transport();
     if (!transport) new IntervalTicker(t);
-    // loops persist to IndexedDB per instrument namespace (only when there's real audio to record)
-    const store = audio ? new IndexedDbLoopStore('loopclone') : undefined;
-    return new LoopStationController(t, audio, store);
+    // loops persist to IndexedDB per instrument namespace
+    const engine = audio
+      ? new LoopEngine(audio.ctx, audio.looperInput, audio.loopOut, t, new IndexedDbLoopStore('loopclone'))
+      : new NullLoopEngine();
+    return new LoopStationController(t, engine);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [transport, audio]);
   const [vm, setVm] = useState<ViewModel>(() => controller.getState());

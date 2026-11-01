@@ -1,29 +1,25 @@
-import { Transport } from '../../../transport/transport';
-import type { SharedAudio } from '../../../rig/rigAudio';
-import { emptyTrack, nextOnButton, onStop, TRACK_COUNT, type Track } from '../domain/loopStation';
-import { LoopEngine } from '../infrastructure/audio/loopEngine';
-import type { LoopStore } from './persistence';
+import type { Transport } from '../../../transport/transport';
+import { TRACK_COUNT } from '../domain/loopStation';
+import type { LoopEnginePort } from './loopEnginePort';
 import type { Listener, ViewModel } from './state';
 
-// Framework-agnostic application service for the LoopClone. Owns the LoopEngine (the audio: tap the
-// rig's input bus, record per-track loops, play them back, mute/solo/fader/undo) and mirrors the
-// shared Transport's tempo/run state into the ViewModel. When no shared audio is available (unit
-// tests, a thumbnail render) it degrades to the pure domain state machine with no sound.
+// Framework-agnostic application service for the LoopClone. Drives the loop engine (record per-track
+// loops, play them back, mute/solo/fader/undo) and mirrors the shared Transport's tempo/run state
+// into the ViewModel.
 export class LoopStationController {
-  private readonly engine: LoopEngine | null;
+  private readonly engine: LoopEnginePort;
   private power = true;
   private inspect = false;
   private lastTouched = 0; // the track the top-panel UNDO acts on (the one you last recorded/dubbed)
   private tapTimes: number[] = []; // recent TAP presses (ms), for tap-tempo
   private readonly listeners = new Set<Listener>();
   private readonly transport: Transport;
-  // fallback track state used only when there is no engine (no audio)
-  private tracks: Track[] = Array.from({ length: TRACK_COUNT }, emptyTrack);
 
-  constructor(transport: Transport, audio?: SharedAudio, store?: LoopStore) {
+  constructor(transport: Transport, engine: LoopEnginePort) {
     this.transport = transport;
+    this.engine = engine;
     this.transport.onChange(() => this.publish()); // reflect tempo / play state on the top panel
-    this.engine = audio ? new LoopEngine(audio.ctx, audio.looperInput, audio.loopOut, transport, () => this.publish(), store) : null;
+    this.engine.onChange(() => this.publish());
   }
 
   subscribe(cb: Listener): () => void {
@@ -33,9 +29,7 @@ export class LoopStationController {
   }
 
   getState(): ViewModel {
-    const tracks = this.engine
-      ? this.engine.view().map((t, i) => ({ state: t.state, level: t.level, muted: t.muted, soloed: t.soloed, canUndo: this.engine!.canUndo(i) }))
-      : this.tracks.map((t) => ({ state: t.state, level: t.level, muted: false, soloed: false, canUndo: false }));
+    const tracks = this.engine.view().map((t, i) => ({ ...t, canUndo: this.engine.canUndo(i) }));
     return {
       power: this.power,
       tracks,
@@ -58,42 +52,39 @@ export class LoopStationController {
   trackButton(i: number): void {
     if (!this.power || i < 0 || i >= TRACK_COUNT) return;
     this.lastTouched = i;
-    if (this.engine) this.engine.button(i);
-    else this.tracks[i] = { ...this.tracks[i], state: nextOnButton(this.tracks[i].state) };
+    this.engine.button(i);
     this.publish();
   }
 
   // stop button: MUTE the track (its loop keeps running, silenced, so unmute is in-phase)
   trackStop(i: number): void {
     if (i < 0 || i >= TRACK_COUNT) return;
-    if (this.engine) this.engine.stop(i);
-    else this.tracks[i] = { ...this.tracks[i], state: onStop(this.tracks[i].state) };
+    this.engine.stop(i);
     this.publish();
   }
 
   // hold stop: clear the track
   trackClear(i: number): void {
     if (i < 0 || i >= TRACK_COUNT) return;
-    if (this.engine) this.engine.clear(i);
-    else this.tracks[i] = emptyTrack();
+    this.engine.clear(i);
     this.publish();
   }
 
   // long-press: solo (mute the others)
   trackSolo(i: number): void {
     if (i < 0 || i >= TRACK_COUNT) return;
-    this.engine?.solo(i);
+    this.engine.solo(i);
     this.publish();
   }
 
   // UNDO (top panel): revert the last take on the track you last recorded/overdubbed.
   undoLast(): void {
-    this.engine?.undo(this.lastTouched);
+    this.engine.undo(this.lastTouched);
     this.publish();
   }
   // hold UNDO: redo it.
   redoLast(): void {
-    this.engine?.redo(this.lastTouched);
+    this.engine.redo(this.lastTouched);
     this.publish();
   }
 
@@ -114,15 +105,13 @@ export class LoopStationController {
 
   // ALL: start/stop every loop at once
   allStop(): void {
-    this.engine?.allStop();
+    this.engine.allStop();
     this.publish();
   }
 
   setLevel(i: number, level: number): void {
     if (i < 0 || i >= TRACK_COUNT) return;
-    const v = Math.max(0, Math.min(1, level));
-    if (this.engine) this.engine.setLevel(i, v);
-    else this.tracks[i] = { ...this.tracks[i], level: v };
+    this.engine.setLevel(i, Math.max(0, Math.min(1, level)));
     this.publish();
   }
 
@@ -137,6 +126,6 @@ export class LoopStationController {
   }
 
   dispose(): void {
-    this.engine?.dispose();
+    this.engine.dispose();
   }
 }

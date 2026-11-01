@@ -1,4 +1,4 @@
-import './Manual.css';
+import '../../../../shared/Manual.css';
 
 // A dismissable guide to the instrument, written entirely in the clone's own
 // terms (no real brand name). Rendered as a dark card over the 3D stage.

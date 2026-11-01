@@ -4,7 +4,7 @@ import { Stage, type StageInstrument } from '../stage/Stage';
 import { FLOAT_DURATION, type Carousel } from '../stage/motion';
 import { EyeIcon } from './EyeIcon';
 import { INSTRUMENTS, instrumentById } from '../instruments/registry';
-import type { AnyInstrumentModule } from '../shared/instrument';
+import type { AnyInstrumentModule, InstrumentHandlers } from '../shared/instrument';
 import { Transport } from '../transport/transport';
 import { IntervalTicker } from '../transport/intervalTicker';
 import { RigAudio, type SharedAudio } from '../rig/rigAudio';
@@ -24,10 +24,8 @@ const indexOfId = (id: string | null) => INSTRUMENTS.findIndex((m) => m.manifest
 // One mounted instrument's live state, keyed by id in the context.
 interface Entry {
   module: AnyInstrumentModule;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  vm: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handlers: any;
+  vm: unknown;
+  handlers: InstrumentHandlers;
 }
 
 // Accumulates every mounted instrument's { vm, handlers } so the StageHost (a single consumer
@@ -61,11 +59,10 @@ function InstrumentProvider({
 
 // Replace every handler method with a no-op (generic across instruments), so a device that is
 // mid-float or being inspected does not fire notes.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function noopLike(handlers: any): any {
+function noopLike<H extends object>(handlers: H): H {
   const out: Record<string, () => void> = {};
   for (const k of Object.keys(handlers)) out[k] = () => {};
-  return out;
+  return out as H;
 }
 
 // The whole experience: ONE persistent 3D stage hosting every instrument, plus the HTML chrome.
@@ -136,7 +133,7 @@ function StageHost({
   transport: Transport;
 }) {
   const entries = useContext(InstrumentsCtx);
-  const resume = useCallback((ids: readonly string[]) => ids.forEach((id) => entries[id]?.handlers?.resume?.()), [entries]);
+  const resume = useCallback((ids: readonly string[]) => ids.forEach((id) => entries[id]?.handlers.resume()), [entries]);
   const [manualOpen, setManualOpen] = useState(false);
   const { inspect, setInspect, toggleInspect, spin, dragHandlers } = useInspectSpin();
 

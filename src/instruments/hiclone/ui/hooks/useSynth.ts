@@ -1,3 +1,4 @@
+import { hicloneManifest } from '../../manifest';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { SynthController } from '../../application/synthController';
 import type { ViewModel } from '../../application/state';
@@ -89,11 +90,11 @@ export function useSynth(enabled = true, transport?: Transport, audio?: SharedAu
     // The real synth plays audio; the audio looper taps its rendered output and
     // loops it back through a separate (untapped) bus, so each recorded layer is
     // frozen and unaffected by later sound / play-mode changes.
-    const realSynth = new WebAudioSynth(audio, 'hiclone');
-    // Persistence is namespaced to this instrument ('hiclone') so each instrument on
-    // the shelf keeps its own state: loops in IndexedDB (audio is too big for
-    // localStorage), durable settings in localStorage. Both restore on reload / PWA reopen.
-    const ns = 'hiclone';
+    const ns = hicloneManifest.id;
+    const realSynth = new WebAudioSynth(audio, ns);
+    // Persistence is namespaced to this instrument so each instrument on the shelf keeps its own
+    // state: loops in IndexedDB (audio is too big for localStorage), durable settings in
+    // localStorage. Both restore on reload / PWA reopen.
     migrateSettingsNamespace('hichord', ns); // carry prefs from the instrument's former id
     // The shared master clock (a rig); solo, spin up our own with a ticker - solo is a rig of one.
     const t = transport ?? new Transport();

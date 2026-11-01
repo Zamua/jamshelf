@@ -1,3 +1,4 @@
+import { trb0bManifest } from '../../manifest';
 import { useEffect, useMemo, useState } from 'react';
 import { DrumMachineController } from '../../application/drumMachineController';
 import type { ViewModel } from '../../application/state';
@@ -18,7 +19,7 @@ import type { DeviceHandlers } from '../deviceProps';
 // (with a ticker) - "solo is a rig of one". START toggles whichever Transport it was handed.
 export function useDrumMachine(enabled = true, transport?: Transport, audio?: SharedAudio) {
   const controller = useMemo(() => {
-    const ns = 'trb0b';
+    const ns = trb0bManifest.id;
     const synth = new WebAudioDrums(audio, ns);
     const t = transport ?? new Transport();
     if (!transport) new IntervalTicker(t); // solo: drive our own transport in real time

@@ -2,6 +2,7 @@ import type { DrumVoice } from '../../domain/sequencer';
 import type { DrumMachinePort } from '../../application/ports';
 import type { SharedAudio } from '../../../../rig/rigAudio';
 import { newAudioContext, unlockAudio } from '../../../../shared/webAudio';
+import { trb0bManifest } from '../../manifest';
 
 // The TR-B0B drum engine: each voice is a one-shot SYNTHESIZED hit (no samples), modelled on the
 // 808's analog voices. Everything routes master -> limiter -> its rig output jack so stacked hits
@@ -17,7 +18,7 @@ export class WebAudioDrums implements DrumMachinePort {
   private readonly shared: SharedAudio | undefined; // the rig's shared audio (undefined = own ctx, e.g. tests)
   private readonly deviceId: string;
 
-  constructor(shared?: SharedAudio, deviceId = 'trb0b') {
+  constructor(shared?: SharedAudio, deviceId = trb0bManifest.id) {
     this.shared = shared;
     this.deviceId = deviceId;
   }

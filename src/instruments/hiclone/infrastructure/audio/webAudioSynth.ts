@@ -3,6 +3,7 @@ import { SAMPLE_KIT_PADS } from '../../domain/music';
 import type { PatchName, SynthPort } from '../../application/ports';
 import type { SharedAudio } from '../../../../rig/rigAudio';
 import { newAudioContext, unlockAudio } from '../../../../shared/webAudio';
+import { hicloneManifest } from '../../manifest';
 
 // Per-kit tuning factors applied to the base drum recipes (kick pitch + decay,
 // snare noise/tone balance, hat brightness). TIGHT = neutral; 808 = boomy + softer;
@@ -189,7 +190,7 @@ export class WebAudioSynth implements SynthPort {
   private readonly shared: SharedAudio | undefined; // the rig's shared audio (undefined = own ctx, e.g. tests)
   private readonly deviceId: string;
 
-  constructor(shared?: SharedAudio, deviceId = 'hiclone') {
+  constructor(shared?: SharedAudio, deviceId = hicloneManifest.id) {
     this.shared = shared;
     this.deviceId = deviceId;
   }

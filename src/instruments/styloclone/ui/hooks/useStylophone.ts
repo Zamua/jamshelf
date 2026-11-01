@@ -1,3 +1,4 @@
+import { stylocloneManifest } from '../../manifest';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { StylophoneController } from '../../application/stylophoneController';
 import type { ViewModel } from '../../application/state';
@@ -32,7 +33,7 @@ const KEY_FOR_CHAR: Record<string, Midi> = (() => {
 // by calling onKeyDown/onKeyUp; nothing here needs to know how.
 export function useStylophone(enabled = true, audio?: SharedAudio) {
   const controller = useMemo(() => {
-    const ns = 'styloclone';
+    const ns = stylocloneManifest.id;
     const synth = new WebAudioStylophone(audio, ns);
     return new StylophoneController(synth, new LocalSettingsStore<StylophoneSettings>(ns));
   }, []);

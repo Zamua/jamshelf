@@ -1,3 +1,4 @@
+import { loopcloneManifest } from '../../manifest';
 import { useEffect, useMemo, useState } from 'react';
 import { LoopStationController } from '../../application/loopStationController';
 import type { ViewModel } from '../../application/state';
@@ -19,7 +20,7 @@ export function useLoopStation(_enabled = true, transport?: Transport, audio?: S
     if (!transport) new IntervalTicker(t);
     // loops persist to IndexedDB per instrument namespace
     const engine = audio
-      ? new LoopEngine(audio.ctx, audio.looperInput, audio.loopOut, t, new IdbRecord('loopclone:loops', parseSerializedLoops))
+      ? new LoopEngine(audio.ctx, audio.looperInput, audio.loopOut, t, new IdbRecord(`${loopcloneManifest.id}:loops`, parseSerializedLoops))
       : new NullLoopEngine();
     return new LoopStationController(t, engine);
     // eslint-disable-next-line react-hooks/exhaustive-deps

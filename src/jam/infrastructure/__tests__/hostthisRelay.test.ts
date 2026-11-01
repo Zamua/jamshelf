@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { eventToKV, kvToEvent } from '../hostthisRelay';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { HostthisRelaySync, eventToKV, kvToEvent } from '../hostthisRelay';
 import type { RigSyncEvent } from '../../../rig/rigSync';
 
 // The relay is a KV store, so RigSyncEvents translate to KV keys/values and back. Pin the round-trip.
@@ -43,5 +43,56 @@ describe('hostthis relay KV translation', () => {
 
   it('a presence holding that is not a device id reads as holding nothing', () => {
     expect(kvToEvent('presence_p1', { holding: 7 })).toEqual({ type: 'presence', peer: 'p1', holding: null });
+  });
+});
+
+// A socket the test drives: it records the instance so frames can be pushed in.
+class FakeSocket {
+  static last: FakeSocket | null = null;
+  onopen: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  private listeners: ((e: { data: string }) => void)[] = [];
+  constructor() {
+    FakeSocket.last = this;
+  }
+  addEventListener(_: string, cb: (e: { data: string }) => void) {
+    this.listeners.push(cb);
+  }
+  close() {}
+  frame(f: unknown) {
+    for (const cb of this.listeners) cb({ data: JSON.stringify(f) });
+  }
+}
+
+describe('HostthisRelaySync', () => {
+  const puts: { url: string; body: unknown }[] = [];
+  beforeEach(() => {
+    vi.useFakeTimers();
+    puts.length = 0;
+    vi.stubGlobal('WebSocket', FakeSocket);
+    vi.stubGlobal('location', { protocol: 'https:', host: 'app.example' });
+    vi.stubGlobal('fetch', (url: string, init: { body: string }) => {
+      puts.push({ url, body: JSON.parse(init.body) });
+      return Promise.resolve({ ok: true });
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it('does not hand our own write back to us when the room echoes it', () => {
+    const sync = new HostthisRelaySync('room1');
+    const got: RigSyncEvent[] = [];
+    sync.onEvent((ev) => got.push(ev));
+    sync.send({ type: 'transport', running: true, bpm: 100 });
+    vi.advanceTimersByTime(100);
+    expect(puts).toHaveLength(1);
+    FakeSocket.last!.frame({ type: 'put', key: 'transport', value: puts[0].body }); // the echo
+    expect(got).toEqual([]);
+    FakeSocket.last!.frame({ type: 'put', key: 'transport', value: { running: false, bpm: 90, from: 'someone-else' } });
+    expect(got).toEqual([{ type: 'transport', running: false, bpm: 90 }]);
+    sync.dispose();
   });
 });

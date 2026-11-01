@@ -1,4 +1,5 @@
-import type { AudioLooper, LooperMode, LooperView, TransportControl } from '../../application/ports';
+import type { AudioLooper, LooperView, TransportControl } from '../../application/ports';
+import { COUNT_IN_BEATS, initialLooper, nextLooper, type LooperEffect, type LooperEvent, type LooperState } from '../../application/looperMachine';
 import type { LooperStore, SerializedLooper } from '../../application/persistence';
 import type { WebAudioSynth } from './webAudioSynth';
 
@@ -6,21 +7,14 @@ import type { WebAudioSynth } from './webAudioSynth';
 // off a tap on the live bus, so every layer is frozen the instant it is captured -
 // switching patch / play-mode / fx afterwards never alters a recorded loop.
 //
-// The state machine, driven by the joystick click:
-//   idle  --click-->  rec   (beginTake: halt the rig, count in 4, then restart from bar 1
-//                            and capture the MASTER; its length snaps to whole bars on finalize)
-//   rec(master) --click--> play
-//   play  --click-->  rec   (beginTake again: an overdub layer, same halt -> count-in ->
-//                            restart-from-bar-1, captured for one loop)
-//   rec(overdub) --click--> play
-// Long-press (`clear`) wipes every layer back to idle.
+// Its lifecycle (idle / count-in / capturing / playing / halted) lives in the pure looperMachine;
+// every input goes through dispatch(), and this class performs the effects that come back.
 //
 // Recording a take drives the shared Transport (via TransportControl): it suspends the rig for
 // the count-in, then rewinds to bar 1 and resumes - so the drums replay from the top and the loop's
 // bar 1 IS the transport's bar 1, locking the loop to the beat by construction. A metronome clicks
 // through the count-in + recording, routed to the synth's loop bus so it is never captured.
 
-const MAX_TRACKS = 6;
 const BEATS_PER_BAR = 4; // 4/4 - the master loop is snapped to whole bars
 const BUFFER_SIZE = 2048; // ScriptProcessor block (~46ms @ 44.1k) - safe on iOS
 const LOOKAHEAD_MS = 25; // metronome scheduler poll interval
@@ -41,17 +35,14 @@ export class WebAudioLooper implements AudioLooper {
   private loopOut: AudioNode | null = null; // loop + metronome out (untapped)
   private script: ScriptProcessorNode | null = null;
 
-  private mode: LooperMode = 'idle';
-  private tracks: Track[] = [];
-  private recTrack = -1;
-  private selected = 0; // the layer the clear/redo cursor is on (during play)
+  private state: LooperState = initialLooper;
+  private tracks: Track[] = []; // one per layer: state.layers === tracks.length
   private bpm = 120;
 
   // capture: a growable list of input blocks (used for the master AND each overdub,
   // both recorded contiguously from their start point).
   private masterChunks: [Float32Array[], Float32Array[]] = [[], []];
   private capturedSamples = 0; // total samples captured this take (caps overdubs at 1 loop)
-  private capturing = false; // copy input blocks this audio frame?
 
   private loopLenSamples = 0; // master loop length (defines every layer)
   private loopBeats = 0; // its length in whole beats (locks the metronome)
@@ -60,12 +51,7 @@ export class WebAudioLooper implements AudioLooper {
   private lastActivity = 0; // ctx time of the last note on/off while recording the
   // master - the loop length quantizes to THIS (the notes), not the captured audio,
   // so a long release/reverb tail bleeds into the loop instead of adding a bar.
-  private stopped = false; // joystick-down stop: layers halted (resume from the top)
-  // In looper MODE: entered by a joystick click, exited by joystick UP. The click only
-  // records/advances once you are IN the mode; UP halts playback + leaves. Loops are kept
-  // (stopped) when you exit, so re-entering + a down-flick resumes them.
-  private active = false;
-  private countdown = 0; // overdub count-in clicks remaining (0 = not counting in)
+  private restoring: SerializedLooper | null = null; // the saved loops a 'restore' effect applies
   private pendingTimers: ReturnType<typeof setTimeout>[] = []; // scheduled count-in steps
   // every metronome / count-in click oscillator + its scheduled time, so a cancel
   // (disarm, overdub-cancel, stop-metronome) can silence the ones not yet fired -
@@ -165,7 +151,7 @@ export class WebAudioLooper implements AudioLooper {
     const newSec = newLen / ctx.sampleRate;
     const offset = phase * newSec;
     this.anchorTime = at - offset; // loop phase-0 stays where the transport expects it
-    const play = this.mode === 'play' && !this.stopped;
+    const play = this.state.phase.kind === 'playing';
     this.stopAllSources();
     this.tracks.forEach((t, i) => {
       t.buffer = bufs[i];
@@ -180,10 +166,11 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   view(): LooperView {
+    const p = this.state.phase;
     let pos = 0;
     let bar = 0;
     let beat = 0;
-    if (this.ctx && this.loopLenSamples > 0 && this.mode === 'play' && !this.stopped) {
+    if (this.ctx && this.loopLenSamples > 0 && p.kind === 'playing') {
       const lenSec = this.loopLenSamples / this.ctx.sampleRate;
       const t = (((this.ctx.currentTime - this.anchorTime) % lenSec) + lenSec) % lenSec;
       pos = t / lenSec;
@@ -191,207 +178,155 @@ export class WebAudioLooper implements AudioLooper {
       bar = Math.floor(beatIdx / BEATS_PER_BAR) + 1;
       beat = (beatIdx % BEATS_PER_BAR) + 1;
     }
+    const taking = p.kind === 'countIn' || p.kind === 'capturing';
     return {
-      active: this.active,
-      mode: this.mode,
-      recTrack: this.recTrack,
+      active: this.state.active,
+      mode: p.kind === 'idle' ? 'idle' : taking ? 'rec' : 'play',
+      recTrack: taking ? p.track : -1,
       trackCount: this.tracks.length,
-      selected: this.selected,
+      selected: this.state.selected,
       loopBars: this.loopBars,
       bar,
       beat,
-      stopped: this.stopped,
-      countdown: this.countdown,
+      stopped: p.kind === 'halted',
+      countdown: p.kind === 'countIn' ? p.beatsLeft : 0,
       posFraction: pos,
     };
   }
 
+  // --- inputs: each is an event for the lifecycle machine -----------------
   selectTrack(dir: -1 | 1): void {
-    if (this.mode !== 'play' || this.tracks.length === 0) return;
-    const n = this.tracks.length;
-    this.selected = (this.selected + dir + n) % n;
-    this.emit();
+    this.dispatch({ type: 'select', dir });
   }
-
-  // Joystick CLICK. The FIRST click ENTERS looper mode (no recording yet); once you are
-  // in the mode, clicks run the record/stop cycle. Exit is a separate gesture (up).
+  // Joystick CLICK: the first enters looper mode, then clicks run the record cycle.
   click(): void {
     if (!this.ensureGraph()) return;
-    if (!this.active) {
-      this.active = true; // enter looper mode
-      this.emit();
-      return;
-    }
-    switch (this.mode) {
-      case 'idle':
-        this.beginTake(); // master: halt the rig -> count in -> restart from bar 1 -> capture
-        break;
-      case 'rec':
-        // a re-press DURING the count-in (nothing recorded yet) abandons the take + resumes,
-        // rather than finalizing a near-empty bogus track.
-        if (this.countdown > 0) this.cancelTake(true);
-        else if (this.recTrack === 0) this.finalizeMaster();
-        else this.finalizeOverdub();
-        break;
-      case 'play':
-        if (this.tracks.length < MAX_TRACKS) this.beginTake(); // overdub, same take flow
-        break;
-    }
-    this.emit();
+    this.dispatch({ type: 'click' });
   }
-
-  // Joystick UP: exit looper mode AND stop playback. Any in-progress take is finalized
-  // (kept), then all layers halt; the loops stay recorded but stopped, so re-entering
-  // (click) + a down-flick resumes them.
+  // Joystick UP: leave looper mode. A recording take is kept, one still counting in is dropped, and
+  // the layers halt (the rig keeps rolling); re-entering + a down-flick resumes them.
   exit(): void {
-    if (!this.active) return;
-    if (this.mode === 'rec') {
-      // counting in (nothing captured) -> abandon + leave stopped; capturing -> keep the take
-      if (this.countdown > 0) this.cancelTake(false);
-      else if (this.recTrack === 0) this.finalizeMaster();
-      else this.finalizeOverdub();
-    }
-    if (this.mode === 'play' && !this.stopped) {
-      this.stopAllSources(); // halt the looper's layers (the rig's transport keeps rolling)
-      this.stopped = true;
-      this.stopDisplayTimer();
-    }
-    this.active = false;
+    this.dispatch({ type: 'exit' });
+  }
+  // Joystick down (SOLO): drops a take still counting in, else stops the loops or restarts them
+  // from bar 1. In a RIG the controller drives the shared transport and the loops follow it.
+  toggleStop(): void {
+    this.dispatch({ type: 'toggleStop' });
+  }
+  // Follow the shared transport at `beat`, the rig's position in beats from bar 1. The loops were
+  // recorded from the rig's bar 1, so that position alone says where in the loop to resume.
+  followTransport(playing: boolean, beat: number): void {
+    this.dispatch({ type: 'follow', playing, beat });
+  }
+  // Long press: drop the selected layer, or wipe everything when the cursor is on the master.
+  clear(): void {
+    this.dispatch({ type: 'clear' });
+  }
+
+  // While recording the master, the loop length quantizes on the last note played (not on a
+  // release/reverb tail); a press or release during the count-in does not count.
+  noteStarted(): void {
+    if (this.capturingMaster() && this.ctx) this.lastActivity = this.ctx.currentTime;
+  }
+  noteEnded(): void {
+    if (this.capturingMaster() && this.ctx) this.lastActivity = this.ctx.currentTime;
+  }
+  private capturingMaster(): boolean {
+    const p = this.state.phase;
+    return p.kind === 'capturing' && p.track === 0;
+  }
+
+  private dispatch(event: LooperEvent): void {
+    const { state, effects } = nextLooper(this.state, event);
+    this.state = state;
+    for (const fx of effects) this.perform(fx);
     this.emit();
   }
 
-  // Abandon an in-progress take DURING its count-in: kill the scheduled count-in clicks + the
-  // pending capture-start. resume=true (a re-press) resumes from bar 1 (existing layers + the rig);
-  // resume=false (a joystick-down / exit) leaves everything stopped where the count-in halted it.
+  private perform(fx: LooperEffect): void {
+    switch (fx.kind) {
+      case 'beginTake':
+        return this.beginTake();
+      case 'startCapture':
+        return this.startCapture();
+      case 'finishTake':
+        return fx.track === 0 ? this.finalizeMaster() : this.finalizeOverdub();
+      case 'cancelTake':
+        return this.cancelTake(fx.resume);
+      case 'play':
+        return this.playFrom(fx.beat);
+      case 'halt':
+        return this.halt();
+      case 'dropLayer':
+        return this.dropLayer(fx.index);
+      case 'wipe':
+        return this.wipe(fx.resumeRig);
+      case 'restore':
+        if (this.restoring) this.applyRestore(this.restoring);
+        return;
+    }
+  }
+
+  // Drop a take during its count-in: kill the scheduled clicks + capture start. resume (a re-press)
+  // replays from bar 1 (existing layers + the rig); otherwise everything stays halted where the
+  // count-in stopped it.
   private cancelTake(resume: boolean): void {
     this.clearPendingTimers();
     this.killFutureClicks();
-    this.capturing = false;
-    this.capturedSamples = 0;
     this.masterChunks = [[], []];
-    this.countdown = 0;
-    const wasMaster = this.recTrack === 0;
-    this.recTrack = -1;
-    this.mode = wasMaster ? 'idle' : 'play'; // no master loop yet -> idle; overdub -> back to play
-    if (resume) {
-      this.stopped = false;
-      if (!wasMaster) {
-        const at = this.ctx!.currentTime + 0.05;
-        this.anchorTime = at;
-        this.restartTracks(at); // existing layers (silenced for the count-in) play again from bar 1
-        this.startDisplayTimer();
-      }
-      this.transport?.resumeFromTop(); // the rig replays from bar 1 too
-    } else {
-      // Leave everything stopped (a later down-flick / bar play resumes it). restartTracks (in
-      // beginTake) scheduled the existing layers to start AT the now-cancelled downbeat, so stop
-      // them or they would fire audibly + untracked once that future time arrives (a zombie).
-      this.stopAllSources();
-      this.stopped = true;
-      this.stopDisplayTimer();
-    }
-  }
-
-  // The master anchors to bar 1 (set in beginTake), not the first note - so here we only track the
-  // last-played instant, so the loop length quantizes on the notes (not a release/reverb tail).
-  noteStarted(): void {
-    if (this.mode === 'rec' && this.capturing && this.recTrack === 0 && this.ctx)
-      this.lastActivity = this.ctx.currentTime;
-  }
-  // A pad release while recording the master - marks where the playing ended (the loop quantizes to
-  // this, not to where the release/reverb tail finally decays). Gated on `capturing` (like
-  // noteStarted): a release DURING the count-in must not push lastActivity before bar 1.
-  noteEnded(): void {
-    if (this.mode === 'rec' && this.capturing && this.recTrack === 0 && this.ctx)
-      this.lastActivity = this.ctx.currentTime;
-  }
-
-  // Joystick down (SOLO). During a count-in it cancels the take; otherwise it STOPS this instrument's
-  // loops (to bar 1) or restarts them. In a RIG the controller instead drives the shared transport
-  // and the loops FOLLOW via followTransport - so 'down' stops the whole rig there. This method is the
-  // looper-only path (solo, where there is no shared transport to ride).
-  toggleStop(): void {
-    if (this.countdown > 0) {
-      this.cancelTake(false); // pulled down during a count-in: abandon the take, leave stopped
-      this.emit();
-      return;
-    }
-    if (this.mode !== 'play') return;
-    this.setLoopsPlaying(this.stopped, 0); // stopped -> restart from bar 1; playing -> stop
-    this.emit();
-  }
-
-  // Follow the shared transport (called by the controller on the rig's play/pause/stop) at `beat`, the
-  // rig's position in beats from bar 1. The loops were recorded from the rig's bar 1, so that position
-  // alone says where in the loop to resume. Suppressed unless a loop is playing (record has its own flow).
-  followTransport(playing: boolean, beat: number): void {
-    this.setLoopsPlaying(playing, beat);
-    this.emit();
-  }
-
-  // The single play/stop of the recorded loops; playing starts them `beat` beats into the loop.
-  // Idempotent: safe to call repeatedly.
-  private setLoopsPlaying(playing: boolean, beat: number): void {
-    if (this.mode !== 'play' || this.tracks.length === 0 || !this.ctx) return;
-    if (playing) {
-      if (!this.stopped) return; // already playing
-      const at = this.ctx.currentTime + 0.03;
-      const lenSec = this.loopLenSamples / this.ctx.sampleRate;
-      const beats = this.loopBeats > 0 ? this.loopBeats : 1;
-      const offset = ((((beat % beats) + beats) % beats) / beats) * lenSec;
-      this.anchorTime = at - offset;
-      this.stopAllSources();
-      for (const t of this.tracks) {
-        const { source, gain } = this.startLoop(t.buffer, at, offset);
-        t.source = source;
-        t.gain = gain;
-      }
-      this.stopped = false;
+    this.capturedSamples = 0;
+    if (!resume) return this.halt(); // beginTake cued the layers for the cancelled downbeat: stop them
+    if (this.tracks.length > 0) {
+      const at = this.ctx!.currentTime + 0.05;
+      this.anchorTime = at;
+      this.restartTracks(at);
       this.startDisplayTimer();
-    } else if (!this.stopped) {
-      this.stopAllSources();
-      this.stopped = true;
-      this.stopDisplayTimer();
     }
+    this.transport?.resumeFromTop();
   }
 
-  clear(): void {
-    if (!this.active) return; // long-press only clears while you are in looper mode
-    // While a loop plays, clear ONLY the selected layer - unless it's the master
-    // (layer 0), which defines the loop length, so clearing it wipes everything.
-    if (this.mode === 'play' && this.selected > 0 && this.selected < this.tracks.length) {
-      const [t] = this.tracks.splice(this.selected, 1);
-      this.stopTrack(t, true); // fade out so deleting a layer doesn't click
-      this.selected = Math.min(this.selected, this.tracks.length - 1);
-      this.persist();
-      this.emit();
-      return;
+  // Start every layer `beat` beats into the loop.
+  private playFrom(beat: number): void {
+    if (!this.ctx || this.tracks.length === 0) return;
+    const at = this.ctx.currentTime + 0.03;
+    const lenSec = this.loopLenSamples / this.ctx.sampleRate;
+    const beats = this.loopBeats > 0 ? this.loopBeats : 1;
+    const offset = ((((beat % beats) + beats) % beats) / beats) * lenSec;
+    this.anchorTime = at - offset;
+    this.stopAllSources();
+    for (const t of this.tracks) {
+      const { source, gain } = this.startLoop(t.buffer, at, offset);
+      t.source = source;
+      t.gain = gain;
     }
-    this.resetAll();
+    this.startDisplayTimer();
   }
 
-  private resetAll(): void {
-    // If a take is mid-count-in the rig was suspended (beginTake) and the scheduled downbeat resume
-    // is about to be cancelled below - so resume the rig here, else it stays halted forever.
-    if (this.countdown > 0) this.transport?.resumeFromTop();
+  private halt(): void {
+    this.stopAllSources();
+    this.stopDisplayTimer();
+  }
+
+  private dropLayer(index: number): void {
+    const [t] = this.tracks.splice(index, 1);
+    if (t) this.stopTrack(t, true); // fade out so deleting a layer doesn't click
+    this.persist();
+  }
+
+  private wipe(resumeRig: boolean): void {
+    // a count-in suspended the rig and its scheduled resume is cancelled below: resume it here
+    if (resumeRig) this.transport?.resumeFromTop();
     this.clearPendingTimers();
     for (const t of this.tracks) this.stopTrack(t, false);
     this.tracks = [];
-    this.mode = 'idle';
-    this.recTrack = -1;
-    this.selected = 0;
-    this.capturing = false;
-    this.capturedSamples = 0;
     this.masterChunks = [[], []];
+    this.capturedSamples = 0;
     this.loopLenSamples = 0;
     this.loopBeats = 0;
     this.loopBars = 0;
-    this.stopped = false;
-    this.countdown = 0;
     this.stopMetronome();
     this.stopDisplayTimer();
     this.store?.clear(); // wiped everything -> drop the persisted loops too
-    this.emit();
   }
 
   private startDisplayTimer(): void {
@@ -415,7 +350,6 @@ export class WebAudioLooper implements AudioLooper {
 
   // --- recording lifecycle -------------------------------------------------
   private finalizeMaster(): void {
-    this.capturing = false;
     const ctx = this.ctx!;
     const left = concat(this.masterChunks[0]);
     const right = concat(this.masterChunks[1]);
@@ -443,10 +377,6 @@ export class WebAudioLooper implements AudioLooper {
     // the looping source on the next loop boundary so playback is seamless.
     const startAt = this.nextBoundary();
     this.pushTrack(buf, startAt);
-    this.selected = this.tracks.length - 1;
-    this.recTrack = -1;
-    this.mode = 'play';
-    this.stopped = false;
     this.stopMetronome();
     this.startDisplayTimer();
     this.persist();
@@ -463,37 +393,27 @@ export class WebAudioLooper implements AudioLooper {
     this.transport?.suspend(); // halt the rig for the count-in
     this.stopAllSources(); // existing layers go silent during the count-in (none for the master)
     this.stopMetronome();
-    this.stopped = false;
-    this.recTrack = this.tracks.length;
-    this.capturing = false; // not yet - wait out the count-in
-    this.mode = 'rec';
-    this.countdown = BEATS_PER_BAR;
 
     const beat = this.beatSec();
     const t0 = ctx.currentTime + 0.12; // first count-in click
-    for (let k = 0; k < BEATS_PER_BAR; k++) this.clickSound(t0 + k * beat, k === 0);
+    for (let k = 0; k < COUNT_IN_BEATS; k++) this.clickSound(t0 + k * beat, k === 0);
     // tick the on-screen countdown 4 -> 1 on each count-in beat
-    for (let k = 0; k < BEATS_PER_BAR; k++)
-      this.scheduleAt(t0 + k * beat, () => {
-        this.countdown = BEATS_PER_BAR - k;
-        this.emit();
-      });
+    for (let k = 0; k < COUNT_IN_BEATS; k++) this.scheduleAt(t0 + k * beat, () => this.dispatch({ type: 'countBeat', beatsLeft: COUNT_IN_BEATS - k }));
 
-    const downbeat = t0 + BEATS_PER_BAR * beat; // the loop's bar 1
+    const downbeat = t0 + COUNT_IN_BEATS * beat; // the loop's bar 1
     this.anchorTime = downbeat;
     this.lastActivity = downbeat; // master length measured from bar 1 (bumped as notes play)
     this.restartTracks(downbeat); // existing layers replay from bar 1, in sync (no-op for the master)
-    this.scheduleAt(downbeat, () => {
-      this.transport?.resumeFromTop(); // rewind the rig to bar 1 + resume (the drums replay)
-      this.countdown = 0;
-      this.stopped = false; // layers are audibly playing again from bar 1
-      this.masterChunks = [[], []]; // contiguous capture, starting at phase 0
-      this.capturedSamples = 0;
-      this.capturing = true; // recording begins
-      this.startMetronome(downbeat);
-      this.startDisplayTimer();
-      this.emit();
-    });
+    this.scheduleAt(downbeat, () => this.dispatch({ type: 'downbeat' }));
+  }
+
+  // Bar 1 of a take: the rig replays from the top and a contiguous capture starts at phase 0.
+  private startCapture(): void {
+    this.transport?.resumeFromTop();
+    this.masterChunks = [[], []];
+    this.capturedSamples = 0;
+    this.startMetronome(this.anchorTime);
+    this.startDisplayTimer();
   }
 
   // Stop every layer's source (keeping its buffer + gain slot) - used by the
@@ -549,7 +469,6 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   private finalizeOverdub(): void {
-    this.capturing = false;
     this.clearPendingTimers();
     const ctx = this.ctx!;
     // The overdub was captured contiguously from the downbeat (phase 0). Place its
@@ -561,10 +480,6 @@ export class WebAudioLooper implements AudioLooper {
     copyInto(buf.getChannelData(0), left);
     copyInto(buf.getChannelData(1), right);
     this.pushTrack(buf, this.nextBoundary());
-    this.selected = this.tracks.length - 1;
-    this.recTrack = -1;
-    this.mode = 'play';
-    this.stopped = false;
     this.stopMetronome();
     this.persist();
   }
@@ -616,9 +531,14 @@ export class WebAudioLooper implements AudioLooper {
   // user pulls the joystick down to start them. Skipped if a fresh recording already
   // started (a race between the async load and the user hitting record).
   private restore(data: SerializedLooper): void {
-    if (this.mode !== 'idle' || this.tracks.length > 0) return;
-    if (!this.ensureGraph() || !this.ctx) return;
-    const ctx = this.ctx;
+    if (!this.ensureGraph()) return;
+    this.restoring = data;
+    this.dispatch({ type: 'restored', layers: data.tracks.length });
+    this.restoring = null;
+  }
+
+  private applyRestore(data: SerializedLooper): void {
+    const ctx = this.ctx!;
     this.loopLenSamples = data.loopLenSamples;
     this.loopBeats = data.loopBeats;
     this.loopBars = data.loopBars;
@@ -639,11 +559,6 @@ export class WebAudioLooper implements AudioLooper {
         recordBpm: data.bpm,
       });
     }
-    this.selected = this.tracks.length - 1;
-    this.recTrack = -1;
-    this.mode = 'play';
-    this.stopped = true; // halted until the user starts them
-    this.emit();
   }
 
   // The next loop boundary (a multiple of the loop length from the anchor) at or
@@ -708,12 +623,13 @@ export class WebAudioLooper implements AudioLooper {
   }
 
   private process(e: AudioProcessingEvent): void {
-    if (!this.capturing) return;
+    const p = this.state.phase;
+    if (p.kind !== 'capturing') return;
     // An overdub starts capturing exactly on the loop downbeat (after the count-in),
     // so it is a plain CONTIGUOUS recording of one loop from phase 0 - no per-block
     // phase math (which jittered off playbackTime and left discontinuities a sharp
     // drum hit exposed). Stop once we have a full loop: one clean pass from bar 1.
-    if (this.recTrack > 0 && this.capturedSamples >= this.loopLenSamples) return;
+    if (p.track > 0 && this.capturedSamples >= this.loopLenSamples) return;
     const inBuf = e.inputBuffer;
     const inL = inBuf.getChannelData(0);
     const inR = inBuf.numberOfChannels > 1 ? inBuf.getChannelData(1) : inL;

@@ -30,7 +30,6 @@ export const hicloneModule: InstrumentModule<ViewModel, DeviceHandlers> = {
   Device,
   Manual,
   releaseOnMiss: (handlers) => handlers.onJoyEnd(),
-  withHelpToggle: (handlers, toggle) => ({ ...handlers, onHelpToggle: toggle }),
   PlayTools,
   needsFreeClock: true, // no transport bar solo, so the arp/looper step on pad-hold via free-run
 };

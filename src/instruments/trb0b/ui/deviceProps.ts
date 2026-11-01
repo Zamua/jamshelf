@@ -12,8 +12,6 @@ export interface DeviceHandlers {
   onTempo(bpm: number): void; // the tempo knob (absolute bpm)
   onClear(): void; // clear the selected voice's row
   onPower(): void;
-  onInspectToggle(): void;
-  onHelpToggle(): void;
 }
 
 export interface DeviceProps {

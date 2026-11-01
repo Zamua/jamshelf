@@ -14,7 +14,6 @@ export interface ViewModel {
   readonly tracks: readonly TrackVM[]; // one per track (length TRACK_COUNT)
   readonly bpm: number;
   readonly playing: boolean; // shared transport running (the top-panel transport readout)
-  readonly inspect: boolean;
 }
 
 export type Listener = (vm: ViewModel) => void;

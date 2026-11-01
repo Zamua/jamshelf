@@ -11,7 +11,6 @@ export interface ViewModel {
   readonly tune: number; // cents (tune pot), clamped
   readonly volume: number; // 0..1
   readonly voice: VoiceName;
-  readonly inspect: boolean;
   // the sounding note's display name (e.g. "C3"), or '' when nothing sounds.
   readonly noteLabel: string;
 }

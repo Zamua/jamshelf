@@ -72,7 +72,7 @@ describe('looper wiring', () => {
     expect(looper.notes).toBe(2);
   });
 
-  it('does not toggle/clear while powered off or inspecting', () => {
+  it('does not toggle/clear while powered off', () => {
     c.togglePower(); // off
     c.joyClick();
     c.joyHold();
@@ -113,7 +113,7 @@ describe('looper wiring', () => {
     expect(c.getState().screenBig).toBe('BAR 2.3'); // live transport on the big line
   });
 
-  it('forwards joystick layer-select to the looper, gated by power/inspect', () => {
+  it('forwards joystick layer-select to the looper, gated by power', () => {
     c.selectLoopTrack(1);
     c.selectLoopTrack(-1);
     expect(looper.selectDirs).toEqual([1, -1]);
@@ -122,7 +122,7 @@ describe('looper wiring', () => {
     expect(looper.selectDirs).toEqual([1, -1]); // ignored while powered off
   });
 
-  it('forwards joystick-down stop to the looper, gated by power/inspect', () => {
+  it('forwards joystick-down stop to the looper, gated by power', () => {
     c.looperStop();
     expect(looper.stops).toBe(1);
     c.togglePower(); // off

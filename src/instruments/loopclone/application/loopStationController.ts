@@ -9,7 +9,6 @@ import type { Listener, ViewModel } from './state';
 export class LoopStationController {
   private readonly engine: LoopEnginePort;
   private power = true;
-  private inspect = false;
   private lastTouched = 0; // the track the top-panel UNDO acts on (the one you last recorded/dubbed)
   private tapTimes: number[] = []; // recent TAP presses (ms), for tap-tempo
   private readonly listeners = new Set<Listener>();
@@ -35,7 +34,6 @@ export class LoopStationController {
       tracks,
       bpm: this.transport.getBpm(),
       playing: this.transport.isRunning(),
-      inspect: this.inspect,
     };
   }
 
@@ -120,10 +118,6 @@ export class LoopStationController {
     this.publish();
   }
 
-  setInspect(on: boolean): void {
-    this.inspect = on;
-    this.publish();
-  }
 
   dispose(): void {
     this.engine.dispose();

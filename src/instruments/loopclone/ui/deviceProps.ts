@@ -14,8 +14,6 @@ export interface DeviceHandlers {
   onAllStop(): void; // ALL: start/stop every loop at once
   onLevel(track: number, level: number): void; // the track fader (absolute 0..1)
   onPower(): void;
-  onInspectToggle(): void;
-  onHelpToggle(): void;
 }
 
 export interface DeviceProps {

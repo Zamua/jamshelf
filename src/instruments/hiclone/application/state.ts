@@ -24,7 +24,6 @@ export interface ViewModel {
   readonly bpm: number;
   readonly volume: number; // 0..1
   readonly power: boolean;
-  readonly inspect: boolean;
   // index into the shell-color editions (the UI maps it to actual colors); the
   // controller just cycles it, keeping presentation colors out of the app layer.
   readonly themeIndex: number;

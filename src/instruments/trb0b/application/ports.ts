@@ -14,7 +14,7 @@ export interface DrumMachinePort {
 }
 
 // Durable settings, persisted per instrument. The pattern, tempo, volume and selected voice
-// survive a reload; transient state (playing, current step, power, inspect) does not.
+// survive a reload; transient state (playing, current step, power) does not.
 export interface DrumSettings {
   readonly pattern: Pattern;
   readonly bpm: number;

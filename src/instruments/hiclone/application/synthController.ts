@@ -64,7 +64,6 @@ export class SynthController {
   private bpm = 120;
   private volume = 0.8;
   private power = true;
-  private inspect = false;
   private themeIndex = 0;
 
   // play modes
@@ -204,30 +203,30 @@ export class SynthController {
   // --- looper. Joystick CLICK enters looper mode / records; UP exits + stops; DOWN
   // pauses/restarts; LEFT/RIGHT selects a track; long-press clears the selected track. ---
   joyClick(): void {
-    if (!this.power || this.inspect) return;
+    if (!this.power) return;
     this.looper.click();
   }
   joyHold(): void {
-    if (!this.power || this.inspect) return;
+    if (!this.power) return;
     this.looper.clear();
   }
   // Joystick UP while in looper mode + no pad held: exit the looper and stop playback.
   looperExit(): void {
-    if (!this.power || this.inspect) return;
+    if (!this.power) return;
     this.looper.exit();
     this.publish();
   }
   // Joystick left/right while a loop plays + no pad is held: pick the layer the
   // long-press will clear / redo. The UI only calls this in that context.
   selectLoopTrack(dir: -1 | 1): void {
-    if (!this.power || this.inspect) return;
+    if (!this.power) return;
     this.looper.selectTrack(dir);
   }
   // Joystick down (no pad held, loop playing): STOP. During a count-in it cancels the take. In a rig
   // it drives the shared transport (stop the whole rig to bar 1 / play from the top) and the loops
   // FOLLOW; solo (free-run) it stops/restarts just this instrument's loops.
   looperStop(): void {
-    if (!this.power || this.inspect) return;
+    if (!this.power) return;
     if (this.looper.view().countdown > 0) this.looper.toggleStop(); // cancel the in-progress take
     else if (!this.transport.isFreeRun()) (this.transport.isRunning() ? this.transport.stop() : this.transport.play());
     else this.looper.toggleStop();
@@ -244,7 +243,7 @@ export class SynthController {
 
   // --- playing (multi-touch; voiceId is typically a pointer id) ---
   pressPad(voiceId: string, degree: Degree): void {
-    if (!this.power || this.inspect) return;
+    if (!this.power) return;
     this.dispatchPress(voiceId, degree);
     this.looper.noteStarted(); // marks last-played activity while recording the master (length snap)
 
@@ -259,7 +258,7 @@ export class SynthController {
 
   // Glissando: a held finger slid onto a different pad.
   movePad(voiceId: string, degree: Degree): void {
-    if (!this.power || this.inspect) return;
+    if (!this.power) return;
     if (this.mode === 'DRONE' || this.mode === 'DRUM') return; // no glissando here
     if (this.held.get(voiceId) === degree) return;
     this.held.set(voiceId, degree);
@@ -292,7 +291,7 @@ export class SynthController {
   // LEAD mode: the joystick is a pitch bend (X) + octave glide (Y) instead of the
   // chord-quality morph. `cents` is the combined bend; only applied in LEAD.
   setLeadBend(cents: number): void {
-    if (!this.power || this.inspect || this.mode !== 'LEAD') return;
+    if (!this.power || this.mode !== 'LEAD') return;
     this.synth.setBend(cents);
   }
 
@@ -413,16 +412,6 @@ export class SynthController {
     this.publish();
   }
 
-  setInspect(on: boolean): void {
-    if (this.inspect === on) return;
-    this.inspect = on;
-    if (on) {
-      this.allNotesOff();
-      this.menuOpen = false;
-    }
-    this.applyMode(); // stop the clock while inspecting, restore it on return
-    this.publish();
-  }
 
   // --- subscription ---
   subscribe(fn: Listener): () => void {
@@ -506,7 +495,7 @@ export class SynthController {
 
   // --- clock tick (only ARP + REPEAT use it) ------------------------------
   private tick(): void {
-    if (!this.power || this.inspect) return;
+    if (!this.power) return;
     if (this.mode === 'ARP') this.arpTick();
     else if (this.mode === 'REPEAT') this.repeatTick();
   }
@@ -538,7 +527,6 @@ export class SynthController {
     const stepping =
       (this.mode === 'ARP' || this.mode === 'REPEAT') &&
       this.power &&
-      !this.inspect &&
       this.held.size > 0;
     if (stepping) {
       // tempo is the Transport's; here we only choose the subdivision + start stepping
@@ -705,7 +693,7 @@ export class SynthController {
   // Re-voice whatever is currently sounding (after a morph or key edit). Uses the LEGATO
   // retune (no re-attack) so morphing/editing a held chord slides in place, not re-plucks.
   private revoiceHeld(): void {
-    if (!this.power || this.inspect) return;
+    if (!this.power) return;
     switch (this.mode) {
       case 'DRONE':
         if (this.latched !== null) this.retuneVoice(DRONE_ID, this.latched);
@@ -722,13 +710,13 @@ export class SynthController {
         return;
     }
   }
-  // Silence everything and clear all play state (power-off, inspect, mode switch).
+  // Silence everything and clear all play state (power-off, mode switch).
   private allNotesOff(): void {
     this.held.clear();
     this.latched = null;
     this.arpStep = 0;
     this.synth.releaseAll();
-    this.synth.setBend(0); // clear any LEAD pitch bend (mode change / power / inspect)
+    this.synth.setBend(0); // clear any LEAD pitch bend (mode change / power)
   }
   private currentChordName(degree: Degree): string {
     return resolveChord(degree, this.key(), this.quality).name;
@@ -809,7 +797,6 @@ export class SynthController {
       bpm: this.bpm,
       volume: this.volume,
       power: this.power,
-      inspect: this.inspect,
       themeIndex: this.themeIndex,
       mode: this.mode,
       menuOpen: this.menuOpen,

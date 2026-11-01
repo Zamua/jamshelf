@@ -53,7 +53,6 @@ export class DrumMachineController {
   private pattern: Pattern = emptyPattern();
   private volume = 0.85;
   private levels: Record<DrumVoice, number> = defaultLevels();
-  private inspect = false;
 
   private listeners = new Set<Listener>();
   private readonly synth: DrumMachinePort;
@@ -109,7 +108,6 @@ export class DrumMachineController {
       pattern: this.pattern,
       volume: this.volume,
       levels: { ...this.levels },
-      inspect: this.inspect,
     };
   }
 
@@ -204,8 +202,4 @@ export class DrumMachineController {
     this.publish();
   }
 
-  setInspect(on: boolean): void {
-    this.inspect = on;
-    this.publish();
-  }
 }

@@ -37,7 +37,7 @@ const fakeTransport = () =>
 function engine() {
   const ctx = new FakeCtx() as unknown as AudioContext;
   const node = new FakeGain() as unknown as AudioNode;
-  return new LoopEngine(ctx, node, node, fakeTransport(), () => {});
+  return new LoopEngine(ctx, node, node, fakeTransport());
 }
 
 describe('LoopEngine control logic', () => {

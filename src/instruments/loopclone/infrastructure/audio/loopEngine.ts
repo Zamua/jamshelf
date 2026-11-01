@@ -1,6 +1,7 @@
 import type { Transport } from '../../../../transport/transport';
-import { TRACK_COUNT, type TrackState } from '../../domain/loopStation';
+import { DEFAULT_LEVEL, TRACK_COUNT, type TrackState } from '../../domain/loopStation';
 import { NullLoopStore, type LoopStore, type SerializedLoops } from '../../application/persistence';
+import type { LoopEnginePort, LoopTrackView } from '../../application/loopEnginePort';
 
 // The LoopClone audio engine: taps the rig's shared input bus (the summed outputs of the devices
 // wired in), records it into per-track stereo loop buffers quantized to the shared beat, and plays
@@ -28,19 +29,12 @@ interface Track {
   redo: (AudioBuffer | null)[];
 }
 
-export interface EngineTrackView {
-  state: TrackState;
-  level: number;
-  muted: boolean;
-  soloed: boolean;
-}
-
-export class LoopEngine {
+export class LoopEngine implements LoopEnginePort {
   private readonly ctx: AudioContext;
   private readonly transport: Transport;
   private readonly tap: ScriptProcessorNode;
   private readonly tracks: Track[];
-  private readonly notify: () => void;
+  private readonly listeners = new Set<() => void>();
   private readonly offPos: () => void;
 
   private loopLenSamples = 0; // set by the first recorded track
@@ -60,16 +54,15 @@ export class LoopEngine {
   private readonly store: LoopStore;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(ctx: AudioContext, input: AudioNode, out: AudioNode, transport: Transport, notify: () => void, store?: LoopStore) {
+  constructor(ctx: AudioContext, input: AudioNode, out: AudioNode, transport: Transport, store?: LoopStore) {
     this.ctx = ctx;
     this.transport = transport;
-    this.notify = notify;
     this.store = store ?? new NullLoopStore();
     this.tracks = Array.from({ length: TRACK_COUNT }, () => {
       const gain = ctx.createGain();
-      gain.gain.value = 0.8;
+      gain.gain.value = DEFAULT_LEVEL;
       gain.connect(out);
-      return { state: 'empty' as TrackState, buffer: null, source: null, gain, level: 0.8, muted: false, undo: [], redo: [] };
+      return { state: 'empty' as TrackState, buffer: null, source: null, gain, level: DEFAULT_LEVEL, muted: false, undo: [], redo: [] };
     });
     // tap the input bus (record only); a silent sink keeps the ScriptProcessor running
     const tap = ctx.createScriptProcessor(TAP_SIZE, 2, 2);
@@ -379,8 +372,16 @@ export class LoopEngine {
     }
   }
 
+  onChange(cb: () => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+  private notify(): void {
+    for (const cb of this.listeners) cb();
+  }
+
   // --- views + teardown ---
-  view(): EngineTrackView[] {
+  view(): LoopTrackView[] {
     return this.tracks.map((t, i) => ({ state: t.state, level: t.level, muted: t.muted, soloed: this.solos.has(i) }));
   }
   canUndo(i: number): boolean {
@@ -391,6 +392,7 @@ export class LoopEngine {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.offPos();
     this.tracks.forEach((t) => this.stopSource(t));
+    this.listeners.clear();
     try {
       this.tap.disconnect();
       this.tap.onaudioprocess = null;

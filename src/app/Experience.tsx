@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Stage, type StageInstrument } from '../stage/Stage';
 import { FLOAT_DURATION, type Carousel } from '../stage/motion';
@@ -16,6 +16,7 @@ import { useGoLive, useRigConfig, useRigSession } from './rigSession';
 import { useRigLibrary } from './rigLibrary';
 import { useCarouselSwipe, useInspectSpin, useRigSwipe } from './useGestures';
 import { useTransportView } from './useTransportView';
+import { awayChrome, landedChrome, nextPlayChrome, playable } from './playChrome';
 import './experience.css';
 
 const FLOAT_MS = FLOAT_DURATION * 1000 + 50; // the device plays just after it lands
@@ -134,8 +135,13 @@ function StageHost({
 }) {
   const entries = useContext(InstrumentsCtx);
   const resume = useCallback((ids: readonly string[]) => ids.forEach((id) => entries[id]?.handlers.resume()), [entries]);
-  const [manualOpen, setManualOpen] = useState(false);
-  const { inspect, setInspect, toggleInspect, spin, dragHandlers } = useInspectSpin();
+  const [chrome, sendChrome] = useReducer(nextPlayChrome, activeId !== null ? landedChrome : awayChrome);
+  const { inspect, manual: manualOpen } = chrome;
+  const { spin, resetSpin, dragHandlers } = useInspectSpin();
+  const toggleInspect = () => {
+    if (!inspect) resetSpin();
+    sendChrome({ type: 'toggleInspect' });
+  };
 
   const session = useRigSession({ rig, rigUuid, live, audio, transport, focused, onFocus });
   const { wires, patchMode, setPatchMode, toggleWire, canTake, players } = session;
@@ -184,8 +190,7 @@ function StageHost({
   const carousel = useRef<Carousel>({ pos: startIndex, target: startIndex, dragging: false });
   useCarouselSwipe(onShelf && !building, INSTRUMENTS.length, carousel, setCarouselIndex);
 
-  // The active device only becomes interactive once it has landed on the desk (after the float).
-  const [interactive, setInteractive] = useState(activeId !== null);
+  // The active device lands on the desk after its float; leaving it resets the play chrome.
   useEffect(() => {
     if (activeId !== null) {
       // center the carousel on the opened instrument so returning to the shelf shows it centered
@@ -195,13 +200,11 @@ function StageHost({
         carousel.current.target = i;
         carousel.current.pos = i;
       }
-      const t = setTimeout(() => setInteractive(true), FLOAT_MS);
+      const t = setTimeout(() => sendChrome({ type: 'land' }), FLOAT_MS);
       return () => clearTimeout(t);
     }
-    setInteractive(false);
-    setInspect(false);
-    setManualOpen(false);
-  }, [activeId, setInspect]);
+    sendChrome({ type: 'leave' });
+  }, [activeId]);
 
   const onSwipe = useCallback(
     (id: string) => {
@@ -221,8 +224,7 @@ function StageHost({
     const mid = module.manifest.id;
     const entry = entries[mid];
     const isActive = mid === activeId;
-    const playable = isActive && interactive && !inspect;
-    const handlers = playable ? entry.handlers : noopLike(entry.handlers);
+    const handlers = isActive && playable(chrome) ? entry.handlers : noopLike(entry.handlers);
     const Device = module.Device;
     return { id: mid, label: module.manifest.name, node: <Device vm={entry.vm} handlers={handlers} /> };
   });
@@ -349,7 +351,7 @@ function StageHost({
           {active && ActivePlayTools && <ActivePlayTools vm={active.vm} handlers={active.handlers} />}
           <button
             className={'tool-btn' + (manualOpen ? ' is-active' : '')}
-            onClick={() => setManualOpen((o) => !o)}
+            onClick={() => sendChrome({ type: 'toggleManual' })}
             aria-label="Toggle the how-to-play guide"
             aria-pressed={manualOpen}
           >
@@ -385,7 +387,7 @@ function StageHost({
         </div>
       )}
 
-      {ActiveManual && <ActiveManual open={manualOpen} onClose={() => setManualOpen(false)} />}
+      {ActiveManual && <ActiveManual open={manualOpen} onClose={() => sendChrome({ type: 'closeManual' })} />}
 
       <RigsDrawer
         open={library.drawerOpen && onShelf}

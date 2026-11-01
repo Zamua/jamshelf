@@ -84,9 +84,6 @@ export class WebAudioLooper implements AudioLooper {
   // tempo-follow: re-stretch recorded loops to a new tempo (debounced; token guards stale renders)
   private restretchTimer: ReturnType<typeof setTimeout> | null = null;
   private restretchToken = 0;
-  // transport-follow: while stopped, the loop phase to resume from (null = resume from bar 1 = a Stop;
-  // a number = a Pause holding that phase).
-  private pausedPhase: number | null = null;
 
   private listeners = new Set<() => void>();
   private readonly store: LooperStore | null;
@@ -320,27 +317,28 @@ export class WebAudioLooper implements AudioLooper {
       return;
     }
     if (this.mode !== 'play') return;
-    this.setLoopsPlaying(this.stopped, this.stopped ? false : true); // stopped -> restart; playing -> Stop (bar 1)
+    this.setLoopsPlaying(this.stopped, 0); // stopped -> restart from bar 1; playing -> stop
     this.emit();
   }
 
-  // Follow the shared transport (called by the controller on the rig's play/pause/stop). play ->
-  // loops play (from the held phase if paused, else bar 1); pause -> loops HOLD at their phase; stop
-  // (atStart) -> loops return to bar 1. Suppressed unless a loop is playing (record has its own flow).
-  followTransport(playing: boolean, atStart: boolean): void {
-    this.setLoopsPlaying(playing, atStart);
+  // Follow the shared transport (called by the controller on the rig's play/pause/stop) at `beat`, the
+  // rig's position in beats from bar 1. The loops were recorded from the rig's bar 1, so that position
+  // alone says where in the loop to resume. Suppressed unless a loop is playing (record has its own flow).
+  followTransport(playing: boolean, beat: number): void {
+    this.setLoopsPlaying(playing, beat);
     this.emit();
   }
 
-  // The single play/pause/stop of the recorded loops. resetToStart distinguishes Pause (hold the
-  // current phase) from Stop (forget it - next play from bar 1). Idempotent: safe to call repeatedly.
-  private setLoopsPlaying(playing: boolean, resetToStart: boolean): void {
+  // The single play/stop of the recorded loops; playing starts them `beat` beats into the loop.
+  // Idempotent: safe to call repeatedly.
+  private setLoopsPlaying(playing: boolean, beat: number): void {
     if (this.mode !== 'play' || this.tracks.length === 0 || !this.ctx) return;
     if (playing) {
       if (!this.stopped) return; // already playing
       const at = this.ctx.currentTime + 0.03;
       const lenSec = this.loopLenSamples / this.ctx.sampleRate;
-      const offset = (this.pausedPhase ?? 0) * lenSec; // resume from the held phase, or bar 1
+      const beats = this.loopBeats > 0 ? this.loopBeats : 1;
+      const offset = ((((beat % beats) + beats) % beats) / beats) * lenSec;
       this.anchorTime = at - offset;
       this.stopAllSources();
       for (const t of this.tracks) {
@@ -349,22 +347,12 @@ export class WebAudioLooper implements AudioLooper {
         t.gain = gain;
       }
       this.stopped = false;
-      this.pausedPhase = null;
       this.startDisplayTimer();
     } else if (!this.stopped) {
-      this.pausedPhase = resetToStart ? null : this.currentPhase(); // Pause remembers the phase, Stop forgets
       this.stopAllSources();
       this.stopped = true;
       this.stopDisplayTimer();
-    } else if (resetToStart) {
-      this.pausedPhase = null; // a Stop after a Pause: forget the held phase (next play from bar 1)
     }
-  }
-
-  private currentPhase(): number {
-    if (!this.ctx || this.loopLenSamples === 0) return 0;
-    const lenSec = this.loopLenSamples / this.ctx.sampleRate;
-    return ((((this.ctx.currentTime - this.anchorTime) % lenSec) + lenSec) % lenSec) / lenSec;
   }
 
   clear(): void {

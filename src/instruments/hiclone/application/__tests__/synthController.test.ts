@@ -495,3 +495,17 @@ describe('menus', () => {
     expect(c.getState().menuOpen).toBe(false);
   });
 });
+
+describe('the looper follows the rig transport', () => {
+  it('hands the looper the rig position in beats on play, pause and stop', () => {
+    transport.setFreeRun(false); // a rig: the transport bar owns play/stop
+    transport.play();
+    advance(48); // pulses 0..47: the last one fired is beat 47/24
+    transport.pause();
+    expect(looper.follows.at(-1)).toEqual({ playing: false, beat: 47 / 24 });
+    transport.play();
+    expect(looper.follows.at(-1)).toEqual({ playing: true, beat: 47 / 24 });
+    transport.stop();
+    expect(looper.follows.at(-1)).toEqual({ playing: false, beat: 0 });
+  });
+});

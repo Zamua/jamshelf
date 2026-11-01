@@ -38,7 +38,7 @@ import {
   type FxMode,
 } from '../domain/music';
 import { PATCH_ORDER, type AudioLooper, type PatchName, type SynthPort } from './ports';
-import type { Clock, Transport } from '../../../transport/transport';
+import { PPQN, type Clock, type Transport } from '../../../transport/transport';
 import type { Listener, MenuKind, MenuRow, ViewModel } from './state';
 import { coerceSettings, type SettingsSnapshot, type SettingsStore } from './persistence';
 
@@ -135,7 +135,7 @@ export class SynthController {
       // In a rig (shared clock, not solo free-run), the recorded loops FOLLOW the transport: play /
       // pause (hold) / stop (bar 1). Idempotent, so firing on every change (incl. tempo) is safe.
       if (!this.transport.isFreeRun())
-        this.looper.followTransport(this.transport.isRunning(), this.transport.position().pulse === 0);
+        this.looper.followTransport(this.transport.isRunning(), this.transport.position().pulse / PPQN);
     });
     // Seed the de-dupe baseline so the first publish doesn't re-save what we just loaded.
     this.lastSavedJson = JSON.stringify(this.snapshotSettings());

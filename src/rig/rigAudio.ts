@@ -1,3 +1,5 @@
+import { newAudioContext } from '../shared/webAudio';
+
 // The rig's shared audio. Web Audio can't connect nodes across separate AudioContexts, and every
 // instrument makes its own today - so routing device audio into the looper needs ONE context for the
 // whole rig. Each device gets its own output node (its "output jack"): that node feeds the master
@@ -13,8 +15,6 @@ export interface SharedAudio {
   readonly loopOut: AudioNode; // where the LoopClone plays its loops back (→ master → speakers)
 }
 
-type Ctor = { new (): AudioContext };
-
 export class RigAudio implements SharedAudio {
   readonly ctx: AudioContext;
   readonly looperInput: GainNode; // the LoopClone engine taps this
@@ -24,12 +24,7 @@ export class RigAudio implements SharedAudio {
 
   // ctx is injectable so tests can pass a fake AudioContext.
   constructor(ctx?: AudioContext) {
-    if (ctx) {
-      this.ctx = ctx;
-    } else {
-      const C = (window.AudioContext ?? (window as unknown as { webkitAudioContext: Ctor }).webkitAudioContext) as Ctor;
-      this.ctx = new C();
-    }
+    this.ctx = ctx ?? newAudioContext();
     this.master = this.ctx.createGain();
     this.master.connect(this.ctx.destination);
     this.looperInput = this.ctx.createGain();

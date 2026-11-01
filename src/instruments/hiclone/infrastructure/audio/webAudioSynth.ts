@@ -2,6 +2,7 @@ import type { DrumName, DrumKit } from '../../domain/music';
 import { SAMPLE_KIT_PADS } from '../../domain/music';
 import type { PatchName, SynthPort } from '../../application/ports';
 import type { SharedAudio } from '../../../../rig/rigAudio';
+import { newAudioContext, unlockAudio } from '../../../../shared/webAudio';
 
 // Per-kit tuning factors applied to the base drum recipes (kick pitch + decay,
 // snare noise/tone balance, hat brightness). TIGHT = neutral; 808 = boomy + softer;
@@ -195,18 +196,7 @@ export class WebAudioSynth implements SynthPort {
 
   resume(): void {
     if (!this.ctx) this.build();
-    const ctx = this.ctx!;
-    // 1-sample silent buffer: unlocks audio on iOS/Safari first-gesture.
-    try {
-      const buffer = ctx.createBuffer(1, 1, 22050);
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(ctx.destination);
-      source.start(0);
-    } catch {
-      /* unlock is best-effort */
-    }
-    if (ctx.state === 'suspended') void ctx.resume();
+    unlockAudio(this.ctx!);
   }
 
   noteOn(voiceId: string, freqs: number[], patchName?: PatchName): void {
@@ -328,10 +318,7 @@ export class WebAudioSynth implements SynthPort {
   // --- internals -----------------------------------------------------------
 
   private build(): void {
-    const ctx =
-      this.shared?.ctx ??
-      new (window.AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const ctx = this.shared?.ctx ?? newAudioContext();
     this.ctx = ctx;
 
     // Global pitch-bend source: a constant signal (in cents) fanned out to every

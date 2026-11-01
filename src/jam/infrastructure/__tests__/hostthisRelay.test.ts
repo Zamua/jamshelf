@@ -35,4 +35,13 @@ describe('hostthis relay KV translation', () => {
   it('an unknown KV key maps to nothing', () => {
     expect(kvToEvent('random', {})).toBeNull();
   });
+
+  it('a non-object room value maps to nothing', () => {
+    expect(kvToEvent('transport', null)).toBeNull();
+    expect(kvToEvent('presence_p1', 'trb0b')).toBeNull();
+  });
+
+  it('a presence holding that is not a device id reads as holding nothing', () => {
+    expect(kvToEvent('presence_p1', { holding: 7 })).toEqual({ type: 'presence', peer: 'p1', holding: null });
+  });
 });

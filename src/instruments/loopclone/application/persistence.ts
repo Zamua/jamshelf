@@ -23,6 +23,12 @@ export interface LoopStore {
   clear(): void;
 }
 
+// A stored loop set this build can restore: the current shape version, with a loop length.
+export function parseSerializedLoops(raw: unknown): SerializedLoops | null {
+  const v = raw as Partial<SerializedLoops> | null | undefined;
+  return v && v.v === 1 && Array.isArray(v.tracks) && typeof v.loopLen === 'number' && v.loopLen > 0 ? (v as SerializedLoops) : null;
+}
+
 // A no-op store (solo/tests, or when there is nothing to persist to).
 export class NullLoopStore implements LoopStore {
   async load(): Promise<SerializedLoops | null> {

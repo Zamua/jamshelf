@@ -43,6 +43,6 @@ export interface StylophoneSettings {
 }
 
 export interface SettingsStore {
-  load(): StylophoneSettings | null;
+  load(): unknown; // the stored payload, unparsed (coerceSettings parses it)
   save(s: StylophoneSettings): void;
 }

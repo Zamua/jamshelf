@@ -86,7 +86,7 @@ export function coerceSettings(raw: unknown, fallback: SettingsSnapshot): Settin
 // in-memory fake in tests). Kept a narrow PORT so the application never imports the
 // Web Storage API directly. `load` returns null when there is nothing valid stored.
 export interface SettingsStore {
-  load(): SettingsSnapshot | null;
+  load(): unknown; // the stored payload, unparsed (coerceSettings parses it)
   save(snapshot: SettingsSnapshot): void;
 }
 
@@ -114,4 +114,10 @@ export interface LooperStore {
   load(): Promise<SerializedLooper | null>;
   save(state: SerializedLooper): void;
   clear(): void;
+}
+
+// A stored looper record this build can restore: the current shape version, with a master track.
+export function parseSerializedLooper(raw: unknown): SerializedLooper | null {
+  const v = raw as Partial<SerializedLooper> | null | undefined;
+  return v && v.v === 1 && Array.isArray(v.tracks) && v.tracks.length > 0 ? (v as SerializedLooper) : null;
 }

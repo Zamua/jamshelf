@@ -6,6 +6,7 @@ export type RigSyncEvent =
   | { type: 'transport'; running: boolean; bpm: number } // the shared beat: tempo + play/stop
   | { type: 'wire'; device: string; on: boolean } // a patch cable toggled
   | { type: 'presence'; peer: string; holding: string | null } // who holds which device
+  | { type: 'leave'; peer: string } // a peer left the session
   | { type: 'hello' } // a peer joined: existing peers reply with a snapshot
   | { type: 'snapshot'; running: boolean; bpm: number; wires: string[] }; // current state, for a joiner
 

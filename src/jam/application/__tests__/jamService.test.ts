@@ -80,4 +80,13 @@ describe('JamService occupancy', () => {
     expect(lost).toBe(0);
     expect(svc.holderOf('hiclone')).toBe('bbb');
   });
+
+  it('a peer that leaves frees its device at once', () => {
+    sync.deliver({ type: 'presence', peer: 'aaa', holding: 'hiclone' });
+    expect(svc.canClaim('hiclone')).toBe(false);
+    sync.deliver({ type: 'leave', peer: 'aaa' });
+    expect(svc.canClaim('hiclone')).toBe(true);
+    expect(Object.keys(svc.view().members)).toEqual(['bbb']);
+  });
 });
+

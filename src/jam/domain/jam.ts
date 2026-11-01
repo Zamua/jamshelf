@@ -82,6 +82,13 @@ export function idleExpired(lastInput: number, now: number): boolean {
   return now - lastInput > IDLE_MS;
 }
 
+// A peer left: it holds nothing and is no longer here (self never leaves its own view).
+export function leave(jam: Jam, peer: string): Jam {
+  if (peer === jam.self || !(peer in jam.members)) return jam;
+  const { [peer]: _gone, ...members } = jam.members;
+  return { ...jam, members };
+}
+
 // Drop members whose heartbeat is older than GONE_MS (self is never dropped).
 export function pruneMembers(jam: Jam, now: number): Jam {
   const members: Record<string, Member> = {};

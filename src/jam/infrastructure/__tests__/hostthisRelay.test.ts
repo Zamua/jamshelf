@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { HostthisRelaySync, eventToKV, kvToEvent } from '../hostthisRelay';
 import type { RigSyncEvent } from '../../../rig/rigSync';
+import { GONE_MS } from '../../domain/jam';
 
 // The relay is a KV store, so RigSyncEvents translate to KV keys/values and back. Pin the round-trip.
 describe('hostthis relay KV translation', () => {
@@ -23,7 +24,7 @@ describe('hostthis relay KV translation', () => {
 
   it('presence <-> a per-peer key', () => {
     const kv = eventToKV({ type: 'presence', peer: 'p1', holding: 'trb0b' });
-    expect(kv).toEqual({ key: 'presence_p1', value: { holding: 'trb0b' } });
+    expect(kv).toEqual({ key: 'presence_p1', value: { holding: 'trb0b', at: expect.any(Number) } });
     expect(kvToEvent('presence_p1', { holding: 'trb0b' })).toEqual({ type: 'presence', peer: 'p1', holding: 'trb0b' });
   });
 
@@ -66,14 +67,14 @@ class FakeSocket {
 }
 
 describe('HostthisRelaySync', () => {
-  const puts: { url: string; body: unknown }[] = [];
+  const puts: { url: string; method?: string; keepalive?: boolean; body?: unknown }[] = [];
   beforeEach(() => {
     vi.useFakeTimers();
     puts.length = 0;
     vi.stubGlobal('WebSocket', FakeSocket);
     vi.stubGlobal('location', { protocol: 'https:', host: 'app.example' });
-    vi.stubGlobal('fetch', (url: string, init: { body: string }) => {
-      puts.push({ url, body: JSON.parse(init.body) });
+    vi.stubGlobal('fetch', (url: string, init: { method?: string; keepalive?: boolean; body?: string }) => {
+      puts.push({ url, method: init.method, keepalive: init.keepalive, body: init.body ? JSON.parse(init.body) : undefined });
       return Promise.resolve({ ok: true });
     });
   });
@@ -95,4 +96,38 @@ describe('HostthisRelaySync', () => {
     expect(got).toEqual([{ type: 'transport', running: false, bpm: 90 }]);
     sync.dispose();
   });
+
+  it('skips presence a join snapshot replays from peers that left long ago', () => {
+    const sync = new HostthisRelaySync('room1');
+    const got: RigSyncEvent[] = [];
+    sync.onEvent((ev) => got.push(ev));
+    FakeSocket.last!.frame({
+      type: 'snapshot',
+      state: {
+        presence_gone: { holding: 'hiclone', at: Date.now() - GONE_MS - 1 },
+        presence_legacy: { holding: 'trb0b' },
+        presence_here: { holding: 'loopclone', at: Date.now() - 1000 },
+      },
+    });
+    expect(got).toEqual([{ type: 'presence', peer: 'here', holding: 'loopclone' }]);
+    sync.dispose();
+  });
+
+  it('a deleted presence key is that peer leaving', () => {
+    const sync = new HostthisRelaySync('room1');
+    const got: RigSyncEvent[] = [];
+    sync.onEvent((ev) => got.push(ev));
+    FakeSocket.last!.frame({ type: 'delete', key: 'presence_p9' });
+    expect(got).toEqual([{ type: 'leave', peer: 'p9' }]);
+    sync.dispose();
+  });
+
+  it('leaving deletes our own presence key, surviving a closing tab, and nothing writes it back', () => {
+    const sync = new HostthisRelaySync('room1');
+    sync.dispose();
+    sync.send({ type: 'presence', peer: sync.self, holding: null }); // a farewell from a later cleanup
+    vi.advanceTimersByTime(100);
+    expect(puts).toEqual([{ url: `/api/rooms/room1/presence_${sync.self}`, method: 'DELETE', keepalive: true, body: undefined }]);
+  });
 });
+

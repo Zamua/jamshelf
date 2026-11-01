@@ -88,5 +88,12 @@ describe('JamService occupancy', () => {
     expect(svc.canClaim('hiclone')).toBe(true);
     expect(Object.keys(svc.view().members)).toEqual(['bbb']);
   });
+
+  it('a refused claim tells the UI to drop its focus', () => {
+    sync.deliver({ type: 'presence', peer: 'aaa', holding: 'hiclone' });
+    svc.claim('hiclone');
+    expect(lost).toBe(1);
+    expect(svc.holderOf('hiclone')).toBe('aaa');
+  });
 });
 

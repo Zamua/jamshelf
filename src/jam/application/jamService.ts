@@ -1,9 +1,8 @@
 import type { RigSync } from '../../rig/rigSync';
-import { claim, release, observe, leave, pruneMembers, holderOf, canClaim, emptyJam, idleExpired, GONE_MS, type Jam } from '../domain/jam';
+import { holderOf, canClaim, emptyJam, nextJam, GONE_MS, type Jam, type JamEvent } from '../domain/jam';
 
-// The Jam session service: owns the live Jam state (who is here + who holds which device), threads
-// presence over the RigSync channel, and heartbeats so peers can prune the disconnected. All the
-// occupancy RULES live in the pure domain; this layer is the plumbing (timers, sync, subscribers).
+// The Jam session shell: feeds every input (focus, presence, leaves, input, the heartbeat) to the
+// pure nextJam and performs what comes back (send presence, tell the UI the device is gone).
 
 const HEARTBEAT_MS = 5_000;
 
@@ -14,7 +13,6 @@ export class JamService {
   private readonly sync: RigSync;
   private readonly listeners = new Set<JamListener>();
   private readonly lostListeners = new Set<() => void>();
-  private lastInput = Date.now();
   private readonly offSync: () => void;
   private readonly beat: ReturnType<typeof setInterval>;
 
@@ -22,43 +20,21 @@ export class JamService {
     this.sync = sync;
     this.jam = emptyJam(roomId, sync.self, name ?? 'player', Date.now());
     this.offSync = sync.onEvent((ev) => {
-      if (ev.type === 'leave') {
-        this.jam = leave(this.jam, ev.peer);
-        this.publish();
-        return;
-      }
-      // A relay may echo our own presence back late; local state is the truth for self.
-      if (ev.type !== 'presence' || ev.peer === this.jam.self) return;
-      const held = this.held();
-      this.jam = observe(this.jam, { peerId: ev.peer, name: ev.peer, holding: ev.holding, lastSeen: Date.now() });
-      if (held !== null && this.held() === null) this.lose(); // lost a simultaneous claim
-      this.publish();
+      if (ev.type === 'presence' || ev.type === 'leave') this.dispatch(ev);
     });
-    // heartbeat + prune + idle release on one cadence
-    this.beat = setInterval(() => {
-      if (this.held() !== null && idleExpired(this.lastInput, Date.now())) {
-        this.jam = release(this.jam, this.jam.self, Date.now());
-        this.lose();
-        this.publish();
-      }
-      this.announce();
-      const pruned = pruneMembers(this.jam, Date.now());
-      if (pruned !== this.jam && Object.keys(pruned.members).length !== Object.keys(this.jam.members).length) {
-        this.jam = pruned;
-        this.publish();
-      }
-    }, HEARTBEAT_MS);
+    this.beat = setInterval(() => this.dispatch({ type: 'tick' }), HEARTBEAT_MS);
     this.announce(); // introduce ourselves right away
   }
 
-  private held(): string | null {
-    return this.jam.members[this.jam.self]?.holding ?? null;
-  }
-
-  // The device was taken from us (race or idle) rather than released by choice.
-  private lose(): void {
-    this.announce();
-    for (const cb of this.lostListeners) cb();
+  private dispatch(event: JamEvent): void {
+    const { jam, effects } = nextJam(this.jam, event, Date.now());
+    const changed = jam !== this.jam;
+    this.jam = jam;
+    for (const fx of effects) {
+      if (fx.kind === 'announce') this.announce();
+      else for (const cb of this.lostListeners) cb();
+    }
+    if (changed) this.publish();
   }
 
   private announce(): void {
@@ -87,7 +63,8 @@ export class JamService {
     return holderOf(this.jam, device);
   }
 
-  // Fires when this peer loses its device without releasing it: a lost claim race or idling out.
+  // Fires when this peer does not hold the device it focused: a refused claim, a lost claim race,
+  // or idling out.
   onLost(cb: () => void): () => void {
     this.lostListeners.add(cb);
     return () => this.lostListeners.delete(cb);
@@ -95,21 +72,16 @@ export class JamService {
 
   // Player input on the held device; holds off the idle release.
   touch(): void {
-    this.lastInput = Date.now();
+    this.dispatch({ type: 'input' });
   }
 
   // Take a device (called when focusing it). Broadcasts so everyone sees the lock.
   claim(device: string): void {
-    this.lastInput = Date.now();
-    this.jam = claim(this.jam, this.jam.self, device, Date.now());
-    this.announce();
-    this.publish();
+    this.dispatch({ type: 'claim', device });
   }
   // Let go (back to the all-view / leaving).
   release(): void {
-    this.jam = release(this.jam, this.jam.self, Date.now());
-    this.announce();
-    this.publish();
+    this.dispatch({ type: 'release' });
   }
 
   dispose(): void {

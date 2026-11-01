@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { emptyJam, holderOf, canClaim, claim, release, upsertMember, observe, pruneMembers, idleExpired, GONE_MS, IDLE_MS } from '../jam';
+import { emptyJam, holderOf, canClaim, claim, release, upsertMember, observe, pruneMembers, idleExpired, nextJam, GONE_MS, IDLE_MS, type JamEvent } from '../jam';
 
 describe('Jam presence (hard-lock occupancy)', () => {
   it('starts with just self, holding nothing', () => {
@@ -66,5 +66,64 @@ describe('Jam presence (hard-lock occupancy)', () => {
     j = pruneMembers(j, GONE_MS + 1);
     expect(Object.keys(j.members)).toEqual(['me']); // 'gone' dropped, self kept even at lastSeen 0
     expect(holderOf(j, 'trb0b')).toBeNull(); // its device is freed
+  });
+});
+
+describe('nextJam (the session lifecycle)', () => {
+  const start = () => emptyJam('r', 'me', 'Me', 0);
+  const seq = (events: JamEvent[], at = 0) => {
+    let j = start();
+    const fx: string[] = [];
+    for (const e of events) {
+      const t = nextJam(j, e, (at += 1000));
+      j = t.jam;
+      fx.push(...t.effects.map((f) => f.kind));
+    }
+    return { j, fx };
+  };
+
+  it('a claim takes the device and announces it; a release lets go and announces', () => {
+    const { j, fx } = seq([{ type: 'claim', device: 'hiclone' }, { type: 'release' }]);
+    expect(holderOf(j, 'hiclone')).toBeNull();
+    expect(fx).toEqual(['announce', 'announce']);
+  });
+
+  it('a claim on a device someone holds is refused: the focus must go', () => {
+    const { j, fx } = seq([{ type: 'presence', peer: 'you', holding: 'hiclone' }, { type: 'claim', device: 'hiclone' }]);
+    expect(holderOf(j, 'hiclone')).toBe('you');
+    expect(fx).toEqual(['lost']);
+  });
+
+  it('losing a simultaneous claim to a lower id announces the release and drops the focus', () => {
+    const { j, fx } = seq([{ type: 'claim', device: 'hiclone' }, { type: 'presence', peer: 'aaa', holding: 'hiclone' }]);
+    expect(holderOf(j, 'hiclone')).toBe('aaa');
+    expect(fx).toEqual(['announce', 'announce', 'lost']);
+  });
+
+  it('ignores its own presence echoed back', () => {
+    const { j } = seq([{ type: 'claim', device: 'hiclone' }, { type: 'presence', peer: 'me', holding: null }]);
+    expect(holderOf(j, 'hiclone')).toBe('me');
+  });
+
+  it('a heartbeat announces, and releases a device held past IDLE_MS without input', () => {
+    let t = nextJam(start(), { type: 'claim', device: 'trb0b' }, 0);
+    t = nextJam(t.jam, { type: 'tick' }, IDLE_MS);
+    expect(t.effects.map((f) => f.kind)).toEqual(['announce']);
+    t = nextJam(t.jam, { type: 'input' }, IDLE_MS);
+    t = nextJam(t.jam, { type: 'tick' }, IDLE_MS * 2);
+    expect(holderOf(t.jam, 'trb0b')).toBe('me');
+    t = nextJam(t.jam, { type: 'tick' }, IDLE_MS * 2 + 1);
+    expect(holderOf(t.jam, 'trb0b')).toBeNull();
+    expect(t.effects.map((f) => f.kind)).toEqual(['announce', 'lost']);
+  });
+
+  it('a heartbeat forgets silent peers, and a leave forgets one at once', () => {
+    let t = nextJam(start(), { type: 'presence', peer: 'quiet', holding: 'hiclone' }, 0);
+    t = nextJam(t.jam, { type: 'presence', peer: 'gone', holding: null }, 0);
+    t = nextJam(t.jam, { type: 'leave', peer: 'gone' }, 0);
+    expect(Object.keys(t.jam.members).sort()).toEqual(['me', 'quiet']);
+    t = nextJam(t.jam, { type: 'tick' }, GONE_MS + 1);
+    expect(Object.keys(t.jam.members)).toEqual(['me']);
+    expect(holderOf(t.jam, 'hiclone')).toBeNull();
   });
 });

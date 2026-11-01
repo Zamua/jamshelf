@@ -12,5 +12,4 @@ export const loopcloneModule: InstrumentModule<ViewModel, DeviceHandlers> = {
   useInstrument: (enabled, transport, audio) => useLoopStation(enabled, transport, audio),
   Device,
   releaseOnMiss: () => {}, // a tap on empty space does nothing (track states latch)
-  withHelpToggle: (handlers, toggle) => ({ ...handlers, onHelpToggle: toggle }),
 };

@@ -120,10 +120,9 @@ describe('StylophoneController', () => {
     expect(synth2.volume).toBe(0.5);
   });
 
-  it('does not persist transient state (held key / power / inspect)', () => {
+  it('does not persist transient state (held key / power)', () => {
     c.pressKey(48);
-    c.setInspect(true);
-    // saved settings carry only the musical prefs, not litKey/power/inspect
+    // saved settings carry only the musical prefs, not litKey/power
     expect(store.saved).toBeNull(); // nothing durable changed yet
     c.setVolume(0.3);
     expect(store.saved).toEqual({ voice: 'BUZZ', vibrato: false, tune: 0, volume: 0.3 });

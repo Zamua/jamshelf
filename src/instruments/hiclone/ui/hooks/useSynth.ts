@@ -255,11 +255,7 @@ export function useSynth(enabled = true, transport?: Transport, audio?: SharedAu
       onTempo: () => controller.toggleMenu('MODE'), // red: play mode / rate / bpm
       onPower: () => controller.togglePower(),
       onVolume: (delta) => controller.nudgeVolume(delta),
-      onInspectToggle: () => controller.setInspect(!controller.getState().inspect),
       onSwapColor: () => controller.swapColor(),
-      onHelpToggle: () => {
-        // The manual is UI-local React state; App owns it and overrides this.
-      },
     };
   }, [controller]);
 

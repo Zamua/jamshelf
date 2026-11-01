@@ -62,10 +62,6 @@ export function useDrumMachine(enabled = true, transport?: Transport, audio?: Sh
       onTempo: (bpm) => controller.setBpm(bpm),
       onClear: () => controller.clearSelected(),
       onPower: () => controller.togglePower(),
-      onInspectToggle: () => controller.setInspect(!controller.getState().inspect),
-      onHelpToggle: () => {
-        // The manual is UI-local React state; the host owns it and overrides this.
-      },
     }),
     [controller],
   );

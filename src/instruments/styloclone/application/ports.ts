@@ -33,8 +33,8 @@ export interface StylophonePort {
   setMuted(muted: boolean): void;
 }
 
-// Durable settings, persisted per instrument. Transient state (the held key, power,
-// inspect) is NOT saved - only the musical preferences survive a reload.
+// Durable settings, persisted per instrument. Transient state (the held key, power)
+// is NOT saved - only the musical preferences survive a reload.
 export interface StylophoneSettings {
   readonly voice: VoiceName;
   readonly vibrato: boolean;

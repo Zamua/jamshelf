@@ -95,10 +95,6 @@ export function useStylophone(enabled = true, audio?: SharedAudio) {
       onTune: (cents) => controller.setTune(cents),
       onVolume: (v) => controller.setVolume(v),
       onPower: () => controller.togglePower(),
-      onInspectToggle: () => controller.setInspect(!controller.getState().inspect),
-      onHelpToggle: () => {
-        // The manual is UI-local React state; the host owns it and overrides this.
-      },
     }),
     [controller],
   );

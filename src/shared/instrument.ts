@@ -41,9 +41,6 @@ export interface InstrumentModule<VM = unknown, H = unknown> {
   readonly Manual?: ComponentType<{ open: boolean; onClose: () => void }>;
   // What to do when a tap misses every mesh (release the sounding note / spring the joystick).
   releaseOnMiss(handlers: H): void;
-  // Wire the help toggle into the handlers so the instrument's `onHelpToggle` opens the Manual
-  // (the Manual is host-owned React state). Returns handlers with the toggle patched in.
-  withHelpToggle(handlers: H, toggle: () => void): H;
   // Optional instrument-specific play-chrome tool buttons (HTML), e.g. the HiClone color swatch.
   PlayTools?: ComponentType<{ vm: VM; handlers: H }>;
   // Does this instrument need the shared clock free-running when played SOLO (it has no transport

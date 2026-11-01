@@ -13,7 +13,6 @@ export interface ViewModel {
   readonly pattern: Pattern;
   readonly volume: number; // master 0..1
   readonly levels: Record<DrumVoice, number>; // per-voice level 0..1 (the LEVEL knobs)
-  readonly inspect: boolean;
 }
 
 export type Listener = (vm: ViewModel) => void;

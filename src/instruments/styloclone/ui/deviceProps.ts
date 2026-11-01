@@ -19,9 +19,6 @@ export interface DeviceHandlers {
   onTune(cents: number): void; // the tune pot (absolute cents)
   onVolume(v: number): void; // the volume pot (absolute 0..1)
   onPower(): void; // the power switch
-  // chassis / meta (shared shelf chrome)
-  onInspectToggle(): void;
-  onHelpToggle(): void;
 }
 
 export interface DeviceProps {

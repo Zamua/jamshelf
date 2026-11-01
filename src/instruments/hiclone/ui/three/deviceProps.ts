@@ -27,8 +27,6 @@ export interface DeviceHandlers {
   // chassis / meta
   onPower(): void;
   onVolume(delta: number): void;
-  onInspectToggle(): void;
-  onHelpToggle(): void;
   onSwapColor(): void; // cycle the shell-color edition
 }
 

@@ -44,10 +44,6 @@ export function useLoopStation(_enabled = true, transport?: Transport, audio?: S
       onAllStop: () => controller.allStop(),
       onLevel: (track, level) => controller.setLevel(track, level),
       onPower: () => controller.togglePower(),
-      onInspectToggle: () => controller.setInspect(!controller.getState().inspect),
-      onHelpToggle: () => {
-        // the manual is host-owned React state; the host patches this in
-      },
     }),
     [controller],
   );

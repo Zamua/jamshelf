@@ -13,5 +13,4 @@ export const trb0bModule: InstrumentModule<ViewModel, DeviceHandlers> = {
   Device,
   Manual,
   releaseOnMiss: () => {}, // a tap on empty space does nothing (steps latch)
-  withHelpToggle: (handlers, toggle) => ({ ...handlers, onHelpToggle: toggle }),
 };

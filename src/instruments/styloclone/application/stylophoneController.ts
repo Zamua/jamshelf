@@ -34,7 +34,6 @@ export class StylophoneController {
   private tune = 0; // cents
   private volume = 0.8;
   private voice: VoiceName = 'BUZZ';
-  private inspect = false;
 
   private listeners = new Set<Listener>();
   private readonly synth: StylophonePort;
@@ -77,7 +76,6 @@ export class StylophoneController {
       tune: this.tune,
       volume: this.volume,
       voice: this.voice,
-      inspect: this.inspect,
       noteLabel: this.litKey !== null ? noteName(this.litKey) : '',
     };
   }
@@ -162,8 +160,4 @@ export class StylophoneController {
     this.publish();
   }
 
-  setInspect(on: boolean): void {
-    this.inspect = on;
-    this.publish();
-  }
 }

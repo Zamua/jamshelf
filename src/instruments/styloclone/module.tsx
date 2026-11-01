@@ -14,5 +14,4 @@ export const stylocloneModule: InstrumentModule<ViewModel, DeviceHandlers> = {
   Device,
   Manual,
   releaseOnMiss: (handlers) => handlers.onKeyUp(),
-  withHelpToggle: (handlers, toggle) => ({ ...handlers, onHelpToggle: toggle }),
 };

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Text } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { FRONT_Z } from './layout';
-import { MAX_BPM, MIN_BPM } from '../../application/state';
+import { MAX_BPM, MIN_BPM } from '../../../../transport/transport';
 import { PALETTE, dim } from './palette';
 import { LABEL_FONT } from './fonts';
 

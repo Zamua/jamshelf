@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Transport, PPQN } from '../transport';
+import { Transport, PPQN, MIN_BPM, MAX_BPM } from '../transport';
 
 // Drive the pure transport by hand: play() then advance() N pulses. `pulse` is a 0-based INDEX:
 // the first advance lands on pulse 0 (the downbeat), so N advances reach index N-1.
@@ -55,11 +55,18 @@ describe('Transport (the master clock)', () => {
 
   it('clamps bpm and computes the pulse interval', () => {
     t.setBpm(9999);
-    expect(t.getBpm()).toBe(300);
+    expect(t.getBpm()).toBe(MAX_BPM);
     t.setBpm(1);
-    expect(t.getBpm()).toBe(20);
+    expect(t.getBpm()).toBe(MIN_BPM);
     t.setBpm(120);
     expect(t.intervalMs()).toBeCloseTo(60000 / 120 / PPQN, 6); // ~20.83ms
+  });
+
+  it('ignores a non-finite tempo', () => {
+    t.setBpm(100);
+    t.setBpm(NaN);
+    t.setBpm(Infinity);
+    expect(t.getBpm()).toBe(100);
   });
 
   it('a sub-clock fires on its subdivision grid, only while started, with an absolute tick index', () => {

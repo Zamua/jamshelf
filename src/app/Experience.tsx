@@ -361,8 +361,7 @@ function StageHost({
     transport.toggle();
   };
   const stopTransport = () => transport.stop();
-  const setBpm = (next: number) => transport.setBpm(Math.max(40, Math.min(240, Math.round(next))));
-
+  
   // Rig-BUILD mode (in the 3D room): the camera frames the shelf + desk; tapping a shelf instrument
   // flies it down to lie flat on the desk (a scattered placement); tapping it there flies it back.
   const [building, setBuilding] = useState(false);
@@ -761,9 +760,9 @@ function StageHost({
           <button className="transport-stop" onClick={stopTransport} aria-label="Stop">■</button>
           <span className="transport-pos" aria-label="Position">{tview.bar}<small>.</small>{tview.beat}</span>
           <div className="transport-bpm">
-            <button className="bpm-step" onClick={() => setBpm(tview.bpm - 1)} aria-label="Slower">–</button>
+            <button className="bpm-step" onClick={() => transport.setBpm(tview.bpm - 1)} aria-label="Slower">–</button>
             <span className="bpm-val">{tview.bpm}<small>BPM</small></span>
-            <button className="bpm-step" onClick={() => setBpm(tview.bpm + 1)} aria-label="Faster">+</button>
+            <button className="bpm-step" onClick={() => transport.setBpm(tview.bpm + 1)} aria-label="Faster">+</button>
           </div>
         </div>
       )}

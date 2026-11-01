@@ -399,7 +399,7 @@ export class SynthController {
   // Set an absolute tempo. Tempo has ONE owner - the shared Transport - so this routes there; the
   // onChange subscription (syncTempo) mirrors it back and re-syncs the looper + tempo-synced delay.
   setBpm(bpm: number): void {
-    this.transport.setBpm(Math.max(40, Math.min(300, Math.round(bpm))));
+    this.transport.setBpm(bpm);
   }
 
   getBpm(): number {

@@ -37,7 +37,7 @@ export async function fetchRoomRig(roomId: string): Promise<RigConfig> {
 // --- translate between the flat RigSyncEvent and the room's KV keys ---
 interface KV {
   key: string;
-  value: unknown;
+  value: Record<string, unknown>;
 }
 export function eventToKV(ev: RigSyncEvent): KV | null {
   switch (ev.type) {
@@ -124,12 +124,16 @@ export class HostthisRelaySync implements RigSync {
       return;
     }
     if (f.type === 'snapshot' && typeof f.state === 'object' && f.state !== null) {
-      for (const [k, v] of Object.entries(f.state)) this.emit(kvToEvent(k, v));
+      for (const [k, v] of Object.entries(f.state)) if (!this.mine(v)) this.emit(kvToEvent(k, v));
     } else if (f.type === 'put' && typeof f.key === 'string') {
-      this.emit(kvToEvent(f.key, f.value));
+      if (!this.mine(f.value)) this.emit(kvToEvent(f.key, f.value));
     } else if (f.type === 'delete' && typeof f.key === 'string' && f.key.startsWith('wire_')) {
       this.emit({ type: 'wire', device: f.key.slice(5), on: false });
     }
+  }
+  // The room sends every write to every socket, ours included: a value we wrote is not a remote event.
+  private mine(value: unknown): boolean {
+    return typeof value === 'object' && value !== null && (value as { from?: unknown }).from === this.self;
   }
   private emit(ev: RigSyncEvent | null): void {
     if (ev) for (const cb of this.subs) cb(ev);
@@ -140,16 +144,17 @@ export class HostthisRelaySync implements RigSync {
     if (!kv) return;
     const existing = this.pending.get(kv.key);
     if (existing) clearTimeout(existing.timer);
+    const value = { ...kv.value, from: this.self };
     const timer = setTimeout(() => {
       const p = this.pending.get(kv.key);
       this.pending.delete(kv.key);
       void fetch(`/api/rooms/${this.room}/${kv.key}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(p?.value ?? kv.value),
+        body: JSON.stringify(p?.value ?? value),
       }).catch(() => {});
     }, 80);
-    this.pending.set(kv.key, { value: kv.value, timer });
+    this.pending.set(kv.key, { value, timer });
   }
 
   onEvent(cb: (ev: RigSyncEvent) => void): () => void {

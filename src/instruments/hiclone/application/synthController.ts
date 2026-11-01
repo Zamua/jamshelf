@@ -43,6 +43,15 @@ import type { Listener, MenuKind, MenuRow, ViewModel } from './state';
 import { coerceSettings, type SettingsSnapshot, type SettingsStore } from './persistence';
 
 const KEY_FIELDS = ['KEY', 'SCL', 'OCT', 'BASS', 'FX', 'GLIDE'] as const;
+type KeyField = (typeof KEY_FIELDS)[number];
+type ModeField = 'MODE' | 'PATTERN' | 'RATE' | 'SPEED' | 'KIT' | 'BPM';
+type MenuField = KeyField | ModeField;
+const isKeyField = (f: MenuField): f is KeyField => (KEY_FIELDS as readonly string[]).includes(f);
+
+// The value `delta` steps away from `cur` in a cyclic option list.
+function cycle<T>(order: readonly T[], cur: T, delta: -1 | 1): T {
+  return order[(order.indexOf(cur) + delta + order.length) % order.length];
+}
 const PLAY_STRUM_MS = 4; // near-zero spread for the plain PLAY mode
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
@@ -330,7 +339,7 @@ export class SynthController {
   // joystick left/right edits the current field's value.
   editValue(delta: -1 | 1): void {
     const field = this.fields()[this.menuIndex];
-    if (this.menuKind === 'KEY') this.editKeyField(field, delta);
+    if (isKeyField(field)) this.editKeyField(field, delta);
     else this.editModeField(field, delta);
     this.publish();
   }
@@ -545,26 +554,28 @@ export class SynthController {
   }
 
   // --- field editing ------------------------------------------------------
-  private editKeyField(field: string, delta: -1 | 1): void {
-    if (field === 'KEY') {
-      this.root = (this.root + delta + 12) % 12;
-    } else if (field === 'SCL') {
-      const i = SCALE_ORDER.indexOf(this.scale);
-      this.scale = SCALE_ORDER[(i + delta + SCALE_ORDER.length) % SCALE_ORDER.length];
-    } else if (field === 'OCT') {
-      this.octave = Math.max(-2, Math.min(2, this.octave + delta));
-    } else if (field === 'BASS') {
-      const i = BASS_MODES.indexOf(this.bass);
-      this.bass = BASS_MODES[(i + delta + BASS_MODES.length) % BASS_MODES.length];
-    } else if (field === 'GLIDE') {
-      const i = GLIDE_MODES.indexOf(this.glide);
-      this.glide = GLIDE_MODES[(i + delta + GLIDE_MODES.length) % GLIDE_MODES.length];
-      this.applyGlide();
-    } else {
-      // FX
-      const i = FX_MODES.indexOf(this.fx);
-      this.fx = FX_MODES[(i + delta + FX_MODES.length) % FX_MODES.length];
-      this.applyFx();
+  private editKeyField(field: KeyField, delta: -1 | 1): void {
+    switch (field) {
+      case 'KEY':
+        this.root = (this.root + delta + 12) % 12;
+        break;
+      case 'SCL':
+        this.scale = cycle(SCALE_ORDER, this.scale, delta);
+        break;
+      case 'OCT':
+        this.octave = Math.max(-2, Math.min(2, this.octave + delta));
+        break;
+      case 'BASS':
+        this.bass = cycle(BASS_MODES, this.bass, delta);
+        break;
+      case 'GLIDE':
+        this.glide = cycle(GLIDE_MODES, this.glide, delta);
+        this.applyGlide();
+        break;
+      case 'FX':
+        this.fx = cycle(FX_MODES, this.fx, delta);
+        this.applyFx();
+        break;
     }
     this.revoiceHeld();
   }
@@ -575,39 +586,39 @@ export class SynthController {
   private applyGlide(): void {
     this.synth.setGlide(glideSeconds(this.glide));
   }
-  private editModeField(field: string, delta: -1 | 1): void {
-    if (field === 'MODE') {
-      const i = PLAY_MODES.indexOf(this.mode);
-      this.setMode(PLAY_MODES[(i + delta + PLAY_MODES.length) % PLAY_MODES.length]);
-    } else if (field === 'PATTERN') {
-      const i = ARP_PATTERNS.indexOf(this.arpPattern);
-      this.arpPattern = ARP_PATTERNS[(i + delta + ARP_PATTERNS.length) % ARP_PATTERNS.length];
-    } else if (field === 'SPEED') {
-      const i = STRUM_SPEEDS.indexOf(this.strumSpeed);
-      this.strumSpeed = STRUM_SPEEDS[(i + delta + STRUM_SPEEDS.length) % STRUM_SPEEDS.length];
-      this.applyMode();
-    } else if (field === 'RATE') {
-      const i = RATES.indexOf(this.mode === 'ARP' ? this.arpRate : this.repeatRate);
-      const next = RATES[(i + delta + RATES.length) % RATES.length];
-      if (this.mode === 'ARP') this.arpRate = next;
-      else this.repeatRate = next;
-      this.applyMode();
-    } else if (field === 'KIT') {
-      const i = DRUM_KITS.indexOf(this.drumKit);
-      this.drumKit = DRUM_KITS[(i + delta + DRUM_KITS.length) % DRUM_KITS.length];
-    } else {
-      // BPM - route to the shared Transport (one tempo owner); syncTempo mirrors it back + re-syncs
-      // the looper and the tempo-synced delay.
-      this.setBpm(this.bpm + delta);
+  private editModeField(field: ModeField, delta: -1 | 1): void {
+    switch (field) {
+      case 'MODE':
+        this.setMode(cycle(PLAY_MODES, this.mode, delta));
+        break;
+      case 'PATTERN':
+        this.arpPattern = cycle(ARP_PATTERNS, this.arpPattern, delta);
+        break;
+      case 'SPEED':
+        this.strumSpeed = cycle(STRUM_SPEEDS, this.strumSpeed, delta);
+        this.applyMode();
+        break;
+      case 'RATE':
+        if (this.mode === 'ARP') this.arpRate = cycle(RATES, this.arpRate, delta);
+        else this.repeatRate = cycle(RATES, this.repeatRate, delta);
+        this.applyMode();
+        break;
+      case 'KIT':
+        this.drumKit = cycle(DRUM_KITS, this.drumKit, delta);
+        break;
+      case 'BPM':
+        // the shared Transport owns tempo; syncTempo mirrors it back and re-syncs the looper + delay
+        this.setBpm(this.bpm + delta);
+        break;
     }
   }
 
   // The fields of the currently-open menu. The MODE menu's fields depend on the
   // active mode (only ARP has a pattern, only STRUM a speed, etc.) - one engine,
   // a context-dependent field set.
-  private fields(): readonly string[] {
+  private fields(): readonly MenuField[] {
     if (this.menuKind === 'KEY') return KEY_FIELDS;
-    const f = ['MODE'];
+    const f: MenuField[] = ['MODE'];
     if (this.mode === 'ARP') f.push('PATTERN', 'RATE');
     else if (this.mode === 'STRUM') f.push('SPEED');
     else if (this.mode === 'REPEAT') f.push('RATE');
@@ -624,7 +635,7 @@ export class SynthController {
       active: i === this.menuIndex,
     }));
   }
-  private fieldValue(field: string): string {
+  private fieldValue(field: MenuField): string {
     switch (field) {
       case 'KEY':
         return NOTE_NAMES[this.root];
@@ -650,8 +661,6 @@ export class SynthController {
         return this.drumKit;
       case 'BPM':
         return String(this.bpm);
-      default:
-        return '';
     }
   }
 

@@ -78,9 +78,11 @@ class FakeBufferSource extends FakeNode {
   buffer: FakeBuffer | null = null;
   loop = false;
   started: number | null = null;
+  offset = 0;
   stopped = false;
-  start(t: number): void {
+  start(t: number, offset = 0): void {
     this.started = t;
+    this.offset = offset;
   }
   stop(): void {
     this.stopped = true;
@@ -529,14 +531,40 @@ describe('WebAudioLooper', () => {
     looper.setBpm(120);
     recordMaster(looper, ctx, { playBlocks: 40 });
     expect(looper.view().stopped).toBe(false); // playing after record
-    looper.followTransport(false, false); // PAUSE (hold position)
+    looper.followTransport(false, 3); // PAUSE (hold position)
     expect(looper.view().stopped).toBe(true);
-    looper.followTransport(true, false); // PLAY (resume)
+    looper.followTransport(true, 3); // PLAY (resume)
     expect(looper.view().stopped).toBe(false);
-    looper.followTransport(false, true); // STOP (to bar 1)
+    looper.followTransport(false, 0); // STOP (to bar 1)
     expect(looper.view().stopped).toBe(true);
-    looper.followTransport(true, false); // PLAY (from the top)
+    looper.followTransport(true, 0); // PLAY (from the top)
     expect(looper.view().stopped).toBe(false);
+  });
+
+  it('rejoining the rig resumes the loops where the rig is, not at a phase held from an earlier pause', () => {
+    const transport = new FakeTransport();
+    const { looper, ctx } = makeLooper(transport);
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 }); // a 1-bar (4-beat) master
+    ctx.currentTime += 1.0; // half a bar in
+    looper.followTransport(false, 0); // the rig pauses (as an overdub count-in does) while the loop is mid-bar
+    recordOverdub(looper, ctx, 0.25, 40);
+    looper.exit(); // joystick up halts the layers; the rig keeps its own place
+    looper.followTransport(true, 0); // the rig plays from bar 1
+    const playing = ctx.sources.filter((s) => !s.stopped);
+    expect(playing.length).toBeGreaterThan(0);
+    expect(playing.every((s) => s.offset === 0)).toBe(true);
+  });
+
+  it('a pause resumes the loops at the rig position it resumes from', () => {
+    const transport = new FakeTransport();
+    const { looper, ctx } = makeLooper(transport);
+    looper.setBpm(120);
+    recordMaster(looper, ctx, { playBlocks: 40 }); // 1 bar = 2 s at 120 bpm
+    looper.followTransport(false, 1); // pause on beat 2 (one beat in)
+    looper.followTransport(true, 5); // play resumes one bar + one beat in
+    const playing = ctx.sources.filter((s) => !s.stopped);
+    expect(playing.every((s) => Math.abs(s.offset - 0.5) < 1e-6)).toBe(true); // one beat = a quarter loop
   });
 
   it('aborting an overdub count-in stops the layers scheduled for the cancelled downbeat (no zombie)', () => {

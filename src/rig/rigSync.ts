@@ -1,14 +1,16 @@
+import type { TransportState } from '../transport/transport';
+
 // The rig's multiplayer sync layer. A narrow port so the app doesn't care about the wire transport;
 // applying a remote event is a straight overwrite because each item has a single writer (see
 // docs/MULTIPLAYER.md - the hard-lock occupancy makes the shared state conflict-free by construction).
 
 export type RigSyncEvent =
-  | { type: 'transport'; running: boolean; bpm: number } // the shared beat: tempo + play/stop
+  | { type: 'transport'; state: TransportState; bpm: number } // the shared beat: tempo + play/pause/stop
   | { type: 'wire'; device: string; on: boolean } // a patch cable toggled
   | { type: 'presence'; peer: string; holding: string | null } // who holds which device
   | { type: 'leave'; peer: string } // a peer left the session
   | { type: 'hello' } // a peer joined: existing peers reply with a snapshot
-  | { type: 'snapshot'; running: boolean; bpm: number; wires: string[] }; // current state, for a joiner
+  | { type: 'snapshot'; state: TransportState; bpm: number; wires: string[] }; // current state, for a joiner
 
 export interface RigSync {
   send(ev: RigSyncEvent): void;

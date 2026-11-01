@@ -8,7 +8,7 @@ import { Transport } from '../transport/transport';
 import { IntervalTicker } from '../transport/intervalTicker';
 import { RigAudio, type SharedAudio } from '../rig/rigAudio';
 import { BroadcastChannelSync, NullRigSync, type RigSync } from '../rig/rigSync';
-import { HostthisRelaySync, mintRoom } from '../jam/infrastructure/hostthisRelay';
+import { HostthisRelaySync, fetchRoomRig, mintRoom, putRoomRig } from '../jam/infrastructure/hostthisRelay';
 import { JamService } from '../jam/application/jamService';
 import type { Jam } from '../jam/domain/jam';
 import { createRig, loadRig, listRigs, deleteRig, updateRig, scatterFor, saveWires, importRig, type Placement, type RigConfig, type RigSummary } from '../rig/rigStore';
@@ -116,11 +116,9 @@ export function Experience() {
     let dead = false;
     void (async () => {
       try {
-        const res = await fetch(`/api/rooms/${parsed.uuid}/rig`);
-        if (!res.ok) throw new Error(String(res.status));
-        const c = (await res.json()) as { instruments?: string[]; placements?: Record<string, Placement>; wires?: string[] };
-        if (dead || !Array.isArray(c.instruments) || !c.placements) throw new Error('bad config');
-        importRig(parsed.uuid!, c.instruments, c.placements, c.wires ?? []);
+        const config = await fetchRoomRig(parsed.uuid!);
+        if (dead) return;
+        importRig(parsed.uuid!, config);
         setJamTick((t) => t + 1); // re-render; loadRig now finds it
       } catch {
         if (!dead) navigate('/', { replace: true }); // no such jam (or no rooms backend)
@@ -308,14 +306,9 @@ function StageHost({
     void (async () => {
       try {
         const roomId = await mintRoom();
-        const config = { instruments: rig.instruments, placements: rig.placements, wires: wiresRef.current };
-        const put = await fetch(`/api/rooms/${roomId}/rig`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(config),
-        });
-        if (!put.ok) throw new Error(String(put.status));
-        importRig(roomId, config.instruments, config.placements, config.wires); // the host's local copy
+        const config: RigConfig = { ...rig, wires: wiresRef.current };
+        await putRoomRig(roomId, config);
+        importRig(roomId, config); // the host's local copy
         onNavigate(`/jam/${roomId}`);
       } catch {
         alert('Could not go live - the rooms backend is unreachable from this deploy.');

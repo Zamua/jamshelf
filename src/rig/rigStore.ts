@@ -124,14 +124,40 @@ export function updateRig(uuid: string, instruments: string[], placements: Recor
   }
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && v.every((s) => typeof s === 'string');
+
+function parsePlacement(v: unknown): Placement | null {
+  if (!isRecord(v) || !isFiniteNumber(v.x) || !isFiniteNumber(v.z) || !isFiniteNumber(v.yaw)) return null;
+  return { x: v.x, z: v.z, yaw: v.yaw };
+}
+
+// The one parser for a rig config from outside the code (local storage, a jam room): every
+// instrument has a finite placement, or the whole config is rejected.
+export function parseRigConfig(raw: unknown): RigConfig | null {
+  if (!isRecord(raw) || !isRecord(raw.placements)) return null;
+  const instruments = raw.instruments;
+  if (!isStringArray(instruments) || instruments.length === 0) return null;
+  const placements: Record<string, Placement> = {};
+  for (const id of instruments) {
+    const p = parsePlacement(raw.placements[id]);
+    if (!p) return null;
+    placements[id] = p;
+  }
+  return {
+    instruments,
+    placements,
+    wires: isStringArray(raw.wires) ? raw.wires.filter((w) => instruments.includes(w)) : undefined,
+    createdAt: isFiniteNumber(raw.createdAt) ? raw.createdAt : undefined,
+    updatedAt: isFiniteNumber(raw.updatedAt) ? raw.updatedAt : undefined,
+  };
+}
+
 export function loadRig(uuid: string): RigConfig | null {
   try {
     const raw = globalThis.localStorage?.getItem(key(uuid));
-    if (!raw) return null;
-    const c = JSON.parse(raw) as RigConfig;
-    if (!Array.isArray(c.instruments) || c.instruments.length === 0) return null;
-    if (!c.placements) return null;
-    return c;
+    return raw ? parseRigConfig(JSON.parse(raw)) : null;
   } catch {
     return null;
   }
@@ -150,10 +176,10 @@ export function savePlacement(uuid: string, id: string, p: Placement): void {
 
 // Store a rig config under a GIVEN uuid (joining a live jam: the shared config lands under the
 // jam/room id so the rest of the app finds it like any local rig).
-export function importRig(uuid: string, instruments: string[], placements: Record<string, Placement>, wires: string[]): void {
+export function importRig(uuid: string, rig: RigConfig): void {
   try {
     const prev = loadRig(uuid);
-    const config: RigConfig = { instruments, placements, wires, createdAt: prev?.createdAt ?? Date.now(), updatedAt: Date.now() };
+    const config: RigConfig = { instruments: rig.instruments, placements: rig.placements, wires: rig.wires ?? [], createdAt: prev?.createdAt ?? Date.now(), updatedAt: Date.now() };
     globalThis.localStorage?.setItem(key(uuid), JSON.stringify(config));
   } catch {
     /* storage disabled - the caller still has the config in memory */

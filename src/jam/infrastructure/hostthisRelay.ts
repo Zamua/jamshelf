@@ -1,4 +1,5 @@
 import type { RigSync, RigSyncEvent } from '../../rig/rigSync';
+import { parseRigConfig, type RigConfig } from '../../rig/rigStore';
 
 // The hostthis room backend for the RigSync port: cross-device multiplayer over hostthis rooms.
 // The room is a shared KV namespace with a live relay. WRITES go via HTTP PUT /api/rooms/<id>/<key>
@@ -13,6 +14,24 @@ export async function mintRoom(): Promise<string> {
   const body = (await res.json()) as { id?: string };
   if (!body.id) throw new Error('room mint returned no id');
   return body.id;
+}
+
+// The rig a jam plays lives at the room's `rig` key: the host writes it on go-live, joiners read it.
+export async function putRoomRig(roomId: string, rig: RigConfig): Promise<void> {
+  const config = { instruments: rig.instruments, placements: rig.placements, wires: rig.wires ?? [] };
+  const res = await fetch(`/api/rooms/${roomId}/rig`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error(`room rig write failed (${res.status})`);
+}
+export async function fetchRoomRig(roomId: string): Promise<RigConfig> {
+  const res = await fetch(`/api/rooms/${roomId}/rig`);
+  if (!res.ok) throw new Error(`room rig read failed (${res.status})`);
+  const rig = parseRigConfig(await res.json());
+  if (!rig) throw new Error('room rig is malformed');
+  return rig;
 }
 
 // --- translate between the flat RigSyncEvent and the room's KV keys ---
@@ -32,13 +51,15 @@ export function eventToKV(ev: RigSyncEvent): KV | null {
       return null; // hello / snapshot are the BroadcastChannel backend's own handshake
   }
 }
-export function kvToEvent(key: string, value: Record<string, unknown>): RigSyncEvent | null {
+// Room values are written by any peer, so each is parsed here; a malformed one maps to nothing.
+export function kvToEvent(key: string, value: unknown): RigSyncEvent | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const v = value as Record<string, unknown>;
   if (key === 'transport') {
-    const bpm = value.bpm;
-    return typeof bpm === 'number' && Number.isFinite(bpm) ? { type: 'transport', running: !!value.running, bpm } : null;
+    return typeof v.bpm === 'number' && Number.isFinite(v.bpm) ? { type: 'transport', running: v.running === true, bpm: v.bpm } : null;
   }
-  if (key.startsWith('wire_')) return { type: 'wire', device: key.slice(5), on: !!value.on };
-  if (key.startsWith('presence_')) return { type: 'presence', peer: key.slice(9), holding: (value.holding as string | null) ?? null };
+  if (key.startsWith('wire_')) return { type: 'wire', device: key.slice(5), on: v.on === true };
+  if (key.startsWith('presence_')) return { type: 'presence', peer: key.slice(9), holding: typeof v.holding === 'string' ? v.holding : null };
   return null;
 }
 
@@ -96,17 +117,17 @@ export class HostthisRelaySync implements RigSync {
   }
 
   private onFrame(data: string): void {
-    let f: { type?: string; state?: Record<string, Record<string, unknown>>; key?: string; value?: Record<string, unknown> };
+    let f: { type?: string; state?: Record<string, unknown>; key?: string; value?: unknown };
     try {
       f = JSON.parse(data);
     } catch {
       return;
     }
-    if (f.type === 'snapshot' && f.state) {
+    if (f.type === 'snapshot' && typeof f.state === 'object' && f.state !== null) {
       for (const [k, v] of Object.entries(f.state)) this.emit(kvToEvent(k, v));
-    } else if (f.type === 'put' && f.key) {
-      this.emit(kvToEvent(f.key, f.value ?? {}));
-    } else if (f.type === 'delete' && f.key?.startsWith('wire_')) {
+    } else if (f.type === 'put' && typeof f.key === 'string') {
+      this.emit(kvToEvent(f.key, f.value));
+    } else if (f.type === 'delete' && typeof f.key === 'string' && f.key.startsWith('wire_')) {
       this.emit({ type: 'wire', device: f.key.slice(5), on: false });
     }
   }

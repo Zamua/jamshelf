@@ -49,11 +49,17 @@ interface SessionArgs {
   transport: Transport;
   focused: string | null;
   onFocus: (id: string | null) => void;
+  connect?: Connect;
 }
+
+// Opens a rig's sync channel: a live jam over the hostthis room relay (cross-device), a local rig
+// over BroadcastChannel (two tabs).
+export type Connect = (rigUuid: string, live: boolean) => RigSync;
+const connectRoom: Connect = (rigUuid, live) => (live ? new HostthisRelaySync(rigUuid) : new BroadcastChannelSync(rigUuid));
 
 // A rig's shared session: the patch cables (persisted, mirrored into the audio graph, synced), the
 // shared transport over the sync channel, and the jam's presence + hard-lock occupancy.
-export function useRigSession({ rig, rigUuid, live, audio, transport, focused, onFocus }: SessionArgs) {
+export function useRigSession({ rig, rigUuid, live, audio, transport, focused, onFocus, connect = connectRoom }: SessionArgs) {
   const [wires, setWires] = useState<string[]>(() => rig?.wires ?? []);
   const [patchMode, setPatchMode] = useState(false);
   useEffect(() => {
@@ -69,12 +75,7 @@ export function useRigSession({ rig, rigUuid, live, audio, transport, focused, o
     }
   }, [wires, rig, audio]);
 
-  // A live jam syncs over the hostthis room relay (cross-device); a local rig over BroadcastChannel
-  // (two tabs); solo is a no-op.
-  const sync = useMemo<RigSync>(
-    () => (rigUuid && live ? new HostthisRelaySync(rigUuid) : rigUuid ? new BroadcastChannelSync(rigUuid) : new NullRigSync()),
-    [rigUuid, live],
-  );
+  const sync = useMemo<RigSync>(() => (rigUuid ? connect(rigUuid, live) : new NullRigSync()), [rigUuid, live, connect]);
   useEffect(() => () => sync.dispose(), [sync]);
   const applyingRemote = useRef(false);
   const wiresRef = useRef(wires); // live wires, so a snapshot reply isn't a stale closure

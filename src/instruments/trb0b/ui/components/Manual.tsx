@@ -1,4 +1,4 @@
-import './Manual.css';
+import '../../../../shared/Manual.css';
 
 export interface ManualProps {
   open: boolean;

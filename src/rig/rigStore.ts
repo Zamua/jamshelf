@@ -71,16 +71,20 @@ function shortId(): string {
   return (buf[0].toString(36) + buf[1].toString(36)).slice(0, 8).padEnd(8, '0');
 }
 
+// Storage disabled or full: the rig still plays this session, it just won't be saved.
+function writeRig(uuid: string, config: RigConfig): void {
+  try {
+    globalThis.localStorage?.setItem(key(uuid), JSON.stringify(config));
+  } catch {
+    /* not persisted */
+  }
+}
+
 // Create + persist a rig, returning its uuid.
 export function createRig(instruments: string[], placements: Record<string, Placement>): string {
   const uuid = shortId();
   const now = Date.now();
-  const config: RigConfig = { instruments, placements, createdAt: now, updatedAt: now };
-  try {
-    globalThis.localStorage?.setItem(key(uuid), JSON.stringify(config));
-  } catch {
-    /* storage disabled - the rig still works this session via the returned config */
-  }
+  writeRig(uuid, { instruments, placements, createdAt: now, updatedAt: now });
   return uuid;
 }
 
@@ -115,13 +119,8 @@ export function deleteRig(uuid: string): void {
 // Patch cables survive the edit, minus any from a device that left the rig.
 export function updateRig(uuid: string, instruments: string[], placements: Record<string, Placement>): void {
   const prev = loadRig(uuid);
-  try {
-    const wires = prev?.wires?.filter((id) => instruments.includes(id));
-    const config: RigConfig = { instruments, placements, wires, createdAt: prev?.createdAt, updatedAt: Date.now() };
-    globalThis.localStorage?.setItem(key(uuid), JSON.stringify(config));
-  } catch {
-    /* ignore */
-  }
+  const wires = prev?.wires?.filter((id) => instruments.includes(id));
+  writeRig(uuid, { instruments, placements, wires, createdAt: prev?.createdAt, updatedAt: Date.now() });
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -163,36 +162,16 @@ export function loadRig(uuid: string): RigConfig | null {
   }
 }
 
-// Persist an updated placement (e.g. after a drag-to-reposition).
-export function savePlacement(uuid: string, id: string, p: Placement): void {
-  const c = loadRig(uuid);
-  if (!c) return;
-  try {
-    globalThis.localStorage?.setItem(key(uuid), JSON.stringify({ ...c, placements: { ...c.placements, [id]: p }, updatedAt: Date.now() }));
-  } catch {
-    /* ignore */
-  }
-}
-
 // Store a rig config under a GIVEN uuid (joining a live jam: the shared config lands under the
 // jam/room id so the rest of the app finds it like any local rig).
 export function importRig(uuid: string, rig: RigConfig): void {
-  try {
-    const prev = loadRig(uuid);
-    const config: RigConfig = { instruments: rig.instruments, placements: rig.placements, wires: rig.wires ?? [], createdAt: prev?.createdAt ?? Date.now(), updatedAt: Date.now() };
-    globalThis.localStorage?.setItem(key(uuid), JSON.stringify(config));
-  } catch {
-    /* storage disabled - the caller still has the config in memory */
-  }
+  const prev = loadRig(uuid);
+  const now = Date.now();
+  writeRig(uuid, { instruments: rig.instruments, placements: rig.placements, wires: rig.wires ?? [], createdAt: prev?.createdAt ?? now, updatedAt: now });
 }
 
 // Persist the set of devices patched into the looper's input.
 export function saveWires(uuid: string, wires: string[]): void {
   const c = loadRig(uuid);
-  if (!c) return;
-  try {
-    globalThis.localStorage?.setItem(key(uuid), JSON.stringify({ ...c, wires, updatedAt: Date.now() }));
-  } catch {
-    /* ignore */
-  }
+  if (c) writeRig(uuid, { ...c, wires, updatedAt: Date.now() });
 }

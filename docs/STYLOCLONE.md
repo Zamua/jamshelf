@@ -117,7 +117,7 @@ no IndexedDB.
 
 Today `Stage` and `Experience` import the HiClone's `Device` / `useSynth` / `ViewModel`
 directly (single-instrument shortcut). A second instrument forces the generalization the
-original CLAUDE.md always anticipated. Design:
+original AGENTS.md always anticipated. Design:
 
 - **`shared/instrument.ts` gains an `InstrumentModule`** bundling everything the host needs to
   mount ONE instrument, self-typed over its own VM/Handlers:

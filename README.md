@@ -51,7 +51,7 @@ leaves the device.
 
 ## Architecture
 
-See [`CLAUDE.md`](./CLAUDE.md) for the full layer breakdown. In short: `domain/` holds pure, tested music theory; `application/` holds the controller + ports; `infrastructure/` holds the Web Audio adapter; `ui/` holds the React + react-three-fiber device.
+See [`AGENTS.md`](./AGENTS.md) for the full layer breakdown. In short: `domain/` holds pure, tested music theory; `application/` holds the controller + ports; `infrastructure/` holds the Web Audio adapter; `ui/` holds the React + react-three-fiber device.
 
 ## Deploy
 
